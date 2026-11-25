@@ -1,0 +1,155 @@
+   Compiling syn v3.0.9
+   Compiling foldhash v0.2.0
+   Compiling hashbrown v0.17.1
+   Compiling indexmap v2.14.2
+   Compiling phf v0.13.1
+   Compiling bimcraft-i18n v0.12.0 (/private/tmp/parameter-precision-nov25/crates/i18n)
+   Compiling zip v9.2.0
+   Compiling bytemuck_derive v1.12.1
+   Compiling synstructure v0.14.0
+   Compiling bytemuck v1.25.2
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling zerofrom v0.1.8
+   Compiling thiserror-impl v2.0.21
+   Compiling yoke v0.8.3
+   Compiling font-types v0.11.3
+   Compiling font-types v0.12.7
+   Compiling thiserror v2.0.21
+   Compiling read-fonts v0.46.0
+   Compiling read-fonts v0.39.2
+   Compiling color v0.3.3
+   Compiling peniko v0.6.1
+   Compiling vello_common v0.3.0
+   Compiling write-fonts v0.48.1
+   Compiling skrifa v0.49.0
+   Compiling hayro-font v0.5.0
+   Compiling skrifa v0.42.1
+   Compiling hayro-interpret v0.9.0
+   Compiling subsetter v0.2.6
+   Compiling vello_cpu v0.3.0
+   Compiling image v0.25.10
+   Compiling tiny-skia-path v0.12.0
+   Compiling tiny-skia-path v0.11.4
+   Compiling serde_derive v1.0.229
+   Compiling tiny-skia v0.11.4
+   Compiling krilla v0.8.2
+   Compiling serde v1.0.229
+   Compiling hayro v0.9.0
+   Compiling proj4rs v0.3.0
+   Compiling bimcraft-core v0.12.0 (/private/tmp/parameter-precision-nov25/crates/core)
+   Compiling jxl-render v0.12.4
+   Compiling jxl-oxide v0.12.6
+   Compiling leb128fmt v0.1.0
+   Compiling wasm-encoder v0.263.0
+   Compiling wast v263.0.0
+   Compiling wasmi_ir v2.0.0
+   Compiling wat v1.263.0
+   Compiling phf_shared v0.11.3
+   Compiling wasmi v2.0.0
+   Compiling phf v0.11.3
+   Compiling minimal-lexical v0.2.1
+   Compiling nom v7.1.3
+   Compiling ureq-proto v0.6.5
+   Compiling rustls v0.23.46
+   Compiling oem_cp v2.1.2
+   Compiling anyhow v1.0.104
+   Compiling memmap2 v0.9.11
+   Compiling byteorder v1.5.0
+   Compiling uuid v1.28.0
+   Compiling fnv v1.0.7
+   Compiling ureq v3.4.2
+   Compiling cfb v0.15.0
+   Compiling acadrust v0.6.6
+   Compiling bimcraft-plugin v0.12.0 (/private/tmp/parameter-precision-nov25/crates/plugin)
+   Compiling objc2-core-foundation v0.3.2
+   Compiling objc2-io-kit v0.3.2
+   Compiling bimcraft-rvt v0.12.0 (/private/tmp/parameter-precision-nov25/crates/rvt)
+   Compiling bimcraft-pyaddins v0.12.0 (/private/tmp/parameter-precision-nov25/crates/pyaddins)
+   Compiling bimcraft-dwg v0.12.0 (/private/tmp/parameter-precision-nov25/crates/dwg)
+   Compiling sysinfo v0.40.3
+   Compiling quote v1.0.47
+   Compiling syn v2.0.119
+   Compiling bimcraft-update v0.12.0 (/private/tmp/parameter-precision-nov25/crates/update)
+   Compiling bimcraft-assistant v0.12.0 (/private/tmp/parameter-precision-nov25/crates/assistant)
+   Compiling bimcraft-cowork v0.12.0 (/private/tmp/parameter-precision-nov25/crates/cowork)
+   Compiling bimcraft-plugin-sdk v0.12.0 (/private/tmp/parameter-precision-nov25/crates/plugin-sdk)
+   Compiling bimcraft-cli v0.12.0 (/private/tmp/parameter-precision-nov25/apps/bimcraft-cli)
+    Finished `test` profile [unoptimized] target(s) in 12m 46s
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_assistant-ad69bce8bee0d397)
+
+running 58 tests
+test shared_tests::a_turn_whose_other_window_fails_says_why_and_ends ... ok
+test shared_tests::a_turn_runs_on_another_windows_key_as_the_person_who_asked ... ok
+test shared_tests::another_payer_or_provider_starts_the_model_afresh_and_the_log_stays ... ok
+test shared_tests::the_chat_goes_between_windows_whole_pictures_and_all ... ok
+test tests::a_chat_had_with_another_provider_is_shown_and_not_continued ... ok
+test tests::a_checklist_is_read_whole_and_a_bad_one_is_told_what_is_wrong ... ok
+test tests::a_chat_is_written_into_a_folder_by_its_projects_path_read_back_and_removed ... ok
+test tests::a_file_name_that_could_end_the_block_early_is_cleaned ... ok
+test tests::a_failing_call_is_told_to_the_model_and_the_others_still_run ... ok
+test tests::a_key_or_model_that_is_no_key_or_model_never_reaches_a_request ... ok
+test tests::a_key_sealed_opens_under_the_builds_secret_and_under_no_other ... ok
+test tests::a_key_sealed_with_a_passphrase_is_the_standard_pbkdf2_and_aes_gcm_too ... ok
+test tests::a_file_that_is_not_a_saved_chat_is_refused_whole_and_never_panics ... ok
+test tests::a_key_under_a_passphrase_that_was_changed_is_refused_and_a_bad_text_never_panics ... ok
+test tests::a_long_result_is_cut_where_a_character_ends_and_says_so ... ok
+test tests::a_message_is_refused_while_one_runs_and_when_it_is_too_long_or_the_key_is_bad ... ok
+test tests::a_message_that_makes_a_wall_is_one_undo_step_named_for_the_assistant_and_undo_takes_it_back ... ok
+test tests::a_model_that_keeps_calling_tools_is_stopped_and_what_it_did_stays_one_step ... ok
+test tests::a_picked_file_is_copied_to_a_folder_of_the_chats_and_what_is_not_sendable_is_refused_with_a_note ... ok
+test tests::a_provider_error_is_a_note_in_the_chat_and_the_project_is_untouched ... ok
+test tests::a_release_is_built_with_its_own_secret ... ok
+test tests::a_reply_is_read_with_its_status_and_capped_and_a_redirect_goes_nowhere ... FAILED
+test tests::a_saved_chat_comes_back_as_it_was_and_the_model_is_sent_the_same_conversation_again ... ok
+test tests::a_sealed_key_is_the_standard_pbkdf2_and_aes_gcm_that_another_program_reads ... ok
+test tests::a_sealed_key_that_was_changed_is_refused ... ok
+test tests::a_session_that_may_only_read_is_read_through_the_tools_too ... ok
+test tests::anthropic_malformed_replies_are_errors_not_panics ... ok
+test tests::anthropic_reads_a_text_answer_and_keeps_the_thinking_for_the_next_request ... ok
+test tests::anthropic_reads_one_tool_call_and_sends_its_answer_back_by_id ... ok
+test tests::anthropic_reads_two_tool_calls_in_one_reply ... ok
+test tests::anthropic_refusal_is_said_with_its_category ... ok
+test tests::base64_is_the_standard_one_with_padding ... ok
+test tests::every_provider_counts_the_tokens_of_a_reply_in_its_own_fields ... ok
+test tests::every_provider_gives_its_thinking_apart_from_the_answer_and_asks_for_it ... ok
+test tests::every_provider_lists_models_the_ids_of_which_pass ... ok
+test tests::execute_makes_a_wall_and_a_failed_command_changes_nothing ... ok
+test tests::files_go_before_the_words_in_each_providers_own_form ... ok
+test tests::files_go_with_the_message_and_their_folder_goes_with_the_chat ... ok
+test tests::gemini_malformed_blocked_and_refused_replies_are_errors ... ok
+test tests::gemini_reads_a_text_answer_and_skips_the_thoughts ... ok
+test tests::gemini_reads_a_tool_call_and_sends_back_its_signature_and_an_answer_by_id ... ok
+test tests::gemini_reads_two_tool_calls_and_the_free_form_object_written_as_text ... ok
+test tests::more_calls_than_the_cap_are_answered_with_errors_not_run ... ok
+test tests::more_file_bytes_than_a_conversation_may_carry_are_refused ... ok
+test tests::openai_malformed_replies_failures_and_refusals_are_errors ... ok
+test tests::openai_reads_a_text_answer ... ok
+test tests::openai_reads_a_tool_call_and_replays_only_what_can_be_replayed ... ok
+test tests::openai_reads_two_tool_calls_and_keeps_bad_arguments_for_the_tool_to_refuse ... ok
+test tests::several_batches_of_one_message_are_still_one_undo_step ... ok
+test tests::stopping_ends_the_turn_and_keeps_what_was_done ... ok
+test tests::the_assistant_talks_to_its_three_hosts_over_https_and_to_nothing_else ... ok
+test tests::the_checklist_is_kept_for_the_palette_not_logged_as_a_call_and_cleared_by_the_next_message ... ok
+test tests::the_key_is_in_one_header_and_never_in_the_log_the_history_or_a_debug_print ... ok
+test tests::the_tools_read_the_model_and_list_commands_by_filter ... ok
+test tests::thinking_comes_before_the_answer_in_the_log_and_the_tokens_are_handed_over_once ... ok
+test tests::what_is_not_a_sealed_key_is_refused_quickly_and_never_panics ... ok
+test tests::what_would_touch_a_file_or_replace_the_project_or_make_a_picture_is_refused ... ok
+test tests::a_key_under_a_passphrase_opens_with_it_alone_and_only_with_it ... ok
+
+failures:
+
+---- tests::a_reply_is_read_with_its_status_and_capped_and_a_redirect_goes_nowhere stdout ----
+
+thread 'tests::a_reply_is_read_with_its_status_and_capped_and_a_redirect_goes_nowhere' (83185316) panicked at crates/assistant/src/tests.rs:290:53:
+called `Result::unwrap()` on an `Err` value: Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::a_reply_is_read_with_its_status_and_capped_and_a_redirect_goes_nowhere
+
+test result: FAILED. 57 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.92s
+
+error: test failed, to rerun pass `-p bimcraft-assistant --lib`

@@ -110,7 +110,7 @@ fn flip_turns_a_window_and_refuses_a_flag_it_does_not_have() {
     assert!(e.contains("can't flip `hand`") && e.contains("nothing"), "{e}");
     let column = run(&mut s, "column", json!({"at": [4000, 2000]}))["id"].as_u64().unwrap();
     let e = fails(&mut s, "flip", json!({"ids": [column]}));
-    assert!(e.contains("isn't a wall, a stair, a door or a window"), "{e}");
+    assert!(e.contains("isn't a wall, a stair, a ramp, a door or a window"), "{e}");
 }
 
 #[test]

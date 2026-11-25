@@ -15,9 +15,15 @@ use crate::ids::{Guid, Id};
 use crate::model::{Lock, TOL};
 use crate::view3d::{dot, sub};
 
+mod copying;
+mod moving;
 mod pivot;
+mod transform;
 mod turn;
+pub use copying::{Copies, CopyRefused, Copying};
+pub use moving::{MoveRefused, Moving, Named, Stays};
 pub use pivot::{MAX_SWING, Pivot, PivotAt, PivotFrom, PivotMark, PivotPoint, Pivoted, Rotation, pivot_marks, pivot_targets};
+pub use transform::{MAX_FACTOR, Transform, TransformRefused, Transformed, Transforming};
 
 /// Dimensions one family may hold, and references one dimension may measure between.
 pub const MAX_DIMENSIONS: usize = 1000;
@@ -299,7 +305,7 @@ impl FamilyDimension {
     }
 
     /// Whether it holds a constraint: a label (not a reporting one's, which `labels` says), a lock, equality, or Align's lock.
-    fn constrains(&self, reporting: &dyn Fn(&str) -> bool) -> bool {
+    pub(crate) fn constrains(&self, reporting: &dyn Fn(&str) -> bool) -> bool {
         self.label.as_deref().is_some_and(|l| !reporting(l)) || !self.locked.is_empty() || self.equal || self.alignment
     }
 
@@ -321,6 +327,51 @@ pub struct Unsat {
 impl std::fmt::Display for Unsat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.message)
+    }
+}
+
+impl Unsat {
+    /// The same refusal with its dimensions taken to other places (`to`, place to place, as a copy's are to what it copies):
+    /// its list, and its words where they name one of them (`dimension 3`, `dimensions 2, 4`).
+    pub fn renumbered(&self, to: &dyn Fn(usize) -> usize) -> Unsat {
+        let mut message = String::new();
+        let mut rest = self.message.as_str();
+        while let Some(at) = rest.find("dimension") {
+            let (before, from) = rest.split_at(at);
+            message.push_str(before);
+            let word = if from.starts_with("dimensions ") { "dimensions " } else { "dimension " };
+            if !from.starts_with(word) {
+                message.push_str("dimension");
+                rest = &from["dimension".len()..];
+                continue;
+            }
+            message.push_str(word);
+            rest = &from[word.len()..];
+            // The numbers that follow, `, `-separated.
+            loop {
+                let digits = rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+                if digits == 0 {
+                    break;
+                }
+                let n: usize = rest[..digits].parse().unwrap_or(0);
+                let k = n.wrapping_sub(1);
+                if n > 0 && self.dims.contains(&k) {
+                    message.push_str(&(to(k) + 1).to_string());
+                } else {
+                    message.push_str(&rest[..digits]);
+                }
+                rest = &rest[digits..];
+                match rest.strip_prefix(", ") {
+                    Some(after) if after.starts_with(|c: char| c.is_ascii_digit()) => {
+                        message.push_str(", ");
+                        rest = after;
+                    }
+                    _ => break,
+                }
+            }
+        }
+        message.push_str(rest);
+        Unsat { message, dims: self.dims.iter().map(|k| to(*k)).collect(), over: self.over }
     }
 }
 
@@ -641,11 +692,22 @@ pub enum Edit {
 }
 
 /// What a solve holds where it is told, besides the constraints: a plane at an offset along its normal, or a reference at a
-/// place along a way (a sketch line both its ends).
+/// place along a way (a sketch line both its ends). A move (`moving.rs`) holds what it takes along shifted from where
+/// it is drawn: an unknown by so much (`Shifted`), or a form, every unknown of its own, its sketch's vertices by so much in
+/// its host's axes and its ends by so much along its normal (`Form`, by place).
 #[derive(Clone, Copy, Debug)]
 enum Pin {
     Plane(Guid, f64),
     Ref(DimRef, P3, f64),
+    Shifted(Unknown, f64),
+    Form(usize, P2, f64),
+}
+
+impl Pin {
+    /// Whether it is a move's: its rows come first, before the constraints, which then hold or say what holds it.
+    fn moves(&self) -> bool {
+        matches!(self, Pin::Shifted(..) | Pin::Form(..))
+    }
 }
 
 /// The work a solve may do, shared by the solves of one check.
@@ -685,21 +747,27 @@ struct Layout {
     radius: Vec<f64>,
     turn: Vec<f64>,
     points: Vec<Vec<(usize, Spot)>>,
+    /// The planes its profiles are drawn on, as its path is drawn for the type: a Sweep's one, a Swept Blend's two.
+    profiles: Vec<Frame>,
 }
 
 /// The sketch of `form` read for `values` ([`Layout`]).
 fn layout<'a>(
     form: &'a Form,
+    host: Option<&Frame>,
     values: &BTreeMap<String, Val>,
     read: &mut HashMap<&'a str, Result<Node, String>>,
     meter: &mut Meter,
 ) -> Result<Layout, String> {
     let count = form.plane_lines().count();
-    if count > 2 * sketch::MAX_SKETCH {
-        return Err(format!("its sketch has {count} lines, more than {}", 2 * sketch::MAX_SKETCH));
+    if count > 4 * sketch::MAX_SKETCH {
+        return Err(format!("its sketch has {count} lines, more than {}", 4 * sketch::MAX_SKETCH));
     }
     meter.spend(16 * count as u64 + 1)?;
     let mut out = Layout::default();
+    if let Some(host) = host {
+        out.profiles = super::forms::profile_frames(form, host, &mut |e| number(e, values, read));
+    }
     // A Blend's base and top (F6) are two groups: a vertex of one never joins one of the other.
     let mut grid: HashMap<(usize, i64, i64), Vec<usize>> = HashMap::new();
     let cell = |p: P2| ((p.0 / TOL).floor() as i64, (p.1 / TOL).floor() as i64);
@@ -803,12 +871,15 @@ fn line_root(f: &Family, g: Guid) -> Option<Guid> {
     None
 }
 
-/// A line of a sketch a solve reads: its form's place, its own, the form's host plane and its axes, its end vertices.
+/// A line of a sketch a solve reads: its form's place, its own, the form's host plane and the axes it is drawn in (its
+/// host's, or a profile's plane: `profile`), its end vertices.
 struct Seen {
     form: usize,
     line: usize,
     host: PlaneRef,
     frame: Frame,
+    /// On a sweep's profile plane, which stays where the path is drawn for the type: it moves with no unknown.
+    profile: bool,
     ends: (usize, usize),
     shape: Shape,
 }
@@ -854,7 +925,8 @@ impl<'f> Problem<'f> {
                 && !layouts.contains_key(&i)
             {
                 let form: &'f Form = &family.forms[i];
-                layouts.insert(i, layout(form, values, read, meter).map_err(|e| format!("form {}: {e}", i + 1))?);
+                let host = family.frame(&form.host).ok();
+                layouts.insert(i, layout(form, host.as_ref(), values, read, meter).map_err(|e| format!("form {}: {e}", i + 1))?);
             }
         }
         Ok(Problem { layouts, ..Problem::bare(family) })
@@ -984,7 +1056,16 @@ impl<'f> Problem<'f> {
         let (Some(ends), Some(shape)) = (lay.ends.get(k).copied(), lay.shape.get(k).copied()) else {
             return Err(format!("form {}: its sketch isn't read", i + 1));
         };
-        Ok(Seen { form: i, line: k, host, frame, ends, shape })
+        let group = form.plane_group(k);
+        if group >= 2 {
+            let frame = lay
+                .profiles
+                .get(group - 2)
+                .copied()
+                .ok_or_else(|| format!("form {}: line {}: its profile has no plane, its path not chaining", i + 1, k + 1))?;
+            return Ok(Seen { form: i, line: k, host, frame, profile: true, ends, shape });
+        }
+        Ok(Seen { form: i, line: k, host, frame, profile: false, ends, shape })
     }
 
     /// Where vertex `v` of form `i`'s sketch is in its host's axes, as drawn for the type.
@@ -1029,12 +1110,23 @@ impl<'f> Problem<'f> {
 
     /// A point of sketch `s` at `p` (its host's axes) in the family's axes, moving with the unknowns.
     fn sketch_point(&self, s: &Seen, p: &(Ad, Ad)) -> Result<V3, String> {
+        if s.profile {
+            let f = s.frame;
+            return Ok(AdFrame { origin: v3(f.origin), x: v3(f.x), y: v3(f.y), z: v3(f.z) }.point(&p.0, &p.1, &Ad::k(0.0)));
+        }
         Ok(self.host_ad(&s.host, DEPTH)?.point(&p.0, &p.1, &Ad::k(0.0)))
     }
 
     /// Vertex `v` of the sketch `s` is a line of, along `m`: its host's offset as much as `m` runs along the host's normal,
     /// and its place on the host; on a reference line's face, through the face's axes as the line turns (F7c).
     fn vertex_along(&self, s: &Seen, v: usize, m: P3) -> Result<Lin, String> {
+        // On a profile's plane: its axes as drawn.
+        if s.profile {
+            return Ok(Lin::number(dot(m, s.frame.origin))
+                .plus(self.coord(s.form, v, 0).scaled(dot(m, s.frame.x)))
+                .plus(self.coord(s.form, v, 1).scaled(dot(m, s.frame.y)))
+                .tidy());
+        }
         let PlaneRef::Plane(h) = s.host else {
             return Ok(vdotk(&self.sketch_point(s, &self.vertex_ad(s.form, v))?, m).lin(&self.at));
         };
@@ -1225,6 +1317,7 @@ impl<'f> Problem<'f> {
                     }
                 }
                 if r.is_point()
+                    && !s.profile
                     && let PlaneRef::Plane(h) = s.host
                 {
                     own(h).into_iter().for_each(|i| add(Unknown::Plane(i)));
@@ -1449,7 +1542,7 @@ fn parallel(a: P3, b: P3) -> bool {
 
 impl Family {
     /// Whether parameter `name` is a reporting one.
-    fn reporting(&self, name: &str) -> bool {
+    pub(crate) fn reporting(&self, name: &str) -> bool {
         self.parameters.iter().any(|p| p.name == name && p.reporting)
     }
 
@@ -1483,6 +1576,19 @@ impl Family {
                     return Err(format!("{who}: it measures to {r} twice"));
                 }
                 self.reference_ok(r, d.kind).map_err(|e| format!("{who}: {e}"))?;
+            }
+            // A profile's lines are measured among themselves, its plane following the path as nothing else does.
+            let on = |r: &DimRef| match *r {
+                DimRef::Sketch(g, l) | DimRef::Point(g, l, _) => self
+                    .forms
+                    .iter()
+                    .find(|f| f.guid == g)
+                    .and_then(|f| f.plane_lines().position(|x| x.guid == l).map(|k| (g, f.plane_group(k)))),
+                _ => None,
+            };
+            let groups: Vec<Option<(Guid, usize)>> = d.refs.iter().map(on).collect();
+            if groups.iter().any(|x| x.is_some_and(|(_, k)| k >= 2)) && groups.iter().any(|x| *x != groups[0]) {
+                return Err(format!("{who}: a profile's lines are measured among themselves, not with what lies off its plane"));
             }
             if d.kind.is_aligned() && d.refs.iter().all(DimRef::is_point) {
                 return Err(format!("{who}: it measures between points alone: give it a plane or a line to measure along"));
@@ -1733,10 +1839,24 @@ impl Family {
             .flat_map(|(_, d)| d.refs.iter().copied())
             .chain(pins.iter().filter_map(|p| match p {
                 Pin::Ref(r, ..) => Some(*r),
-                Pin::Plane(..) => None,
+                Pin::Plane(..) | Pin::Shifted(..) | Pin::Form(..) => None,
             }))
             .chain(pivot_refs);
         let mut problem = Problem::new(self, refs, values, &mut read, meter).map_err(Unsat::from)?;
+        // A form a move takes along is read whole.
+        let moving = pins.iter().any(Pin::moves);
+        for p in pins {
+            if let Pin::Form(i, ..) = *p
+                && !problem.layouts.contains_key(&i)
+                && let Some(form) = self.forms.get(i)
+            {
+                let host = self.frame(&form.host).ok();
+                problem.layouts.insert(
+                    i,
+                    layout(form, host.as_ref(), values, &mut read, meter).map_err(|e| Unsat::from(format!("form {}: {e}", i + 1)))?,
+                );
+            }
+        }
         // What may move: what a constraint or a pin holds, in the dimensions' order.
         let mut unknowns = Vec::new();
         {
@@ -1754,6 +1874,18 @@ impl Family {
                 match p {
                     Pin::Plane(g, _) => problem.unknowns_of(&DimRef::Plane(*g), DimKind::Aligned, &mut add),
                     Pin::Ref(r, ..) => problem.unknowns_of(r, DimKind::Aligned, &mut add),
+                    Pin::Shifted(u, _) => add(*u),
+                    Pin::Form(i, ..) => {
+                        let count = problem.layouts.get(i).map_or(0, |l| l.at.len());
+                        for v in 0..count {
+                            add(Unknown::Vertex(*i, v, 0));
+                            add(Unknown::Vertex(*i, v, 1));
+                        }
+                        if self.forms.get(*i).is_some_and(|f| f.mesh.is_empty() && f.axis().is_none() && !f.kind().swept()) {
+                            add(Unknown::End(*i, Extent::Start));
+                            add(Unknown::End(*i, Extent::End));
+                        }
+                    }
                 }
             }
             // What pivots turn: a line's start, angle and length, a plane's turn (F7d).
@@ -1819,7 +1951,7 @@ impl Family {
             // Gauss-Newton on the least change: each step holds the rows linearised where it has got to, with the least
             // change from where they are drawn; a step that doesn't bring them nearer is halved back.
             let x0 = problem.x0.clone();
-            let (mut x, dropped) = solve_rows(&x0, &give, &rows, meter, &[], false)?;
+            let (mut x, dropped) = solve_rows(&x0, &give, &rows, meter, &[], moving)?;
             let size = x0.iter().fold(0.0f64, |a, v| a.max(v.abs()));
             let tol = 1e-9 * (size / 1000.0).max(1.0);
             let off = |rows: &[Row], x: &[f64]| -> f64 {
@@ -1895,8 +2027,13 @@ impl Family {
             }
             x
         } else {
-            solve_rows(&problem.x0, &give, &rows, meter, &[], false)?.0
+            solve_rows(&problem.x0, &give, &rows, meter, &[], moving)?.0
         };
+        // A move's rows came first and every other row that depended on them was left out: each must still hold where the
+        // solve came to, or what it holds holds what is moved where it is.
+        if moving {
+            moving::held(&rows, &x)?;
+        }
         // To a millionth of a millimetre, so what the arithmetic leaves over (500.00000000000006) doesn't show; angles as
         // they come.
         let x: Vec<f64> =
@@ -2119,8 +2256,34 @@ impl Family {
                 }
             }
         }
+        let mut first: Vec<Row> = Vec::new();
         for pin in pins {
             match *pin {
+                Pin::Shifted(u, by) => {
+                    if let Some(k) = problem.unknown(u) {
+                        let at = problem.x0.get(k).copied().unwrap_or(0.0) + by;
+                        first.push(Row::hard(Lin { terms: vec![(k, 1.0)], c: -at }, None));
+                    }
+                }
+                Pin::Form(i, by, along) => {
+                    // A vertex on its host moves; one of a sweep's profile, drawn on the path, goes with the path.
+                    let on_host = |v: usize| {
+                        let k = problem.layouts.get(&i).and_then(|l| l.points.get(v)).and_then(|p| p.first()).map_or(0, |p| p.0);
+                        self.forms.get(i).is_none_or(|f| f.plane_group(k) <= 1)
+                    };
+                    for (k, u) in problem.unknowns.iter().enumerate() {
+                        let shift = match *u {
+                            Unknown::Vertex(j, v, _) if j == i && !on_host(v) => 0.0,
+                            Unknown::Vertex(j, _, 0) if j == i => by.0,
+                            Unknown::Vertex(j, _, _) if j == i => by.1,
+                            Unknown::End(j, _) if j == i => along,
+                            Unknown::Radius(j, _) | Unknown::Turn(j, _) if j == i => 0.0,
+                            _ => continue,
+                        };
+                        let at = problem.x0.get(k).copied().unwrap_or(0.0) + shift;
+                        first.push(Row::hard(Lin { terms: vec![(k, 1.0)], c: -at }, None));
+                    }
+                }
                 Pin::Plane(g, at) => {
                     let (_, mut lin) = problem.plane_pos(g).map_err(Unsat::from)?;
                     lin.c -= at;
@@ -2170,6 +2333,11 @@ impl Family {
                 let drawn = problem.x0.get(u).copied().unwrap_or(0.0);
                 rows.push(Row { lin: Lin { terms: vec![(u, 1.0)], c: -drawn }, dim: None, soft: true, pivot: None });
             }
+        }
+        // A move's rows before every other.
+        if !first.is_empty() {
+            first.extend(rows);
+            rows = first;
         }
         Ok(rows)
     }
@@ -2335,6 +2503,19 @@ impl Family {
             .collect())
     }
 
+    /// Each reporting parameter more than one dimension is labelled with, and those dimensions (by place): a file from
+    /// from before this rule may hold one, and still opens; it reads the last ([`Family::reported`]). Setting such a label
+    /// anew is refused (`family`'s `dimension` and `dimensions`, the family document's Label).
+    pub fn reported_twice(&self) -> Vec<(String, Vec<usize>)> {
+        let mut by: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+        for (i, d) in self.dimensions.iter().enumerate() {
+            if let Some(l) = d.label.as_deref().filter(|l| self.reporting(l)) {
+                by.entry(l).or_default().push(i);
+            }
+        }
+        by.into_iter().filter(|(_, v)| v.len() > 1).map(|(l, v)| (l.to_string(), v)).collect()
+    }
+
     /// The values its reporting parameters measured by dimensions come to, for `values`: each labelled dimension's length.
     pub(super) fn reported(&self, values: &BTreeMap<String, Val>) -> Vec<(String, f64)> {
         if !self.dimensions.iter().any(|d| d.label.as_deref().is_some_and(|l| self.reporting(l))) {
@@ -2424,8 +2605,8 @@ impl Family {
     /// the sketch points it moved.
     fn edits(&self, s: &Solution, values: &BTreeMap<String, Val>) -> Vec<Edit> {
         let mut out: Vec<Edit> = s.planes.iter().filter_map(|(i, v)| Some(Edit::Plane(self.planes.get(*i)?.guid, *v))).collect();
-        // Reference lines the constraints moved or turned, and those drawn on them (F7c).
-        if !s.lines.is_empty() {
+        // Reference lines the constraints moved or turned, and those drawn on them, or on a plane that moved or turned.
+        if !s.lines.is_empty() || !s.planes.is_empty() || !s.turned_planes.is_empty() {
             let moved = self.moved(s);
             for (was, now) in self.lines.iter().zip(&moved.lines) {
                 if was.start != now.start || was.end != now.end {
@@ -2933,11 +3114,12 @@ pub fn sketch_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views:
         if !form.mesh.is_empty() || form.guid.is_nil() {
             continue;
         }
-        let Ok(frame) = flexed.frame(&form.host) else { continue };
-        let flat = parallel(frame.z, eye);
+        let Ok(host) = flexed.frame(&form.host) else { continue };
+        let profiles = super::forms::profile_frames(form, &host, &mut |e| number(e, values, &mut read));
+        let host_flat = parallel(host.z, eye);
         // A side face seen edge on is an extrusion's alone: a blend's sides lean, a sweep's follow its path.
-        let edge = dot(frame.z, eye).abs() <= PARALLEL && form.kind() == super::forms::FormKind::Extrusion;
-        if !flat && !edge {
+        let edge = dot(host.z, eye).abs() <= PARALLEL && form.kind() == super::forms::FormKind::Extrusion;
+        if !host_flat && !edge && !profiles.iter().any(|p| parallel(p.z, eye)) {
             continue;
         }
         let ends = if edge {
@@ -2948,7 +3130,19 @@ pub fn sketch_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views:
         } else {
             (0.0, 0.0)
         };
-        for l in form.plane_lines().filter(|l| !l.guid.is_nil()) {
+        for (k, l) in form.plane_lines().enumerate().filter(|(_, l)| !l.guid.is_nil()) {
+            // A profile's line on its own plane, seen flat or not at all.
+            let group = form.plane_group(k);
+            let (frame, flat, edge) = match group {
+                0 | 1 => (host, host_flat, edge),
+                _ => match profiles.get(group - 2) {
+                    Some(p) => (*p, parallel(p.z, eye), false),
+                    None => continue,
+                },
+            };
+            if !flat && !edge {
+                continue;
+            }
             let FormCurve::Line { start, end, turn } = &l.curve else { continue };
             let mut num = |e| number(e, values, &mut read);
             let (Ok(ax), Ok(ay), Ok(bx), Ok(by)) = (num(&start[0]), num(&start[1]), num(&end[0]), num(&end[1])) else { continue };
@@ -3003,12 +3197,16 @@ pub fn sketch_circles(flexed: &Family, values: &BTreeMap<String, Val>, st: &view
         if !form.mesh.is_empty() || form.guid.is_nil() {
             continue;
         }
-        let Ok(frame) = flexed.frame(&form.host) else { continue };
-        if !parallel(frame.z, eye) {
-            continue;
-        }
-        let at = |p: P2| st.to_view(which, frame.point(p, 0.0));
-        for l in form.plane_lines().filter(|l| !l.guid.is_nil()) {
+        let Ok(host) = flexed.frame(&form.host) else { continue };
+        let profiles = super::forms::profile_frames(form, &host, &mut |e| number(e, values, &mut read));
+        for (k, l) in form.plane_lines().enumerate().filter(|(_, l)| !l.guid.is_nil()) {
+            // On its host, or a profile's line on its own plane: seen flat.
+            let group = form.plane_group(k);
+            let Some(frame) = (if group < 2 { Some(host) } else { profiles.get(group - 2).copied() }) else { continue };
+            if !parallel(frame.z, eye) {
+                continue;
+            }
+            let at = |p: P2| st.to_view(which, frame.point(p, 0.0));
             let r = DimRef::Sketch(form.guid, l.guid);
             let mut num = |e| number(e, values, &mut read);
             match &l.curve {

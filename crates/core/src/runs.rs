@@ -276,7 +276,7 @@ fn run_arm_at(g: &Geom, s: f64, forward: bool, mine: bool) -> walls::Arm {
     walls::Arm { mine, way, ccw, cw, centre: p, thick: g.width, ..Default::default() }
 }
 
-/// A wall's arm at `s` mm along its line, as [`walls::arm`] makes one at an end: left of its way first.
+/// A wall's arm at `s` mm along its line, as [`walls::arm_at`] makes one at an end: left of its way first.
 fn wall_arm_at(m: &Model, w: &Wall, s: f64, forward: bool, mine: bool) -> walls::Arm {
     let axis = Axis::of(w);
     let (ext, int) = walls::faces(m, w);
@@ -717,7 +717,7 @@ mod tests {
     }
 
     fn rect(width: f64, depth: f64) -> RunType {
-        RunType { width, depth, round: false, material: String::new(), profile: None }
+        RunType { width, depth, round: false, material: String::new(), profile: None, clear_section: None }
     }
 
     fn volume(tris: &[[P3; 3]]) -> f64 {
@@ -791,7 +791,7 @@ mod tests {
     #[test]
     fn a_round_run_is_a_closed_tube_turned_out() {
         let (m, level) = model();
-        let round = RunType { width: 200.0, depth: 200.0, round: true, material: String::new(), profile: None };
+        let round = RunType { width: 200.0, depth: 200.0, round: true, material: String::new(), profile: None, clear_section: None };
         // From a point off the origin, where a cap turned the wrong way doesn't cancel in the volume.
         let from = P2(1000.0, -2000.0);
         for (by, end_offset) in

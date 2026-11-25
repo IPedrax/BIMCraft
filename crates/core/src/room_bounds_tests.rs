@@ -149,3 +149,54 @@ fn rooms_are_off_in_every_new_3d_view_until_shown() {
     run(&mut s, "graphics", json!({"view": "{3D}", "hide": ["rooms"]}));
     assert!(!g3(&s).shows_in_3d("room"));
 }
+
+#[test]
+fn unjoined_room_keeps_its_offset_wall_boundary_but_not_physical_joins() {
+    let mut s = Session::new();
+    let made = run(
+        &mut s,
+        "wall",
+        json!({"points": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]], "closed": true,
+            "type": "Exterior - 300mm", "location": "exterior-finish"}),
+    );
+    let wall = made["ids"][0].as_u64().unwrap();
+    let r = id(&run(&mut s, "room", json!({"point": [3000, 2000]})));
+    let boundary = |s: &Session| {
+        let Some(crate::model::Element::Room(r)) = s.model.elements.get(r) else { panic!("no room") };
+        let (mut outline, bounded) = s.model.room_outline(r);
+        assert!(bounded, "the offset walls must enclose the room");
+        outline.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+        outline
+    };
+    // Counter-clockwise exterior faces: the centres lie 150 mm outside the 6000 x 4000 box.
+    let expected = vec![P2(-150.0, -150.0), P2(-150.0, 4150.0), P2(6150.0, -150.0), P2(6150.0, 4150.0)];
+    assert_eq!(boundary(&s), expected);
+    assert_eq!(area(&mut s, r), 27.09, "6300 x 4300 mm");
+    run(&mut s, "modify", json!({"id": wall, "join": false}));
+    assert_eq!(boundary(&s), expected, "disallowing physical joins must not open the room");
+    assert_eq!(area(&mut s, r), 27.09);
+    let rooms = run(&mut s, "elements", json!({"category": "room"}));
+    assert_eq!(rooms["elements"].as_array().unwrap().len(), 1);
+    assert_eq!(rooms["elements"][0]["enclosed"], true);
+    assert_eq!(crate::walls::cap(&s.model, wall, false), [P2(0.0, -300.0), P2(0.0, 0.0)]);
+    assert_eq!(crate::walls::cap(&s.model, wall, true), [P2(6000.0, 0.0), P2(6000.0, -300.0)]);
+    // The uncached centre-line path must agree with the room's indexed calculation.
+    assert_eq!(crate::walls::centre_line(&s.model, wall), [P2(-150.0, -150.0), P2(6150.0, -150.0)]);
+    // A pair involving a curtain wall keeps the existing Allow Join rules, from either side.
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "Screen",
+            "curtain": {"columns": {"segments": [1000]}, "rows": {"segments": [3000]}}}),
+    );
+    run(&mut s, "modify", json!({"id": wall, "type": "Screen"}));
+    let square = crate::walls::centre_line(&s.model, wall);
+    assert_eq!([square[0].0, square[1].0], [0.0, 6000.0]);
+    run(&mut s, "modify", json!({"id": wall, "type": "Exterior - 300mm", "join": true}));
+    let next = made["ids"][1].as_u64().unwrap();
+    run(&mut s, "modify", json!({"id": next, "type": "Screen", "join": false}));
+    assert_eq!(*crate::walls::centre_line(&s.model, wall).last().unwrap(), P2(6000.0, -150.0));
+    run(&mut s, "modify", json!({"id": wall, "join": false}));
+    run(&mut s, "modify", json!({"id": next, "join": true}));
+    assert_eq!(*crate::walls::centre_line(&s.model, wall).last().unwrap(), P2(6000.0, -150.0));
+}

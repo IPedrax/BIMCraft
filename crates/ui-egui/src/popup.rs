@@ -139,7 +139,7 @@ pub(crate) fn body<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 /// the next report start at the top instead of where the last one was left.
 pub(crate) fn body_salted<R>(ui: &mut Ui, salt: impl Hash + std::fmt::Debug, add: impl FnOnce(&mut Ui) -> R) -> R {
     let footer = dialog_row(ui) + 12.0;
-    let max_height = (ui.ctx().content_rect().height() - FRAME_MARGIN - TITLE_HEIGHT - footer - 12.0).max(40.0);
+    let max_height = body_room(ui);
     let least = ui.data(|d| d.get_temp::<f32>(ui.id().with(MIN_HEIGHT))).unwrap_or(0.0);
     let min_height = (ui.max_rect().top() + least - ui.cursor().top() - footer).clamp(0.0, max_height);
     ScrollArea::vertical()
@@ -152,6 +152,13 @@ pub(crate) fn body_salted<R>(ui: &mut Ui, salt: impl Hash + std::fmt::Debug, add
             add(ui)
         })
         .inner
+}
+
+/// The tallest a dialog's body stands before it scrolls: the window less the dialog's frame, its title and its footer. A
+/// dialog that fills the window, as Materials does, lays its columns out this tall.
+pub(crate) fn body_room(ui: &Ui) -> f32 {
+    let footer = dialog_row(ui) + 12.0;
+    (ui.ctx().content_rect().height() - FRAME_MARGIN - TITLE_HEIGHT - footer - 12.0).max(40.0)
 }
 
 /// A footer remains outside the body's scroll area, at the bottom of the dialog.

@@ -42,9 +42,10 @@ pub fn element(category: &str, v: &Value) -> Vec<String> {
         "conduit" => Run, "cabletray" => Run, "wire" => Run, "downconductor" => Run, "groundconductor" => Run,
         "cable" => Run, "rebar" => Rebar, "component" => Component, "stair" => Stair, "ramp" => Ramp, "railing" => Railing, "roof" => Roof,
         "text" => Note, "line" => DetailLine, "region" => FilledRegion, "detailgroup" => DetailGroup, "modelgroup" => ModelGroup, "repeatingdetail" => RepeatingDetail, "spot" => Spot, "schedule" => Schedule, "view3d" => View3D,
-        "planview" => PlanView, "link" => Link, "pointcloud" => PointCloud, "cadimport" => CadImport,
+        "planview" => PlanView, "detail" => DetailView, "link" => Link, "pointcloud" => PointCloud, "cadimport" => CadImport, "image" => PlacedImage,
         "circuit" => crate::electrical::Circuit,
         "panelschedule" => crate::panel_schedule::PanelSchedule,
+        "rebardetail" => crate::rebar_detail::RebarDetail,
         "project" => crate::project_info::ProjectInfo,
     }
 }

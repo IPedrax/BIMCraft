@@ -94,10 +94,12 @@ fn a_link_whose_file_is_missing_is_listed_as_not_loaded_and_reload_says_so() {
 }
 
 #[test]
-fn the_manage_tab_offers_link_model_and_the_linked_models_group_reloads_them_all() {
+fn the_insert_tab_offers_link_model_once_and_the_linked_models_group_reloads_them_all() {
     let path = shell("manage");
     let mut h = app("");
     press(&mut h, "Manage");
+    assert!(h.query_by_label("Link Model").is_none(), "Link Model is the Insert tab's, not Manage's too");
+    press(&mut h, "Insert");
     assert!(h.query_by_label("Link Model").is_some());
     h.state_mut().link_path(&path);
     h.run();
@@ -152,4 +154,31 @@ fn link_model_asks_how_to_position_the_file_and_links_it_by_shared_coordinates()
     let Some(Element::Link(l)) = h.state().session.model.elements.get(made[0]) else { panic!() };
     assert_eq!(l.by, bimcraft_core::link::By::Shared);
     assert!(h.state().link_box.is_none(), "the box closed");
+}
+
+#[test]
+fn the_aligned_dimension_measures_from_a_linked_wall_to_the_projects_own() {
+    // Issue 537: in a model that links the architecture, a dimension measures to the linked walls, as Revit's to a link.
+    let path = shell("dims");
+    let mut h = app(r#"column {"at": [3000, 3000]}"#);
+    h.state_mut().link_path(&path);
+    h.run();
+    press(&mut h, "Annotate");
+    press(&mut h, "Aligned");
+    // The linked box's west wall, by its centre line at x = 0, then the column's line across it at x = 3000.
+    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(3000.0, 3100.0));
+    click(&mut h, P2(1500.0, 4500.0));
+    let _ = std::fs::remove_file(&path);
+    let dims = ids(&h, "dimension");
+    assert_eq!(dims.len(), 1, "{}", h.state().status.text);
+    let d = match h.state().session.model.elements.get(dims[0]) {
+        Some(Element::Dimension(d)) => d.clone(),
+        e => panic!("{e:?}"),
+    };
+    // It names the link, not a wall of the project's.
+    let link = links(&h)[0];
+    assert_eq!(d.refs[0].link, Some(h.state().session.model.guid(link)), "{:?}", d.refs);
+    assert_eq!(d.refs[1].link, None);
+    assert_eq!(field(&h, dims[0], "values"), json!([3000.0]));
 }

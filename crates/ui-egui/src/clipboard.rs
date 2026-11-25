@@ -73,7 +73,7 @@ impl PasteMode {
 
 /// A row of a panel's small buttons; in its list (a folded panel's, or its name's), the buttons go one under another as rows
 /// do: a row side by side there would ask the list for room it grows to give, frame on frame.
-fn row(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+pub(crate) fn row(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     if crate::ribbon::listing() {
         add(ui);
     } else {
@@ -81,12 +81,66 @@ fn row(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     }
 }
 
-/// What the right-click menu asked of the clipboard, done on the next frame, which has the context the system clipboard needs.
+/// What the right-click menu (or a family tab's Find) asked of the clipboard, done on the next frame, which has the context
+/// the system clipboard needs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Request {
     Cut,
     Copy,
     Paste,
+    /// A paste placed as one of the Aligned options says.
+    Aligned(PasteMode),
+}
+
+/// A command of the Clipboard panel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Command {
+    Cut,
+    Copy,
+    Paste(PasteMode),
+}
+
+/// The Clipboard panel: Paste and its options, Cut and Copy to Clipboard, small buttons. `pasting`, whether a paste follows
+/// the cursor now; `copy_tip`, Copy's tooltip; `blocked`, why a command can't be used now (greyed, the reason its tooltip
+/// where there is one). The command clicked. A project's tab and a family's draw the same panel.
+pub(crate) fn panel(ui: &mut Ui, pasting: bool, copy_tip: &'static str, blocked: impl Fn(Command) -> Option<String>) -> Option<Command> {
+    let mut asked = None;
+    let greyed = |r: egui::Response, why: Option<String>| match why {
+        Some(w) if !w.is_empty() => r.on_disabled_hover_text(w),
+        _ => r,
+    };
+    ui.vertical(|ui| {
+        row(ui, |ui| {
+            let tip = msg!("Paste (Ctrl+V), and its Aligned options");
+            let r = crate::small_button(ui, crate::icons::Icon::Paste, msg!("Paste"), pasting, tip);
+            crate::ribbon::choices(ui, &r, false, |ui| {
+                for mode in PasteMode::ALL {
+                    let why = blocked(Command::Paste(mode));
+                    let b = ui.add_enabled(why.is_none(), Button::new(t(mode.label()))).on_hover_text(t(mode.tip()));
+                    if greyed(b, why).clicked() {
+                        asked = Some(Command::Paste(mode));
+                    }
+                }
+            });
+        });
+        row(ui, |ui| {
+            let tip = msg!("Cut to Clipboard (Ctrl+X): the selection, taken away to paste elsewhere");
+            let why = blocked(Command::Cut);
+            let r = ui
+                .add_enabled_ui(why.is_none(), |ui| crate::small_button(ui, crate::icons::Icon::Cut, msg!("Cut to Clipboard"), false, tip));
+            if greyed(r.inner, why).clicked() {
+                asked = Some(Command::Cut);
+            }
+            let why = blocked(Command::Copy);
+            let r = ui.add_enabled_ui(why.is_none(), |ui| {
+                crate::small_button(ui, crate::icons::Icon::CopyClipboard, msg!("Copy to Clipboard"), false, copy_tip)
+            });
+            if greyed(r.inner, why).clicked() {
+                asked = Some(Command::Copy);
+            }
+        });
+    });
+    asked
 }
 
 /// What a paste's preview draws: drawings of the clipboard's project, each with how far it moves into the view.
@@ -200,48 +254,49 @@ impl BimApp {
         // folds (Ctrl+C, Ctrl+X, Ctrl+V and the right-click menu do as it does).
         crate::ribbon::yielding(ui, msg!("Clipboard"), |ui| {
             let some = !self.selection.is_empty();
-            ui.vertical(|ui| {
-                row(ui, |ui| {
-                    let tip = msg!("Paste (Ctrl+V), and its Aligned options");
-                    let r = crate::small_button(ui, crate::icons::Icon::Paste, msg!("Paste"), self.tool == Tool::Paste, tip);
-                    crate::ribbon::choices(ui, &r, false, |ui| {
-                        for mode in PasteMode::ALL {
-                            let b = ui.add_enabled(self.paste_fits(mode), Button::new(t(mode.label()))).on_hover_text(t(mode.tip()));
-                            if b.clicked() {
-                                self.ask_paste(ui.ctx(), mode);
-                            }
-                        }
-                    });
-                });
-                row(ui, |ui| {
-                    let tip = msg!("Cut to Clipboard (Ctrl+X): the selection, taken away to paste elsewhere");
-                    let r = ui
-                        .add_enabled_ui(some, |ui| crate::small_button(ui, crate::icons::Icon::Cut, msg!("Cut to Clipboard"), false, tip));
-                    if r.inner.clicked() {
-                        self.copy_to_clipboard(ui.ctx(), true);
-                    }
-                    let tip = msg!("Copy to Clipboard (Ctrl+C): the selection, to paste in any view, or in another BIMCraft");
-                    let r = ui.add_enabled_ui(some, |ui| {
-                        crate::small_button(ui, crate::icons::Icon::CopyClipboard, msg!("Copy to Clipboard"), false, tip)
-                    });
-                    if r.inner.clicked() {
-                        self.copy_to_clipboard(ui.ctx(), false);
-                    }
-                });
+            let tip = msg!("Copy to Clipboard (Ctrl+C): the selection, to paste in any view, or in another BIMCraft");
+            let asked = panel(ui, self.tool == Tool::Paste, tip, |c| {
+                let fits = match c {
+                    Command::Paste(mode) => self.paste_fits(mode),
+                    Command::Cut | Command::Copy => some,
+                };
+                (!fits).then(String::new)
             });
+            match asked {
+                Some(Command::Paste(mode)) => self.ask_paste(ui.ctx(), mode),
+                Some(Command::Cut) => self.copy_to_clipboard(ui.ctx(), true),
+                Some(Command::Copy) => self.copy_to_clipboard(ui.ctx(), false),
+                None => {}
+            }
         });
     }
 
     /// Ctrl+C, Ctrl+X and Ctrl+V, which the window's system hands over as copy, cut and paste (with the system clipboard's
     /// text), taken out of the frame's input; and the ribbon's paste, once its text has come or it has waited for it.
     pub(crate) fn clipboard_events(&mut self, ctx: &Context) {
+        // A label's text selection (the status box, a report, a plugin's note) takes Ctrl+C and Ctrl+X: egui copies the
+        // selected text when the event is still in the frame's input, so leave it there. Paste, and copy or cut of the
+        // model's selection, go through this window's own handler as before.
+        let text_selected = ctx.plugin_opt::<egui::text_selection::LabelSelectionState>().is_some_and(|state| state.lock().has_selection());
         let events: Vec<Event> = ctx.input_mut(|i| {
-            let (ours, rest): (Vec<Event>, Vec<Event>) =
-                std::mem::take(&mut i.events).into_iter().partition(|e| matches!(e, Event::Copy | Event::Cut | Event::Paste(_)));
+            let (ours, rest): (Vec<Event>, Vec<Event>) = std::mem::take(&mut i.events).into_iter().partition(|e| match e {
+                Event::Copy | Event::Cut => !text_selected,
+                Event::Paste(_) => true,
+                _ => false,
+            });
             i.events = rest;
             ours
         });
         let now = ctx.input(|i| i.time);
+        // A paste asked on another tab (a project's, or another family document's) is given up, and the text it brings with
+        // it: it was meant for that tab's clipboard.
+        let events = match self.paste_asked {
+            Some((_, _, doc)) if doc != self.active_doc() => {
+                self.paste_asked = None;
+                events.into_iter().filter(|e| !matches!(e, Event::Paste(_))).collect()
+            }
+            _ => events,
+        };
         match self.clip_request.take() {
             Some(Request::Cut) => self.copy_to_clipboard(ctx, true),
             Some(Request::Copy) => self.copy_to_clipboard(ctx, false),
@@ -249,6 +304,7 @@ impl BimApp {
                 let mode = self.ctrl_v_mode();
                 self.ask_paste(ctx, mode);
             }
+            Some(Request::Aligned(mode)) => self.ask_paste(ctx, mode),
             None => {}
         }
         for e in events {
@@ -256,14 +312,14 @@ impl BimApp {
                 Event::Copy => self.copy_to_clipboard(ctx, false),
                 Event::Cut => self.copy_to_clipboard(ctx, true),
                 Event::Paste(text) => {
-                    let mode = self.paste_asked.take().map_or_else(|| self.ctrl_v_mode(), |(m, _)| m);
+                    let mode = self.paste_asked.take().map_or_else(|| self.ctrl_v_mode(), |(m, ..)| m);
                     self.pasted_text(Some(text), mode);
                 }
                 _ => {}
             }
         }
         // The system clipboard said nothing (empty, or no window system): the window's own copy.
-        if let Some((mode, at)) = self.paste_asked
+        if let Some((mode, at, _)) = self.paste_asked
             && now - at >= PASTE_WAIT
         {
             self.paste_asked = None;
@@ -276,6 +332,11 @@ impl BimApp {
     /// What Ctrl+V does in the view on screen: by hand where the elements can follow the cursor; in a 3D view, as asked (the
     /// same place, or by hand on the work plane); else where they were.
     fn ctrl_v_mode(&self) -> PasteMode {
+        // A family tab's: following the pointer in a plan, an elevation or a sketch; in its {3D}, where they were
+        // (`editor::clipboard`).
+        if let Some(ed) = self.active_family() {
+            return if ed.editing_2d() || ed.sketching() { PasteMode::Manual } else { PasteMode::SamePlace };
+        }
         match self.clipboard_frame() {
             Some(Frame::ThreeD) => PasteMode::Where3D,
             Some(_) => PasteMode::Manual,
@@ -285,6 +346,11 @@ impl BimApp {
 
     /// Copy (or with `cut`, cut) the selection to the clipboard: the system's, and the window's own.
     pub(crate) fn copy_to_clipboard(&mut self, ctx: &Context, cut: bool) {
+        // A family tab's selection goes on the family's clipboard.
+        if self.active_family().is_some() {
+            self.family_copy(ctx, cut);
+            return;
+        }
         if self.selection.is_empty() {
             self.status = Status { text: t("select what to copy first").into(), error: true };
             return;
@@ -318,13 +384,23 @@ impl BimApp {
     /// The ribbon's paste: the system clipboard is asked for its text, which comes as a paste on a later frame
     /// ([`BimApp::clipboard_events`]).
     pub(crate) fn ask_paste(&mut self, ctx: &Context, mode: PasteMode) {
-        self.paste_asked = Some((mode, ctx.input(|i| i.time)));
+        self.paste_asked = Some((mode, ctx.input(|i| i.time), self.active_doc()));
         ctx.send_viewport_cmd(ViewportCommand::RequestPaste);
         ctx.request_repaint();
     }
 
     /// A paste of `text` (the system clipboard's; none, or not BIMCraft's: the window's own copy), as `mode` places it.
     pub(crate) fn pasted_text(&mut self, text: Option<String>, mode: PasteMode) {
+        // On a family tab, the family's clipboard.
+        if self.active_family().is_some() {
+            self.family_pasted(text, mode);
+            return;
+        }
+        // A family's copy, made since: the clipboard's last copy isn't the project's, so its older one isn't pasted.
+        if text.as_deref().is_some_and(bimcraft_core::family::clipboard::is_family_clipboard) {
+            self.status = Status { text: t("The clipboard holds a family's copy: paste it in a family tab.").into(), error: true };
+            return;
+        }
         let text: Option<Arc<str>> = match text {
             Some(t) if clip::is_clipboard(&t) => Some(Arc::from(t)),
             _ => self.clip_text.clone(),

@@ -53,7 +53,7 @@ fn a_room_is_frozen_from_its_properties_and_keeps_its_size() {
     let room = find(&h, |e| matches!(e, Element::Room(_)));
     click(&mut h, P2(2000.0, 3000.0));
     assert_eq!(h.state().selection, [room]);
-    for label in ["Upper Limit", "Limit Offset", "Unbounded Height", "Volume (m³)"] {
+    for label in ["Upper Limit", "Limit Offset", "Unbounded Height", "Volume"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
     assert_eq!(field(&h, room, "volume_m3"), json!(129.6), "48 m² by 2700 mm, up to 300 mm under Level 2");

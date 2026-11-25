@@ -113,13 +113,13 @@ fn a_plan_views_properties_name_its_level_and_a_dependents_name_its_parent() {
     let mut h = app(HOUSE);
     shortcut(&mut h, "DP");
     assert!(h.query_by_label("View Name").is_some());
-    assert!(h.query_by_label("Cut Plane").is_some(), "an independent view has its own range");
+    assert!(h.query_by_label("Edit View Range").is_some(), "an independent view has its own range");
     press(&mut h, "View");
     press(&mut h, "Duplicate View");
     press(&mut h, "Duplicate as Dependent");
     h.run();
     assert!(h.query_by_label("Parent View").is_some());
-    assert!(h.query_by_label("Cut Plane").is_none(), "a dependent follows its parent's range");
+    assert!(h.query_by_label("Edit View Range").is_none(), "a dependent follows its parent's range");
     // Visibility/Graphics is its parent's to open.
     let vg = h.get_by_label("Visibility/Graphics");
     assert!(vg.accesskit_node().is_disabled());

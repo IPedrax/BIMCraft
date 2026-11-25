@@ -103,7 +103,8 @@ reference planes dashed green, forms light grey with their edges where their fac
 placement numbers in blue; and Revit's **ViewCube** at the top right (a face clicked looks from that side, `cube_faces`; the house
 over it is the default view; a drag on it orbits; `Orbit::cube_faces`, shared with the family's {3D}). It opens framing the family and its datums, and is orbited by Shift and the middle button (as Revit's), panned with the middle button, zoomed with the wheel toward the cursor, through the project's 3D view's navigation (`Orbit::zoom` and `Orbit::navigate`, in the view's points); a drag on
 empty space draws a selection box, as Revit's: left to right it takes what lies wholly inside it (a solid outline), right to
-left what it touches (dashed), Ctrl adding to the selection and Shift taking away (`Evaluation::in_box`). It draws the family's
+left what it touches (dashed), Ctrl adding to the selection and Shift taking away (`Evaluation::in_box`, by the rule a
+family's plans and elevations box by too, `geom::SelectBox`). It draws the family's
 datums: Ref. Level and the reference planes Center (Front/Back) and Center (Left/Right), each the outline of a rectangle
 round what the family takes up, named, and the family's own named reference planes the same way, dashed green; and, with Work
 Plane > Show, a grid a metre apart on the work plane Point Element and Line draw on. That is Revit's

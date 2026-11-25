@@ -19,6 +19,158 @@ fn ctrl_v(h: &mut Harness<BimApp>, text: &str) {
     h.run();
 }
 
+/// What the window put on the system clipboard this frame, if anything.
+fn copied_text(h: &Harness<BimApp>) -> Option<String> {
+    h.output().platform_output.commands.iter().find_map(|c| match c {
+        egui::OutputCommand::CopyText(text) => Some(text.clone()),
+        _ => None,
+    })
+}
+
+/// An error in the status box, from Ctrl+C with nothing selected: the box's message.
+fn an_error(h: &mut Harness<BimApp>) -> String {
+    h.event(Event::Copy);
+    h.run();
+    let message = h.state().status.text.clone();
+    assert_eq!(message, "select what to copy first");
+    assert!(h.state().status.error);
+    assert!(h.state().selection.is_empty());
+    message
+}
+
+/// Select all of a label's text with the mouse, as a person does before Ctrl+C.
+fn select_label_text(h: &mut Harness<BimApp>, text: &str) {
+    let rect = h.get_by_label(text).rect();
+    let a = rect.left_center() + vec2(1.0, 0.0);
+    let b = rect.right_center() - vec2(1.0, 0.0);
+    drag_screen(h, a, b, PointerButton::Primary);
+}
+
+/// The status box's own Copy button: the Copy inside the view's bottom-right corner.
+fn status_copy_button(h: &Harness<BimApp>) -> egui::Rect {
+    let view = h.state().view_rect;
+    h.get_all_by_label("Copy")
+        .map(|n| n.rect())
+        .filter(|r| view.contains(r.center()) && r.center().y > view.center().y && r.center().x > view.center().x)
+        .max_by(|a, b| a.top().total_cmp(&b.top()))
+        .expect("the status box has its own Copy button")
+}
+
+#[test]
+fn the_error_boxs_text_selects_and_ctrl_c_copies_it_without_losing_the_error() {
+    let mut h = app(BOX);
+    let message = an_error(&mut h);
+    select_label_text(&mut h, &message);
+    h.event(Event::Copy);
+    h.step();
+    assert_eq!(copied_text(&h).as_deref(), Some(message.as_str()), "the selected text, not the model");
+    assert_eq!(h.state().status.text, message, "the error stays as it was");
+    assert!(h.state().status.error);
+    assert!(h.state().selection.is_empty(), "no elements were selected");
+    assert!(h.state().clip_text.is_none(), "the window's own clipboard is untouched");
+}
+
+#[test]
+fn the_error_boxs_copy_button_puts_the_whole_message_on_the_clipboard() {
+    let mut h = app(BOX);
+    let message = an_error(&mut h);
+    let at = status_copy_button(&h);
+    h.get_all_by_label("Copy").find(|n| n.rect() == at).expect("the status box's Copy button").click();
+    h.step();
+    assert_eq!(copied_text(&h).as_deref(), Some(message.as_str()), "the whole message, without the title");
+    assert_eq!(h.state().status.text, message, "the box stays up, its message unchanged");
+    assert!(!h.state().status.text.is_empty());
+    assert!(h.state().copied.is_none() && h.state().clip_text.is_none(), "the model's clipboard is untouched");
+}
+
+#[test]
+fn after_the_error_text_is_deselected_ctrl_c_copies_the_model_again() {
+    let mut h = app(BOX);
+    let message = an_error(&mut h);
+    select_label_text(&mut h, &message);
+    h.event(Event::Copy);
+    h.step();
+    assert_eq!(copied_text(&h).as_deref(), Some(message.as_str()), "the text first");
+
+    // A click in the view clears the label's selection; the next Ctrl+C is the model's again.
+    click(&mut h, P2(4000.0, 3000.0));
+    click(&mut h, P2(4000.0, 0.0));
+    let copied = ctrl_c(&mut h);
+    assert!(bimcraft_core::clipboard::is_clipboard(&copied), "the model's clipboard text");
+    assert!(!h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(walls(&h), 4);
+}
+
+#[test]
+fn ctrl_c_with_nothing_selected_and_no_text_still_says_select_what_to_copy_first() {
+    let mut h = app(BOX);
+    h.event(Event::Copy);
+    h.run();
+    assert_eq!(h.state().status.text, "select what to copy first");
+    assert!(h.state().status.error);
+    assert!(h.state().copied.is_none() && h.state().clip_text.is_none());
+}
+
+#[test]
+fn ctrl_x_with_the_error_text_selected_copies_it_and_does_not_cut_the_model() {
+    let mut h = app(BOX);
+    click(&mut h, P2(4000.0, 0.0));
+    let message = "Something went wrong".to_string();
+    h.state_mut().status = crate::Status { text: message.clone(), error: true };
+    h.run();
+    select_label_text(&mut h, &message);
+    h.event(Event::Cut);
+    h.step();
+    assert_eq!(copied_text(&h).as_deref(), Some(message.as_str()));
+    assert_eq!(walls(&h), 4, "no wall was cut");
+    assert_eq!(h.state().selection.len(), 1, "the wall stays selected");
+}
+
+#[test]
+fn the_note_boxs_text_selects_and_copies_as_the_error_boxs_does() {
+    let mut h = app(BOX);
+    let message = "Saved the project.".to_string();
+    h.state_mut().status = crate::Status { text: message.clone(), error: false };
+    h.run();
+    select_label_text(&mut h, &message);
+    h.event(Event::Copy);
+    h.step();
+    assert_eq!(copied_text(&h).as_deref(), Some(message.as_str()));
+    assert_eq!(h.state().status.text, message);
+    assert!(!h.state().status.error);
+}
+
+#[test]
+fn ctrl_v_still_pastes_the_model_while_the_error_text_is_selected() {
+    let mut h = app(BOX);
+    click(&mut h, P2(4000.0, 0.0));
+    let text = ctrl_c(&mut h);
+    assert!(bimcraft_core::clipboard::is_clipboard(&text));
+    let message = "Something went wrong".to_string();
+    h.state_mut().status = crate::Status { text: message.clone(), error: true };
+    h.run();
+    select_label_text(&mut h, &message);
+    ctrl_v(&mut h, &text);
+    assert_eq!(h.state().tool, Tool::Paste, "paste goes through the window's handler as before");
+}
+
+#[test]
+fn the_ribbons_copy_still_copies_the_model_while_the_error_text_is_selected() {
+    use crate::context::Action;
+    let mut h = app(BOX);
+    click(&mut h, P2(4000.0, 0.0));
+    let message = "Something went wrong".to_string();
+    h.state_mut().status = crate::Status { text: message.clone(), error: true };
+    h.run();
+    select_label_text(&mut h, &message);
+    h.state_mut().act(Action::CopyToClipboard);
+    h.step();
+    let copied = h.state().copied.clone().unwrap_or_default();
+    assert!(bimcraft_core::clipboard::is_clipboard(&copied), "the explicit command copies the model, not the text");
+    assert_ne!(copied, message);
+    assert_eq!(h.state().selection.len(), 1);
+}
+
 #[test]
 fn ctrl_c_then_ctrl_v_pastes_what_is_selected_where_it_is_clicked() {
     let mut h = app(BOX);
@@ -260,4 +412,19 @@ fn aligned_to_picked_level_lights_the_level_under_the_cursor() {
     let pasted = h.state().selection.clone();
     let Some(Element::Wall(w)) = h.state().session.model.elements.get(pasted[0]) else { panic!("not a wall") };
     assert_eq!(w.level, h.state().session.model.guid(level), "onto the level lit");
+}
+
+#[test]
+fn a_familys_copy_on_the_system_clipboard_isnt_pasted_as_the_projects_older_one() {
+    let mut h = app(BOX);
+    click(&mut h, P2(4000.0, 0.0));
+    ctrl_c(&mut h);
+    // A family's copy made since, in this window or another: the project's paste refuses it, saying where it goes.
+    let source = bimcraft_core::family::clipboard::Source { family: "Box".into(), copy: Guid::new() };
+    let clip = bimcraft_core::family::clipboard::Clip::default();
+    let text = bimcraft_core::family::clipboard::text(&source, bimcraft_core::family::clipboard::Copied::Elements(&clip)).unwrap();
+    ctrl_v(&mut h, &text);
+    assert_ne!(h.state().tool, Tool::Paste, "nothing follows the cursor");
+    assert!(h.state().status.error && h.state().status.text.contains("family's copy"), "{}", h.state().status.text);
+    assert_eq!(walls(&h), 4);
 }

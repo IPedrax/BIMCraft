@@ -80,20 +80,21 @@ fn a_regions_pattern_angle_a_groups_rotation_and_a_repeats_spacing_show_at_their
     ));
     let region = ids(&h, "region")[0];
     parameters(&mut h, region);
-    assert_eq!(field_text(&h, "Pattern Angle (°)"), "0", "the file leaves a zero out, the row doesn't");
+    assert_eq!(field_text(&h, "Pattern Angle"), "0°", "the file leaves a zero out, the row doesn't");
     click(&mut h, P2(5000.0, 1100.0));
     shortcut(&mut h, "GP");
     key(&mut h, Key::Escape);
     let group = ids(&h, "detailgroup")[0];
     parameters(&mut h, group);
-    assert_eq!(field_text(&h, "Rotation (°)"), "0");
+    assert_eq!(field_text(&h, "Rotation"), "0°");
     h.state_mut()
         .session
         .execute("repeating_detail", &json!({"type": "Group 1", "start": [1000, 5000], "end": [3000, 5000], "spacing": 500}))
         .unwrap();
     let repeat = ids(&h, "repeatingdetail")[0];
     parameters(&mut h, repeat);
-    assert_eq!(field_text(&h, "Spacing"), "500");
+    // A length shows its unit (#611).
+    assert_eq!(field_text(&h, "Spacing"), "500 mm");
     assert!(shown(&h, "Number"));
 }
 
@@ -103,13 +104,14 @@ fn the_materials_window_offers_the_projects_fill_patterns_besides_its_own() {
     press(&mut h, "Manage");
     press(&mut h, "Materials");
     press(&mut h, "New");
-    choose(&mut h, "Cut Pattern", "Sand");
+    press(&mut h, "Custom");
+    choose(&mut h, "Cut Foreground Pattern", "Sand");
     let m = &h.state().session.model.materials["Material 1"];
     assert_eq!((m.cut_pattern.as_deref(), m.surface_pattern.as_deref()), (Some("Sand"), None));
-    choose(&mut h, "Surface Pattern", "Tile 300");
+    choose(&mut h, "Surface Foreground Pattern", "Tile 300");
     assert_eq!(h.state().session.model.materials["Material 1"].surface_pattern.as_deref(), Some("Tile 300"));
     // And the combo shows the one it has.
-    assert_eq!(combo_value(&h, "Cut Pattern"), "Sand");
+    assert_eq!(combo_value(&h, "Cut Foreground Pattern"), "Sand");
 }
 
 /// Three walls of a corner, up to Level 2, made a model group.

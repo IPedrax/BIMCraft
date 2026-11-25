@@ -270,7 +270,39 @@
    },
    "rooms": [
     {
+     "kind": "service",
+     "names": [
+      "servico",
+      "lavanderia",
+      "laundry",
+      "utility",
+      "stireria"
+     ],
+     "least": 1,
+     "per_perimeter_m": 3.5,
+     "first": 3,
+     "first_va": 600,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 b) (count) and 9.5.2.2.2 a) (power)"
+    },
+    {
      "kind": "bath",
+     "names": [
+      "banheiro",
+      "lavabo",
+      "sanitario",
+      "bathroom",
+      "toilet",
+      "restroom",
+      "bagno",
+      "servizi igienici",
+      "servizio igienico"
+     ],
+     "words": [
+      "wc",
+      "bwc",
+      "bath"
+     ],
      "least": 1,
      "first": 3,
      "first_va": 600,
@@ -279,6 +311,23 @@
     },
     {
      "kind": "kitchen",
+     "names": [
+      "cozinha",
+      "copa",
+      "kitchen",
+      "pantry",
+      "cucina",
+      "cucinotto",
+      "angolo cottura"
+     ],
+     "counter_names": [
+      "cozinha",
+      "kitchen",
+      "copa",
+      "cucina",
+      "cucinotto",
+      "angolo cottura"
+     ],
      "least": 1,
      "per_perimeter_m": 3.5,
      "counter": 2,
@@ -288,26 +337,40 @@
      "source": "NBR 5410:2004, 9.5.2.2.1 b) (count, two over the sink's counter) and 9.5.2.2.2 a) (power)"
     },
     {
-     "kind": "service",
+     "kind": "veranda",
+     "names": [
+      "varanda",
+      "sacada",
+      "balcony",
+      "veranda",
+      "balcone",
+      "terrazzo",
+      "terrazza",
+      "loggia"
+     ],
      "least": 1,
-     "per_perimeter_m": 3.5,
-     "first": 3,
-     "first_va": 600,
      "va": 100,
-     "source": "NBR 5410:2004, 9.5.2.2.1 b) (count) and 9.5.2.2.2 a) (power)"
+     "source": "NBR 5410:2004, 9.5.2.2.1 c) (count) and 9.5.2.2.2 b) (power)"
     },
     {
      "kind": "dry",
+     "names": [
+      "sala",
+      "dormitorio",
+      "quarto",
+      "suite",
+      "living",
+      "bedroom",
+      "soggiorno",
+      "salotto",
+      "camera",
+      "studio",
+      "pranzo"
+     ],
      "least": 1,
      "per_perimeter_m": 5,
      "va": 100,
      "source": "NBR 5410:2004, 9.5.2.2.1 d) (count) and 9.5.2.2.2 b) (power)"
-    },
-    {
-     "kind": "veranda",
-     "least": 1,
-     "va": 100,
-     "source": "NBR 5410:2004, 9.5.2.2.1 c) (count) and 9.5.2.2.2 b) (power)"
     },
     {
      "kind": "other",

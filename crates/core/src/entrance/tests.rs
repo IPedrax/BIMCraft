@@ -304,3 +304,22 @@ mod command {
         }
     }
 }
+
+#[test]
+fn a_range_holds_its_ends_and_zero_where_it_starts_at_zero() {
+    // A range from 0 holds 0 (an installed load of nothing is in the first row); one over a number does not hold that number.
+    let first = Range { over: 0.0, up_to: 10.0 };
+    assert!(first.holds(0.0) && first.holds(10.0));
+    assert!(!first.holds(10.000_001) && !first.holds(-0.000_001));
+    let next = Range { over: 10.0, up_to: 15.0 };
+    assert!(!next.holds(10.0) && next.holds(10.000_001) && next.holds(15.0) && !next.holds(15.000_001));
+    // Every utility's every table: its first row takes a unit of nothing.
+    for u in utilities() {
+        for t in &u.tables {
+            let Some(r) = t.rows.first() else { continue };
+            if let Some(kw) = r.installed_kw.as_ref().filter(|k| k.over == 0.0) {
+                assert!(kw.holds(0.0), "{} {} {}: its first row does not hold 0 kW", u.id, t.system, t.use_);
+            }
+        }
+    }
+}

@@ -2,7 +2,8 @@
 //! the way a user drives them: menus, drags and clicks.
 
 use super::*;
-use crate::dock::{Docking, Palette, Side, Target};
+use crate::dock::{Arrange, Docking, Edge, Palette, Policy, Side, Target};
+use egui::{Rect, Vec2};
 use egui_kittest::kittest::NodeT;
 
 /// The middle of the widget named `label`.
@@ -69,7 +70,7 @@ fn palettes_dock_left_right_or_bottom_float_and_close_by_their_menus() {
     press(&mut h, "Close Properties");
     assert!(!docking(&h).shown(Palette::Properties) && h.query_by_label("Dock Properties").is_none());
     press(&mut h, "View");
-    press(&mut h, "User Interface");
+    from_list(&mut h, "Windows", "User Interface");
     pick(&mut h, Role::CheckBox, "Properties");
     assert_eq!(docking(&h).docked(Palette::Properties), Some(Side::Right));
     // PP hides it and shows it again.
@@ -329,9 +330,9 @@ fn a_layout_reads_back_as_written_and_a_hostile_one_reads_as_sense() {
     let mut d = Docking::default();
     d.put(Palette::Browser, Target::With(Palette::Properties));
     d.put(Palette::Properties, Target::Float(pos2(40.0, 50.0)));
-    assert_eq!(Docking::from_json(&d.to_json()), d);
+    assert_eq!(Docking::from_json(&d.to_json(&Palette::known()), Policy::Live, &Palette::known()), d);
     d.take(Palette::Properties);
-    let back = Docking::from_json(&d.to_json());
+    let back = Docking::from_json(&d.to_json(&Palette::known()), Policy::Live, &Palette::known());
     assert_eq!(back, d);
     assert!(!back.shown(Palette::Properties), "closed stays closed");
     // A palette named twice, one it doesn't know, numbers out of range, an empty stack.
@@ -340,7 +341,7 @@ fn a_layout_reads_back_as_written_and_a_hostile_one_reads_as_sense() {
         "right": "nonsense",
         "floats": [{"tabs": ["Project Browser"], "at": [1e300, -1e300], "size": [0, 1e9]}, {"tabs": ["Properties"], "at": [0, 0], "size": [100, 100]}],
     });
-    let d = Docking::from_json(&hostile);
+    let d = Docking::from_json(&hostile, Policy::Live, &Palette::known());
     assert_eq!(d.left.len(), 2, "and the Tools palette, which the file doesn't name, first");
     assert_eq!(d.left[0].tabs, [Palette::Tools]);
     assert_eq!((d.left[1].tabs.as_slice(), d.left[1].active), ([Palette::Properties].as_slice(), 0));
@@ -348,9 +349,9 @@ fn a_layout_reads_back_as_written_and_a_hostile_one_reads_as_sense() {
     assert!(f.at.x <= 20_000.0 && f.at.y >= -20_000.0 && f.size.x >= 120.0 && f.size.y <= 4000.0, "{f:?}");
     assert_eq!(d.floats.len(), 1, "Properties is placed once");
     // A palette it neither places nor closes, as one added since would be, docks on the left; nonsense is the default.
-    let d = Docking::from_json(&json!({"left": [{"tabs": ["Project Browser"]}]}));
+    let d = Docking::from_json(&json!({"left": [{"tabs": ["Project Browser"]}]}), Policy::Live, &Palette::known());
     assert_eq!(d.docked(Palette::Properties), Some(Side::Left));
-    assert_eq!(Docking::from_json(&json!([1, 2])), Docking::default());
+    assert_eq!(Docking::from_json(&json!([1, 2]), Policy::Live, &Palette::known()), Docking::default());
 }
 
 #[test]
@@ -381,4 +382,403 @@ fn the_app_bars_palettes_menu_brings_a_closed_palette_back_and_resets_the_layout
     press(&mut h, "Palettes");
     press(&mut h, "Reset Palette Layout");
     assert_eq!(docking(&h), &Docking::default(), "the layout as at first, the Navigator back too");
+}
+
+// ---------- the windows of views: magnets, columns, rows and tiles ----------
+
+/// The rectangles of the windows off the tab bar, in the order the layout places them.
+fn cells(h: &Harness<BimApp>) -> Vec<(Sheet, Rect)> {
+    h.state().placements.clone()
+}
+
+/// A view's window title, as the hand takes it: 80 points in, on its strip's line.
+fn title(h: &Harness<BimApp>, sheet: Sheet) -> Pos2 {
+    cells(h).into_iter().find(|(s, _)| *s == sheet).map_or_else(
+        || h.state().floating.iter().find(|f| f.sheet == sheet).map_or(Pos2::ZERO, |f| f.at + vec2(80.0, 13.0)),
+        |(_, r)| r.min + vec2(80.0, 13.0),
+    )
+}
+
+/// A view's window title dragged to `to`: the hand takes it on its strip and lets it go there.
+fn drag_view(h: &mut Harness<BimApp>, sheet: Sheet, to: Pos2) {
+    let from = title(h, sheet);
+    drag_screen(h, from, to, PointerButton::Primary);
+}
+
+/// The views' area as this frame laid it out, checked: every column of `width` cells and the tabbed pane is equal,
+/// and their widths add up to the pane's.
+fn assert_columns(h: &Harness<BimApp>, columns: usize, rows: usize) {
+    let views = h.state().views_rect;
+    assert!(views.width() > 0.0 && views.height() > 0.0, "{views:?}");
+    let placements = cells(h);
+    let mut parts = placements.iter().map(|(_, r)| *r).collect::<Vec<_>>();
+    parts.push(h.state().tab_pane);
+    assert_eq!(parts.len(), columns * rows, "{parts:?}");
+    if rows == 1 {
+        for r in &parts {
+            assert!((r.width() - views.width() / columns as f32).abs() < 1e-3, "{r:?} of {views:?}");
+        }
+        let sum: f32 = parts.iter().map(Rect::width).sum();
+        assert!((sum - views.width()).abs() < 1e-3, "{sum} of {}", views.width());
+    }
+}
+
+#[test]
+fn one_window_snapped_left_makes_two_equal_columns() {
+    let (mut h, _one, two) = two_plans();
+    h.state_mut().open_sheet(two);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.run();
+    let views = h.state().views_rect;
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
+    assert_eq!(h.state().arrange, Arrange::Split);
+    assert_eq!(h.state().floating[0].edge, Some(Edge::Left));
+    assert_eq!(cells(&h).len() + 1, 2, "the window and the tabs: two parts");
+    let (_, left) = cells(&h)[0];
+    let tab = h.state().tab_pane;
+    assert!((left.width() - tab.width()).abs() < 1e-3, "{left:?} {tab:?}");
+    assert!((left.width() + tab.width() - views.width()).abs() < 1e-3);
+    assert!(left.left() <= views.left() + 1e-3 && left.right() <= tab.left() + 1e-3, "the window on the left, the tabs right");
+    // The tabbed pane's own header holds the tabs: no tab bar floats above the split.
+    assert!(!h.state().tab_rects.is_empty(), "the tabs are the tabbed pane's header");
+    for (_, r) in h.state().tab_rects.clone() {
+        assert!(r.top() >= tab.top() - 1e-3 && r.left() >= tab.left() - 1e-3 && r.right() <= tab.right() + 1e-3, "{r:?} of {tab:?}");
+    }
+}
+
+#[test]
+fn two_snapped_windows_make_three_equal_columns_in_the_order_they_were_dropped() {
+    let (mut h, _one, two) = two_plans();
+    h.state_mut().open_sheet(two);
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
+    h.run();
+    let views = h.state().views_rect;
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
+    let views = h.state().views_rect;
+    drag_view(&mut h, Sheet::View3D, pos2(views.right() - 8.0, views.center().y));
+    assert_eq!(h.state().arrange, Arrange::Split);
+    assert_eq!(cells(&h).len() + 1, 3);
+    assert_eq!(cells(&h).iter().map(|(s, _)| *s).collect::<Vec<_>>(), [two, Sheet::View3D]);
+    assert_columns(&h, 3, 1);
+    let tabs = h.state().tab_pane;
+    let (_, left) = cells(&h)[0];
+    let (_, right) = cells(&h)[1];
+    assert!(left.left() < tabs.left() && tabs.right() < right.right() + 1e-3, "left, tabs, right: {left:?} {tabs:?} {right:?}");
+}
+
+#[test]
+fn the_top_magnet_still_docks_a_window_back_into_the_tabs() {
+    let (mut h, one, two) = two_plans();
+    h.state_mut().open_sheet(two);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.run();
+    let bar = h.state().tab_bar;
+    drag_view(&mut h, two, pos2(bar.right() - 4.0, bar.center().y));
+    assert!(h.state().floating.is_empty());
+    assert_eq!(h.state().views, [one, two]);
+    assert_eq!(h.state().arrange, Arrange::Tabs);
+}
+
+#[test]
+fn tile_views_puts_four_views_in_the_four_corners() {
+    let (mut h, _one, two) = two_plans();
+    let level = h.state().session.model.levels()[0].0;
+    h.state_mut().open_sheet(two);
+    h.state_mut().open_sheet(Sheet::Ceiling(level));
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
+    h.run();
+    press(&mut h, "View");
+    from_list(&mut h, "Windows", "Tile Views");
+    assert_eq!(h.state().arrange, Arrange::Tile);
+    let views = h.state().views_rect;
+    let cells = cells(&h);
+    assert_eq!(cells.len(), 4);
+    assert!(h.state().floating.is_empty(), "the tile gathered the windows onto the bar");
+    assert!(h.state().tab_rects.is_empty(), "no tab bar above the tile: each cell's header names its view");
+    assert_eq!(h.state().tab_bar, Rect::NOTHING);
+    let (a, b, c, d) = (cells[0].1, cells[1].1, cells[2].1, cells[3].1);
+    assert!(a.top() <= views.top() + 1e-3 && b.top() <= views.top() + 1e-3);
+    assert!(c.bottom() >= views.bottom() - 1e-3 && d.bottom() >= views.bottom() - 1e-3);
+    assert!(a.left() <= views.left() + 1e-3 && c.left() <= views.left() + 1e-3);
+    assert!(b.right() >= views.right() - 1e-3 && d.right() >= views.right() - 1e-3);
+    for r in [a, b, c, d] {
+        assert!((r.width() - views.width() / 2.0).abs() < 1e-3, "{r:?}");
+        assert!((r.height() - views.height() / 2.0).abs() < 1e-3, "{r:?}");
+    }
+    assert!((a.width() + b.width() - views.width()).abs() < 1e-3);
+    assert!((a.height() + c.height() - views.height()).abs() < 1e-3);
+}
+
+#[test]
+fn tile_views_of_three_views_leaves_no_empty_cell() {
+    let (mut h, _one, two) = two_plans();
+    let level = h.state().session.model.levels()[0].0;
+    h.state_mut().open_sheet(two);
+    h.state_mut().open_sheet(Sheet::Ceiling(level));
+    h.run();
+    press(&mut h, "View");
+    from_list(&mut h, "Windows", "Tile Views");
+    assert_eq!(h.state().arrange, Arrange::Tile);
+    let views = h.state().views_rect;
+    let cells = cells(&h);
+    assert_eq!(cells.len(), 3);
+    assert!(cells[0].1.top() <= views.top() + 1e-3 && cells[1].1.top() <= views.top() + 1e-3, "two in the top row");
+    // The one below takes the whole width, the room the two empty cells would have left.
+    assert!(cells[2].1.top() >= views.center().y - 1e-3 && cells[2].1.left() <= views.left() + 1e-3, "one across the second row");
+    for (i, (_, r)) in cells.iter().enumerate() {
+        let width = if i == 2 { views.width() } else { views.width() / 2.0 };
+        assert!((r.width() - width).abs() < 1e-3, "{r:?}");
+        assert!((r.height() - views.height() / 2.0).abs() < 1e-3, "{r:?}");
+    }
+}
+
+#[test]
+fn a_partial_tile_row_stretches_across_it_without_a_hole() {
+    let (mut h, _one, two) = two_plans();
+    let level = h.state().session.model.levels()[0].0;
+    h.state_mut().open_sheet(two);
+    h.state_mut().open_sheet(Sheet::Ceiling(level));
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.state_mut().open_sheet(Sheet::Schedule("room"));
+    h.run();
+    press(&mut h, "View");
+    from_list(&mut h, "Windows", "Tile Views");
+    assert_eq!(h.state().arrange, Arrange::Tile);
+    let views = h.state().views_rect;
+    let cells = cells(&h);
+    assert_eq!(cells.len(), 5, "five views in a 3 x 2");
+    // The top row is three equal cells; the two below share its whole width.
+    for (_, r) in &cells[0..3] {
+        assert!((r.width() - views.width() / 3.0).abs() < 1e-3, "{r:?}");
+        assert!((r.height() - views.height() / 2.0).abs() < 1e-3, "{r:?}");
+        assert!(r.top() <= views.top() + 1e-3, "{r:?}");
+    }
+    for (i, (_, r)) in cells[3..5].iter().enumerate() {
+        assert!((r.width() - views.width() / 2.0).abs() < 1e-3, "{r:?}");
+        assert!((r.height() - views.height() / 2.0).abs() < 1e-3, "{r:?}");
+        assert!(r.top() >= views.center().y - 1e-3, "{r:?}");
+        let left = if i == 0 { views.left() } else { views.center().x };
+        assert!((r.left() - left).abs() < 1e-3, "{r:?}");
+    }
+    assert!((cells[4].1.right() - views.right()).abs() < 1e-3, "the last cell reaches the right edge");
+}
+
+#[test]
+fn the_error_note_stays_above_the_split_windows() {
+    let (mut h, _one, two) = two_plans();
+    h.state_mut().open_sheet(two);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.run();
+    let views = h.state().views_rect;
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
+    // A note is up, and the window beside the tabs is clicked: it comes to the top of its own order.
+    h.state_mut().status = crate::Status { text: "note".into(), error: false };
+    h.run();
+    let (_, window) = cells(&h).into_iter().find(|(s, _)| *s == two).expect("the snapped window");
+    click_at(&mut h, window.min + vec2(80.0, 13.0));
+    assert_eq!(h.state().sheet, two);
+    // An error replaces the note: its box must come up over the view windows, in the workspace's corner.
+    h.state_mut().status = crate::Status { text: "boom".into(), error: true };
+    h.run();
+    let top = h.ctx.memory(|m| m.areas().top_layer_id(egui::Order::Middle)).expect("the note's layer");
+    assert_eq!(top.id, egui::Id::new("warning"));
+    let rect = h.ctx.memory(|m| m.area_rect(top.id)).expect("the note's box");
+    let views = h.state().views_rect;
+    assert!(
+        (rect.right() - (views.right() - 16.0)).abs() < 2.0 && (rect.bottom() - (views.bottom() - 16.0)).abs() < 2.0,
+        "{rect:?} of {views:?}"
+    );
+}
+
+#[test]
+fn dock_all_views_puts_every_view_back_on_the_bar() {
+    let (mut h, _one, two) = two_plans();
+    let level = h.state().session.model.levels()[0].0;
+    h.state_mut().open_sheet(two);
+    h.state_mut().open_sheet(Sheet::Ceiling(level));
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.run();
+    press(&mut h, "View");
+    from_list(&mut h, "Windows", "Tile Views");
+    let active = h.state().sheet;
+    from_list(&mut h, "Windows", "Dock All Views");
+    assert_eq!(h.state().arrange, Arrange::Tabs);
+    assert!(h.state().floating.is_empty());
+    assert_eq!(h.state().views.len(), 4);
+    assert_eq!(h.state().tab_rects.len(), 4);
+    assert_eq!(h.state().sheet, active);
+    assert!(cells(&h).is_empty());
+    assert_eq!(h.state().tab_pane, h.state().views_rect);
+}
+
+#[test]
+fn a_window_dragged_out_of_its_column_floats_free_and_then_the_tabs_come_back() {
+    let (mut h, _one, two) = two_plans();
+    h.state_mut().open_sheet(two);
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
+    h.run();
+    let views = h.state().views_rect;
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
+    let views = h.state().views_rect;
+    drag_view(&mut h, Sheet::View3D, pos2(views.right() - 8.0, views.center().y));
+    let views = h.state().views_rect;
+    drag_view(&mut h, Sheet::View3D, views.center());
+    let right = h.state().floating.iter().find(|f| f.sheet == Sheet::View3D).unwrap();
+    assert_eq!(right.edge, None);
+    assert_eq!(cells(&h).len() + 1, 2, "the left window and the tabs again");
+    let views = h.state().views_rect;
+    drag_view(&mut h, two, views.center());
+    assert_eq!(h.state().arrange, Arrange::Tabs);
+    assert!(cells(&h).is_empty());
+}
+
+#[test]
+fn a_resized_window_keeps_the_columns_and_rows_equal() {
+    let (mut h, _one, two) = two_plans();
+    h.state_mut().open_sheet(two);
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
+    h.run();
+    let views = h.state().views_rect;
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
+    let views = h.state().views_rect;
+    drag_view(&mut h, Sheet::View3D, pos2(views.right() - 8.0, views.center().y));
+    let kept: Vec<(Pos2, Vec2)> = h.state().floating.iter().map(|f| (f.at, f.size)).collect();
+    h.set_size(vec2(1600.0, 800.0));
+    h.run();
+    assert_columns(&h, 3, 1);
+    assert_ne!(h.state().views_rect, views);
+    assert_eq!(h.state().floating.iter().map(|f| (f.at, f.size)).collect::<Vec<_>>(), kept, "free positions and sizes kept");
+}
+
+#[test]
+fn one_window_snapped_bottom_makes_two_equal_rows_top_down() {
+    let (mut h, _one, two) = two_plans();
+    h.state_mut().open_sheet(two);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.run();
+    let views = h.state().views_rect;
+    drag_view(&mut h, two, pos2(views.center().x, views.bottom() - 8.0));
+    assert_eq!(h.state().arrange, Arrange::Split);
+    assert_eq!(h.state().floating[0].edge, Some(Edge::Bottom));
+    assert_eq!(cells(&h).len() + 1, 2);
+    let views = h.state().views_rect;
+    let (_, below) = cells(&h)[0];
+    let tabs = h.state().tab_pane;
+    assert!((below.height() - tabs.height()).abs() < 1e-3, "{below:?} {tabs:?}");
+    assert!((below.height() + tabs.height() - views.height()).abs() < 1e-3);
+    assert!((tabs.width() - views.width()).abs() < 1e-3 && (below.width() - views.width()).abs() < 1e-3, "full width rows");
+    assert!(tabs.top() <= views.top() + 1e-3 && below.bottom() >= views.bottom() - 1e-3);
+}
+
+#[test]
+fn two_windows_snapped_down_make_three_equal_rows_with_the_new_one_at_the_bottom() {
+    let (mut h, _one, two) = two_plans();
+    h.state_mut().open_sheet(two);
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
+    h.run();
+    let views = h.state().views_rect;
+    drag_view(&mut h, two, pos2(views.center().x, views.bottom() - 8.0));
+    let views = h.state().views_rect;
+    drag_view(&mut h, Sheet::View3D, pos2(views.center().x, views.bottom() - 8.0));
+    assert_eq!(h.state().arrange, Arrange::Split);
+    assert_eq!(cells(&h).len() + 1, 3);
+    assert_eq!(cells(&h).iter().map(|(s, _)| *s).collect::<Vec<_>>(), [two, Sheet::View3D]);
+    let views = h.state().views_rect;
+    let tabs = h.state().tab_pane;
+    let (a, b) = (cells(&h)[0].1, cells(&h)[1].1);
+    assert!((tabs.height() - views.height() / 3.0).abs() < 1e-3);
+    assert!((a.height() - views.height() / 3.0).abs() < 1e-3 && (b.height() - views.height() / 3.0).abs() < 1e-3);
+    assert!(tabs.top() < a.top() && a.top() < b.top(), "top down: tabs, first window, the new one at the bottom");
+    assert!((tabs.height() + a.height() + b.height() - views.height()).abs() < 1e-3);
+    for r in [tabs, a, b] {
+        assert!((r.width() - views.width()).abs() < 1e-3, "{r:?}");
+    }
+}
+
+#[test]
+fn columns_and_rows_mix_in_one_layout() {
+    let (mut h, _one, two) = two_plans();
+    let level = h.state().session.model.levels()[0].0;
+    h.state_mut().open_sheet(two);
+    h.state_mut().open_sheet(Sheet::Ceiling(level));
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.run();
+    h.state_mut().float_view(two, pos2(300.0, 300.0));
+    h.state_mut().float_view(Sheet::Ceiling(level), pos2(900.0, 300.0));
+    h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
+    h.run();
+    let views = h.state().views_rect;
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
+    let views = h.state().views_rect;
+    drag_view(&mut h, Sheet::Ceiling(level), pos2(views.center().x, views.bottom() - 8.0));
+    assert_eq!(h.state().arrange, Arrange::Split);
+    let views = h.state().views_rect;
+    let cells = cells(&h);
+    assert_eq!(cells.len(), 3);
+    assert_eq!(cells.iter().map(|(s, _)| *s).collect::<Vec<_>>(), [two, Sheet::View3D, Sheet::Ceiling(level)]);
+    let tabs = h.state().tab_pane;
+    let (left, right, below) = (cells[0].1, cells[1].1, cells[2].1);
+    assert!((left.width() - views.width() / 3.0).abs() < 1e-3);
+    assert!((tabs.width() - views.width() / 3.0).abs() < 1e-3 && (right.width() - views.width() / 3.0).abs() < 1e-3);
+    assert!((left.height() - views.height() / 2.0).abs() < 1e-3 && (tabs.height() - views.height() / 2.0).abs() < 1e-3);
+    assert!((below.width() - views.width()).abs() < 1e-3 && (below.height() - views.height() / 2.0).abs() < 1e-3);
+    assert!(left.left() <= views.left() + 1e-3, "{left:?}");
+    assert!(tabs.left() >= left.right() - 1e-3 && right.left() >= tabs.right() - 1e-3, "{tabs:?} {right:?}");
+    assert!(below.top() >= tabs.bottom() - 1e-3, "the bottom row runs under the columns");
+}
+
+#[test]
+fn the_bottom_left_corner_belongs_to_the_bottom_zone() {
+    let (mut h, _one, two) = two_plans();
+    h.state_mut().open_sheet(two);
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.run();
+    h.state_mut().float_view(two, pos2(500.0, 300.0));
+    h.state_mut().float_view(Sheet::View3D, pos2(600.0, 300.0));
+    h.run();
+    let views = h.state().views_rect;
+    drag_view(&mut h, two, pos2(views.left() + 8.0, views.center().y));
+    let views = h.state().views_rect;
+    drag_view(&mut h, Sheet::View3D, pos2(views.right() - 8.0, views.center().y));
+    let views = h.state().views_rect;
+    drag_view(&mut h, Sheet::View3D, pos2(views.left() + 8.0, views.bottom() - 8.0));
+    assert_eq!(h.state().floating.iter().find(|f| f.sheet == Sheet::View3D).unwrap().edge, Some(Edge::Bottom));
+    let views = h.state().views_rect;
+    drag_view(&mut h, Sheet::View3D, pos2(views.left() + 8.0, views.bottom() - 2.0 * 36.0));
+    assert_eq!(h.state().floating.iter().find(|f| f.sheet == Sheet::View3D).unwrap().edge, Some(Edge::Left));
+}
+
+#[test]
+fn resetting_the_palette_layout_brings_panels_and_tools_back() {
+    let mut h = bimcraft(BOX);
+    h.state_mut().docking.put(Palette::Tools, Target::Side(Side::Right));
+    h.state_mut().tools_hidden.insert("Door".to_string());
+    h.state_mut().panels_hidden.insert("tab:View/Phasing".to_string());
+    h.run();
+    press(&mut h, "Palettes");
+    press(&mut h, "Reset Palette Layout");
+    assert_eq!(*docking(&h), Docking::default(), "the standard layout of the profile");
+    assert!(h.state().tools_hidden.is_empty(), "every tool is shown again");
+    assert!(h.state().panels_hidden.is_empty(), "every panel is shown again");
 }

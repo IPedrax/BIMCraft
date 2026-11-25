@@ -123,9 +123,11 @@ pub fn kind_of(e: &Element) -> Result<Kind, String> {
         | E::Schedule(_)
         | E::View3D(_)
         | E::PlanView(_)
-        | E::PanelSchedule(_) => Err("a view, a sheet or what places a view is no group's".into()),
-        E::Link(_) | E::PointCloud(_) | E::CadImport(_) => {
-            Err("a link, a scan or a CAD drawing is placed on its own, not in a group".into())
+        | E::DetailView(_)
+        | E::PanelSchedule(_)
+        | E::RebarDetail(_) => Err("a view, a sheet or what places a view is no group's".into()),
+        E::Link(_) | E::PointCloud(_) | E::CadImport(_) | E::Image(_) => {
+            Err("a link, a scan, a CAD drawing or an image is placed on its own, not in a group".into())
         }
         E::Toposolid(_) => Err("a toposolid is the site's ground, placed on its own, not in a group".into()),
         E::Circuit(_) => Err("a circuit has no place: group its devices".into()),

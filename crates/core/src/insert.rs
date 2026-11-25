@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use crate::graphics;
 use crate::ids::LINKED;
 use crate::library::{Entry, Kind};
-use crate::model::{Element, Guid, Id, Model};
+use crate::model::{Element, Guid, Id, Material, Model};
 use crate::phasing;
 
 /// What an insert made.
@@ -88,6 +88,17 @@ pub(crate) fn insert_as(to: &mut Model, from: &Model, ids: &[Id], linked: bool, 
     }
     let mut renames = bring_library(to, from, &take, &mut out)?;
     let param_renames = bring_parameters(to, from, &take, ids.is_empty(), same, &mut out)?;
+    // The materials that came in hold their values under the names their parameters have here; what has none here stays behind.
+    for (name, x) in &mut to.materials {
+        if from.materials.get(name).is_some_and(|y| y.parameters == x.parameters) {
+            for (old, new) in &param_renames {
+                if let Some(v) = x.parameters.remove(old) {
+                    x.parameters.insert(new.clone(), v);
+                }
+            }
+        }
+    }
+    crate::materials::tidy(to);
     for (old, new) in &param_renames {
         renames.insert((Kind::Parameter, old.clone()), new.clone());
     }
@@ -226,16 +237,22 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                 }
             }
             Kind::Material => {
-                if let Some(t) = to.materials.get_mut(&name).and_then(|m| m.texture.as_mut()) {
+                for t in to.materials.get_mut(&name).into_iter().flat_map(Material::pictures_mut) {
                     here(&Kind::Picture, &mut t.image);
                 }
-                for p in to.materials.get_mut(&name).into_iter().flat_map(|x| [&mut x.cut_pattern, &mut x.surface_pattern]).flatten() {
+                for p in to.materials.get_mut(&name).into_iter().flat_map(Material::fills_mut) {
                     here(&Kind::FillPattern, p);
                 }
             }
             Kind::LineStyle => {
                 if let Some(p) = to.line_styles.get_mut(&name).and_then(|s| s.pattern.as_mut()) {
                     here(&Kind::LinePattern, p);
+                }
+            }
+            // A title block's logos name pictures as this project does.
+            Kind::TitleBlock => {
+                for l in to.title_blocks.get_mut(&name).into_iter().flat_map(|t| t.logos.iter_mut()) {
+                    here(&Kind::Picture, &mut l.image);
                 }
             }
             // A grid type's pattern follows too: a project may hold one of the same name with another GUID, or none.
@@ -274,6 +291,9 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                 };
                 for l in layers.into_iter().flatten() {
                     here(&Kind::Material, &mut l.material);
+                }
+                if let Some(m) = (c == "framing").then(|| t.framing.get_mut(&name)).flatten().and_then(|x| x.material.as_mut()) {
+                    here(&Kind::Material, m);
                 }
                 if let Some(r) = (c == "room").then(|| t.room.get_mut(&name)).flatten() {
                     if let Some(floor) = &mut r.floor {
@@ -363,6 +383,15 @@ fn bring_parameters(
         if let Element::Schedule(sc) = e {
             for text in sc.fields.iter().filter_map(|f| f.formula.as_ref()) {
                 used.extend(from.parameters.keys().filter(|n| crate::parameters::formula_names(text, n)).cloned());
+            }
+        }
+    }
+    // A material that came in brings the parameters it holds values of.
+    for (n, x) in &from.materials {
+        if to.materials.get(n).is_some_and(|y| y.parameters == x.parameters) {
+            for name in x.parameters.keys().filter(|k| from.parameters.contains_key(*k)) {
+                used.insert(name.clone());
+                holders.entry(name.clone()).or_default().insert(crate::materials::CATEGORY.to_string());
             }
         }
     }
@@ -509,6 +538,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str, as_nam
             "curtainpanel" => one(&mut t.curtain_panel, Some(&f.curtain_panel), name),
             "mullion" => one(&mut t.mullion, Some(&f.mullion), name),
             "cornermullion" => one(&mut t.corner_mullion, Some(&f.corner_mullion), name),
+            "framing" => one(&mut t.framing, Some(&f.framing), name),
             run => one(t.runs.entry(run.to_string()).or_default(), f.runs.get(run), name),
         },
         Kind::Material => one(&mut to.materials, Some(&from.materials), name),
@@ -588,6 +618,7 @@ impl Names {
             Element::View3D(v) => (&mut v.name, &mut self.views),
             Element::Schedule(sc) => (&mut sc.name, &mut self.views),
             Element::PanelSchedule(v) => (&mut v.name, &mut self.views),
+            Element::RebarDetail(v) => (&mut v.name, &mut self.views),
             Element::Grid(g) => (&mut g.name, &mut self.grids),
             Element::Sheet(sh) => (&mut sh.number, &mut self.sheets),
             _ => return,

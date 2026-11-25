@@ -65,6 +65,7 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 | Families, forms, materials, textures, paint, favorites | [families](../../docs/areas/families.md) |
 | Beams, columns, footings, pipes, conduits, fixtures | [structure and MEP](../../docs/areas/structure-and-mep.md), [disciplines](../../docs/disciplines.md) |
 | Concrete, formwork and steel of a member, bar marks, the steel list, the cut plan | [quantities](../../docs/areas/quantities.md) |
+| A reinforced member's detail drawing (beam, column, footing, floor): sets of bars, tags, sections | [rebar detail](../../docs/areas/rebar-detail.md) |
 | IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks; [grid exchange](../../docs/areas/ifc-exchange.md) |
 | Coordinates: base and survey points, locations, shared coordinates | [coordinates](../../docs/areas/coordinates.md) |
 | Autosave and recovery | [autosave](../../docs/autosave.md) |
@@ -73,7 +74,7 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 
 - Filter while you work: `cargo test -p bimcraft-core <part of a name>`. A module's own tests carry its path, so `schedule::`,
   `view3d::`, `phasing::`, `graphics::`, `render::`, `library::`, `walls::` and `snap::` each run one area; the engine tests in
-  `tests.rs`, `mep_tests.rs` and `structure_tests.rs` are named for what they check (`cargo test -p bimcraft-core tags`).
+  `tests.rs`, `mep_tests.rs` and `structure_tests.rs` are named for what they check (`cargo test -p bimcraft-core tags`). They drive the engine through commands, as a front end drives it.
 - The quick tier is every test but one: `cargo test --workspace -- --skip hostile_params_never_panic_or_break_the_model`. The core's
   share runs in about 25 seconds, the whole workspace's in a couple of minutes once built.
 - That one, `hostile_params_never_panic_or_break_the_model` (`tests.rs`), sweeps every command with every hostile input and takes about a

@@ -1,4 +1,4 @@
-//! The sandbox: the wasmi interpreter, the host functions of ABI 1, and the limits a plugin call runs under.
+//! The sandbox: the wasmi interpreter, the host functions of ABIs 1 and 2, and the limits a plugin call runs under.
 //!
 //! A plugin call gets a fresh instance, its own memory, fuel for about a second of work, a command budget and
 //! a reply cap. It sees no files, no clock, no randomness and no network: those are not imported, so they are
@@ -46,7 +46,7 @@ const MAX_STEP: usize = 160;
 
 /// The exports a plugin module must have.
 const EXPORTS: [&str; 3] = ["memory", "bimcraft_alloc", "bimcraft_run"];
-/// The host functions ABI 1 provides.
+/// The host functions the ABIs provide: ABI 2 adds panels in the answer, not an import.
 const HOST: [&str; 3] = ["execute", "log", "info"];
 
 /// The commands that touch the disk are marked on the [`bimcraft_core::engine::Command`] itself, next to their

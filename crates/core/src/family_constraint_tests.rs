@@ -373,3 +373,205 @@ fn hostile_dimensions_never_panic() {
     fam["dimensions"] = json!(dims);
     run(&mut s, "family", fam);
 }
+
+#[test]
+fn a_move_shifts_what_it_takes_and_is_refused_where_a_constraint_holds_it() {
+    use crate::family::constraints::{MoveRefused, Moving, Stays};
+    let s = boxed();
+    let f = &s.model.families["Box"];
+    let v = f.values("Small", &BTreeMap::new()).unwrap();
+    let post = f.forms.iter().position(|x| x.guid == g(POST)).unwrap();
+    // The post across the plan: each of its sketch's points moved by as much, its ends staying.
+    let moving = Moving { forms: vec![post], ..Moving::default() };
+    let edits = f.move_by(&v, &moving, [100.0, 50.0, 0.0]).unwrap();
+    let points: Vec<[f64; 2]> = edits
+        .iter()
+        .filter_map(|e| match e {
+            Edit::Point(i, _, _, p) if *i == post => Some(*p),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(points.len(), 8, "{edits:?}");
+    assert!(points.iter().all(|p| (p[0].abs() - 50.0).abs() < 1e-9 || (p[0] - 150.0).abs() < 1e-9), "{points:?}");
+    assert!(points.iter().any(|p| p == &[150.0, 100.0]) && points.iter().any(|p| p == &[50.0, 0.0]), "{points:?}");
+    assert!(!edits.iter().any(|e| matches!(e, Edit::End(..))), "{edits:?}");
+    // Up: its end is locked to Top, which Height holds: refused, naming what holds it.
+    let e = f.move_by(&v, &moving, [0.0, 0.0, 100.0]).unwrap_err();
+    assert!(matches!(&e, MoveRefused::Unsat(u) if u.message.starts_with(NOT_SATISFIED) && !u.dims.is_empty()), "{e:?}");
+    // Right, which Width and EQ hold, refused; Left and Right together across x keep Width, but EQ about the centre holds them.
+    let planes = |ps: &[&str]| Moving { planes: ps.iter().map(|p| g(p)).collect(), ..Moving::default() };
+    assert!(f.move_by(&v, &planes(&[RIGHT]), [100.0, 0.0, 0.0]).is_err());
+    assert!(f.move_by(&v, &planes(&[LEFT, RIGHT]), [100.0, 0.0, 0.0]).is_err());
+    // Along themselves they slide freely: nothing to solve but where they are.
+    assert!(f.move_by(&v, &planes(&[LEFT, RIGHT]), [0.0, 100.0, 0.0]).is_ok());
+    // A datum stays.
+    let datum = Moving { planes: vec![CENTER_LEFT_RIGHT], ..Moving::default() };
+    assert!(matches!(f.move_by(&v, &datum, [10.0, 0.0, 0.0]), Err(MoveRefused::Stays(Stays::Datum(_)))));
+}
+
+#[test]
+fn a_reference_line_drawn_on_a_plane_a_drag_or_a_move_moves_goes_with_it() {
+    use crate::family::constraints::Moving;
+    let mut s = Session::new();
+    const WALL: &str = "33333333-3333-4333-8333-000000000001";
+    const ON: &str = "33333333-3333-4333-8333-000000000002";
+    run(
+        &mut s,
+        "family",
+        json!({"name": "W", "parameters": [{"name": "Gap", "kind": "length", "value": 1800}], "types": {"T": {}},
+               "ref_planes": [{"guid": WALL, "name": "Wall", "start": [-2000, 1800, 0], "end": [2000, 1800, 0], "up": [0, 0, 1]}],
+               "ref_lines": [{"guid": ON, "host": {"plane": WALL}, "start": [-300, 1800, 500], "end": [300, 1800, 500]}],
+               "dimensions": [{"view": "plan", "refs": [{"plane": CENTER_FRONT_BACK}, {"plane": WALL}], "at": [0, 900, 0], "label": "Gap"}]}),
+    );
+    let f = &s.model.families["W"];
+    let v = f.values("T", &BTreeMap::new()).unwrap();
+    let line_y = |edits: &[Edit]| {
+        edits.iter().find_map(|e| match e {
+            Edit::LineEnds(g_, a, b) if *g_ == g(ON) => Some((a[1], b[1])),
+            _ => None,
+        })
+    };
+    // Dragged: Gap takes the new length, and the line goes with Wall.
+    let n = f.planes.iter().find(|p| p.guid == g(WALL)).unwrap().frame().z;
+    let to = 2000.0 * n[1];
+    let edits = f.drag_plane(&v, g(WALL), to).unwrap();
+    assert_eq!(line_y(&edits), Some((2000.0, 2000.0)), "{edits:?}");
+    // Moved with its label taken off: the same.
+    let mut free = f.clone();
+    free.dimensions.clear();
+    let edits = free.move_by(&v, &Moving { planes: vec![g(WALL)], ..Moving::default() }, [0.0, 200.0, 0.0]).unwrap();
+    assert_eq!(line_y(&edits), Some((2000.0, 2000.0)), "{edits:?}");
+}
+
+#[test]
+fn a_copy_gives_new_guids_and_takes_the_constraints_among_what_it_copies() {
+    use crate::family::constraints::{CopyRefused, Copying, DimRef, Moving};
+    let s = boxed();
+    let f = &s.model.families["Box"];
+    let bar = f.forms.iter().position(|x| x.guid == g(BAR)).unwrap();
+    // The bar alone: a new GUID for it and each of its lines, its numbers as they are; its locks to Left and Right dropped.
+    let c = f.copies(&Copying { forms: vec![bar], ..Copying::default() }).unwrap();
+    let copy = &c.forms[0];
+    assert_ne!(copy.guid, g(BAR));
+    assert_eq!(c.guids[&g(BAR)], copy.guid);
+    assert_eq!((copy.from.clone(), copy.to.clone(), copy.host), (f.forms[bar].from.clone(), f.forms[bar].to.clone(), f.forms[bar].host));
+    for (a, b) in f.forms[bar].all_lines().zip(copy.all_lines()) {
+        assert_eq!(a.curve, b.curve);
+        assert!(a.guid != b.guid && !b.guid.is_nil() && b.id == 0);
+    }
+    assert!(c.dimensions.is_empty(), "{:?}", c.dimensions);
+    // The bar, Left and Right: both Align locks and Width's label come along, naming the copies; EQ, which measures
+    // Center (Left/Right), doesn't.
+    let c = f.copies(&Copying { forms: vec![bar], planes: vec![g(LEFT), g(RIGHT)], ..Copying::default() }).unwrap();
+    assert_eq!(c.planes.len(), 2);
+    assert!(c.planes.iter().all(|p| p.name.is_empty() && p.guid != g(LEFT) && p.guid != g(RIGHT)), "a name is one plane's");
+    assert_eq!(c.dimensions.len(), 3, "{:?}", c.dimensions);
+    let width = c.dimensions.iter().find(|d| d.label.is_some()).unwrap();
+    assert_eq!(width.label.as_deref(), Some("Width"));
+    assert_eq!(width.refs, vec![DimRef::Plane(c.guids[&g(LEFT)]), DimRef::Plane(c.guids[&g(RIGHT)])]);
+    let locks: Vec<_> = c.dimensions.iter().filter(|d| d.alignment).collect();
+    assert_eq!(locks.len(), 2);
+    assert!(locks.iter().all(|d| d.refs.iter().all(|r| !r.names(g(BAR)) && !r.names(g(LEFT)) && !r.names(g(RIGHT)))), "{locks:?}");
+    assert!(c.selected.is_empty(), "none was selected");
+    // Added and moved together, the family solves: the copy's Width holds the copies' planes.
+    let mut with = f.clone();
+    let n = with.forms.len();
+    with.planes.extend(c.planes.iter().cloned());
+    with.forms.extend(c.forms.iter().cloned());
+    with.dimensions.extend(c.dimensions.iter().cloned());
+    let v = with.values("Small", &BTreeMap::new()).unwrap();
+    let moving = Moving { forms: vec![n], planes: c.planes.iter().map(|p| p.guid).collect(), ..Moving::default() };
+    with.move_by(&v, &moving, [0.0, 2000.0, 0.0]).unwrap();
+    for (t, width) in [("Small", 600.0), ("Large", 1400.0)] {
+        let v = with.values(t, &BTreeMap::new()).unwrap();
+        let flexed = with.flexed(&v).unwrap();
+        let x = |guid: Guid| flexed.planes.iter().find(|p| p.guid == guid).unwrap().start[0];
+        assert!((x(c.planes[1].guid) - x(c.planes[0].guid) - width).abs() < 1e-6, "{t}: {} {}", x(c.planes[0].guid), x(c.planes[1].guid));
+    }
+    // A datum isn't copied.
+    let e = f.copies(&Copying { planes: vec![CENTER_LEFT_RIGHT], ..Copying::default() }).unwrap_err();
+    assert!(matches!(e, CopyRefused::Datum(_)), "{e:?}");
+}
+
+#[test]
+fn a_reporting_label_is_one_dimensions_and_isnt_copied_as_a_constraint() {
+    use crate::family::constraints::Copying;
+    let mut s = boxed();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Box", "parameter": {"name": "Span", "kind": "length", "reporting": true, "value": 0},
+               "dimension": {"view": "plan", "refs": [{"plane": LEFT}, {"plane": RIGHT}], "at": [0, 1200, 0], "label": "Span"}}),
+    );
+    let f = s.model.families["Box"].clone();
+    let span = f.dimensions.iter().find(|d| d.label.as_deref() == Some("Span")).unwrap().guid;
+    // Left and Right copied: Width's label comes along, Span's (a reporting one, which holds nothing) doesn't.
+    let c = f.copies(&Copying { planes: vec![g(LEFT), g(RIGHT)], ..Copying::default() }).unwrap();
+    assert_eq!(c.dimensions.iter().map(|d| d.label.as_deref()).collect::<Vec<_>>(), vec![Some("Width")]);
+    // Selected, it is copied without its label: Span still reads the original.
+    let c = f.copies(&Copying { planes: vec![g(LEFT), g(RIGHT)], dimensions: vec![span], ..Copying::default() }).unwrap();
+    assert_eq!(c.dimensions.len(), 2);
+    assert_eq!(c.selected.len(), 1);
+    let copy = c.dimensions.iter().find(|d| c.selected.contains(&d.guid)).unwrap();
+    assert_eq!(copy.label, None);
+    // Two dimensions reporting one parameter: refused.
+    let e = s
+        .execute("family", &json!({"name": "Box", "dimension": {"view": "plan", "refs": [{"plane": FRONT}, {"plane": BACK}], "at": [1200, 0, 0], "label": "Span"}}))
+        .unwrap_err();
+    assert!(e.contains("reports `Span` already"), "{e}");
+}
+
+#[test]
+fn a_refusals_dimensions_renumbered_are_named_so() {
+    let u = crate::family::Unsat {
+        message: format!("{NOT_SATISFIED}: dimensions 3, 12 and dimension 12 hold it; dimension 4 too"),
+        dims: vec![2, 11],
+        over: true,
+    };
+    let r = u.renumbered(&|k| if k == 11 { 1 } else { k });
+    assert_eq!(r.message, format!("{NOT_SATISFIED}: dimensions 3, 2 and dimension 2 hold it; dimension 4 too"));
+    assert_eq!(r.dims, vec![2, 1]);
+}
+
+#[test]
+fn a_file_with_two_dimensions_reporting_one_parameter_still_opens_and_warns() {
+    let mut s = boxed();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Box", "parameter": {"name": "Span", "kind": "length", "reporting": true, "value": 0},
+               "dimension": {"view": "plan", "refs": [{"plane": LEFT}, {"plane": RIGHT}], "at": [0, 1200, 0], "label": "Span"}}),
+    );
+    // As a build before the rule could save it: a second dimension reporting Span.
+    let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    let dims = v["families"]["Box"]["dimensions"].as_array_mut().unwrap();
+    dims.push(json!({"view": "plan", "refs": [{"plane": FRONT}, {"plane": BACK}], "at": [1200, 0, 0], "label": "Span"}));
+    let n = dims.len();
+    let (m, _) = Model::read(&v.to_string()).unwrap_or_else(|e| panic!("the project opens: {e}"));
+    let f = &m.families["Box"];
+    let twice = f.reported_twice();
+    assert_eq!((twice.len(), twice[0].0.as_str(), twice[0].1.last()), (1, "Span", Some(&(n - 1))), "{twice:?}");
+    let vals = f.values("Large", &BTreeMap::new()).unwrap();
+    assert_eq!(vals["Span"], crate::family::Val::Number(800.0), "it reads the last: Depth");
+    // The family's file loads into another project, and says what it reads.
+    let mut fam = v["families"]["Box"].clone();
+    fam["name"] = json!("Box");
+    let path = std::env::temp_dir().join(format!("bimcraft-two-reports-{}.json", std::process::id()));
+    std::fs::write(&path, fam.to_string()).unwrap();
+    let mut other = Session::new();
+    let r = run(&mut other, "family", json!({"path": path}));
+    let _ = std::fs::remove_file(&path);
+    let warned = |r: &Value| {
+        r["warnings"]
+            .as_array()
+            .is_some_and(|w| w.iter().any(|w| w.as_str().is_some_and(|w| w.contains(&format!("it reads dimension {n}, the last")))))
+    };
+    assert!(warned(&r), "{r}");
+    assert!(warned(&run(&mut other, "family", json!({"name": "Box"}))));
+    // Edited in passing (a parameter's value), it stays as it is; a third report is refused.
+    run(&mut other, "family", json!({"name": "Box", "parameter": {"name": "Width", "value": 1100}}));
+    let e = other
+        .execute("family", &json!({"name": "Box", "dimension": {"view": "front", "refs": [{"plane": REF_LEVEL}, {"plane": TOP}], "at": [-800, -1000, 0], "label": "Span"}}))
+        .unwrap_err();
+    assert!(e.contains("reports `Span` already"), "{e}");
+}

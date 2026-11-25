@@ -289,3 +289,19 @@ fn an_object_past_what_a_family_holds_comes_in_as_pieces_that_do() {
     assert_eq!(r.objects.iter().map(|o| o.triangles()).sum::<usize>(), n, "nothing lost");
     assert!(r.objects.iter().all(|o| o.triangles() <= crate::family::MAX_TRIANGLES));
 }
+
+#[test]
+fn import_mesh_refuses_a_file_over_the_limit_before_reading_it() {
+    // A sparse file one byte over the limit, that can't be read: refused by its size, which says the limit, never by reading.
+    use crate::engine::Session;
+    let d = tempfile::tempdir().unwrap();
+    let path = d.path().join("big.obj");
+    std::fs::File::create(&path).unwrap().set_len(crate::mesh_in::MAX_BYTES as u64 + 1).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+    }
+    let e = Session::new().execute("import_mesh", &json!({"path": path})).unwrap_err();
+    assert!(e.contains(&path.display().to_string()) && e.contains(&format!("{} MB", crate::mesh_in::MAX_BYTES >> 20)), "{e}");
+}

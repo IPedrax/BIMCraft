@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use bimcraft_core::model::Id;
 use bimcraft_core::selection::{self, CATEGORY, Group};
-use egui::{Align, Button, ComboBox, Context, Grid, Id as UiId, Layout, RichText, ScrollArea};
+use egui::{Align, Button, ComboBox, Context, Grid, Id as UiId, Layout, RichText, ScrollArea, Ui};
 
 use crate::BimApp;
 use crate::lang::{category, t, tf};
@@ -22,11 +22,34 @@ pub(crate) struct SelectionFilter {
     pub(crate) off: BTreeSet<String>,
 }
 
-impl SelectionFilter {
-    /// What of the selection is checked.
-    fn kept(&self) -> usize {
-        self.groups.iter().filter(|g| !self.off.contains(&g.value)).map(|g| g.ids.len()).sum()
-    }
+/// The list a Filter dialog shows, the project's and a family document's (`editor/selection.rs`) alike: under `heading`
+/// (translated) and Count, each of `rows` (what it is called, how many are of it) with its check box, `on`; Check All and
+/// Check None; and how many are checked in all. `salt` names its grid.
+pub(crate) fn checklist(ui: &mut Ui, salt: &str, heading: &str, rows: &[(String, usize)], on: &mut [bool]) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(heading).strong());
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| ui.label(RichText::new(t("Count")).strong()));
+    });
+    ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+        Grid::new(salt).num_columns(2).striped(true).min_col_width(60.0).show(ui, |ui| {
+            for ((label, count), on) in rows.iter().zip(on.iter_mut()) {
+                ui.checkbox(on, label.as_str());
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| ui.label(count.to_string()));
+                ui.end_row();
+            }
+        });
+    });
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        if ui.button(t("Check All")).clicked() {
+            on.fill(true);
+        }
+        if ui.button(t("Check None")).clicked() {
+            on.fill(false);
+        }
+    });
+    let kept: usize = rows.iter().zip(on.iter()).filter(|(_, on)| **on).map(|((_, n), _)| n).sum();
+    ui.label(tf("Total selected items: {}", &[&kept.to_string()]));
 }
 
 /// A value as the list shows it: a category by its name, nothing as `(none)`.
@@ -79,36 +102,10 @@ impl BimApp {
                     });
                 });
                 ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(t(if d.by == CATEGORY { "Category" } else { "Value" })).strong());
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| ui.label(RichText::new(t("Count")).strong()));
-                });
-                ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
-                    Grid::new("selection-filter-grid").num_columns(2).striped(true).min_col_width(60.0).show(ui, |ui| {
-                        for g in &d.groups {
-                            let mut on = !d.off.contains(&g.value);
-                            if ui.checkbox(&mut on, shown(&d.by, &g.value)).changed() {
-                                if on {
-                                    d.off.remove(&g.value);
-                                } else {
-                                    d.off.insert(g.value.clone());
-                                }
-                            }
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| ui.label(g.ids.len().to_string()));
-                            ui.end_row();
-                        }
-                    });
-                });
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    if ui.button(t("Check All")).clicked() {
-                        d.off.clear();
-                    }
-                    if ui.button(t("Check None")).clicked() {
-                        d.off = d.groups.iter().map(|g| g.value.clone()).collect();
-                    }
-                });
-                ui.label(tf("Total selected items: {}", &[&d.kept().to_string()]));
+                let rows: Vec<(String, usize)> = d.groups.iter().map(|g| (shown(&d.by, &g.value), g.ids.len())).collect();
+                let mut on: Vec<bool> = d.groups.iter().map(|g| !d.off.contains(&g.value)).collect();
+                checklist(ui, "selection-filter-grid", t(if d.by == CATEGORY { "Category" } else { "Value" }), &rows, &mut on);
+                d.off = d.groups.iter().zip(&on).filter(|(_, on)| !**on).map(|(g, _)| g.value.clone()).collect();
             });
             crate::popup::footer(ui, |ui| {
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| {

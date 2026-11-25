@@ -20,7 +20,9 @@ along the line at that row's bottom, in that column. Each may be empty. `borders
 mullions run through where they cross. The line that starts a module also closes the one before it.
 
 `type {category: "wall", name, curtain: {columns: {segments}, rows: {segments}, panel?, mullion?, …}}` makes one; `panel` and `mullion`
-fill what is left out, and null means none. A curtain wall type's `thickness` is never given: `curtain::sync` makes it what the
+fill what is left out, and null means none. A pattern may hold neither: a wall of it draws nothing of its own and is 0 mm thick, as
+Revit's curtain wall of empty panels and no mullions is (the Revit import brings a curtain wall in so, its panels and mullions
+elements of their own). A curtain wall type's `thickness` is never given: `curtain::sync` makes it what the
 panels and mullions the pattern uses reach (`envelope`), after every command.
 
 ## The layout
@@ -233,7 +235,25 @@ line colour, weight, dash and halftone, and a cut mullion's fill; a wall's own l
 and elevations take a row's hidden, and in the part of the picture beyond the line, its edge colour. Not taken yet: a row's fill patterns,
 and a section's cut lines, which go by the wall.
 
+## Curved and slanted
+
+A layout is worked out flat, along the wall's run, up its face and across from its grid plane; `Layout::surface`
+(`curtain/surface.rs`) puts those in the model, and every view, the picking, the grids' marks and IFC place parts through it
+(`Surface::at`, `axes`, `plan`, `hit`; `curtain::surface` for a wall without its layout at hand).
+
+A curved curtain wall is faceted: a straight chord from each vertical grid line to the next, its ends on the wall's arc, so each
+panel is flat and as wide as its segment, and a mullion on a line between two chords turns halfway between them. Its run is the
+length of those chords whose turns add up to the arc's sweep (`surface::unrolled`, found by halving, as the lines a pattern lays
+depend on the length), and the last chord ends at the wall's end. A segment wider than the arc's circle can't be a chord of it:
+`check` refuses it. A Fixed Grid doesn't move a curved wall's ends.
+
+A slanted curtain wall (`slant`) leans its grid with the wall: its rows measure up the slope, so a row is its segment's size along
+the face (`Surface::height`), a level it restarts at is as far up the face, and every part tilts with it: a mesh in the processor's
+scene, a tilted copy on the graphics card, a tilted placement in IFC, and in a plan what the cut plane slices of it.
+
+Neither has corner mullions or mitred horizontals with its neighbour yet, nor walls in its cells (`check` refuses those).
+
 ## What it can't be yet
 
-`curtain::check` refuses a curved curtain wall, an attached top or base, a location line other than the exterior or interior face, a
+`curtain::check` refuses an attached top or base, a location line other than the exterior or interior face, a
 wall by face, a wall of over `MAX_CELLS` cells, and a door or window hosted directly in one.

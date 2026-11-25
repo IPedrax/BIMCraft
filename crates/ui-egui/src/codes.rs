@@ -1821,6 +1821,8 @@ impl BimApp {
         }
         if !((a.ok && done) || a.cancel || r.should_close()) {
             self.codes_dialog = Some(d);
+        } else {
+            tree::forget_typing(ctx);
         }
     }
 }

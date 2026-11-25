@@ -218,11 +218,13 @@ fn bimcrafts_tools_are_a_palette_in_place_of_the_ribbon_and_dock_where_they_are_
     h.run();
     h.run();
     assert!(h.get_by_label("Structure").rect().left() >= h.state().view_rect.right());
-    // Rev has the ribbon, and no Tools palette.
+    // Rev has the ribbon: the Tools palette is not drawn, but stays in the layout as the user's intent.
     h.state_mut().profile = Profile::Rev;
     h.run();
     h.run();
-    assert!(!h.state().docking.shown(Palette::Tools) && h.query_by_label("Minimize the Ribbon").is_some());
+    assert_eq!(h.state().docking.docked(Palette::Tools), Some(Side::Right), "kept in the layout");
+    assert!(h.query_by_label("Minimize the Ribbon").is_some());
+    assert!(h.query_by_label("Edit Tools").is_none(), "Rev draws no Tools palette");
 }
 
 #[test]

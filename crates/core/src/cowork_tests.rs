@@ -9,7 +9,7 @@ use crate::cowork::{
     Delta, Look, On, Place, Presence, Put, apply, batch_for_guest, delta, guest_import, import_for_guest, place, run_for_guest,
     script_for_guest, whole,
 };
-use crate::engine::Session;
+use crate::engine::{MadeIn, Session};
 use crate::model::{Id, Model};
 
 /// The sample house, as a host opens it.
@@ -129,7 +129,7 @@ fn a_guests_command_never_touches_the_hosts_disk_nor_replaces_the_project() {
     let dir = std::env::temp_dir().join(format!("bimcraft-cowork-{}", std::process::id()));
     let file = dir.join("taken.bimcraft");
     let kept = Arc::clone(&s.model);
-    let none = (None, None);
+    let none = MadeIn::default();
     for (cmd, params, says) in [
         ("save", json!({"path": file.to_string_lossy()}), "file"),
         ("import_cad", json!({"path": file.to_string_lossy()}), "file"),
@@ -143,7 +143,15 @@ fn a_guests_command_never_touches_the_hosts_disk_nor_replaces_the_project() {
     assert!(!file.exists(), "nothing was written");
     assert!(Arc::ptr_eq(&kept, &s.model), "nothing changed");
     // An edit goes through, as Bo's step; the session is the host's again after it.
-    run_for_guest(&mut s, "Bo", "wall", &json!({"points": [[0, 46000], [6000, 46000]]}), (Some("Nowhere".into()), None), true).unwrap();
+    run_for_guest(
+        &mut s,
+        "Bo",
+        "wall",
+        &json!({"points": [[0, 46000], [6000, 46000]]}),
+        MadeIn { phase: Some("Nowhere".into()), ..MadeIn::default() },
+        true,
+    )
+    .unwrap();
     assert_eq!(s.steps(false)[0].by.as_deref(), Some("Bo"));
     assert_eq!((s.author.as_deref(), s.phase.as_deref(), s.option.as_deref()), (Some("Ana"), None, None));
     // When the host lets guests only look, what reads answers and what edits is refused, saying so.
@@ -289,7 +297,7 @@ fn a_guests_undo_on_the_host_is_the_guests_own() {
     s.author = Some("Ana".into());
     let a = wall(&mut s, 40000);
     let b = s.model.next_id;
-    let none = (None, None);
+    let none = MadeIn::default();
     run_for_guest(&mut s, "Bo", "wall", &json!({"points": [[0, 46000], [6000, 46000]]}), none.clone(), true).unwrap();
     wall(&mut s, 52000);
     run_for_guest(&mut s, "Bo", "undo", &json!({}), none, true).unwrap();
@@ -303,7 +311,7 @@ fn a_guests_group_edit_and_conflict_fix_land_on_the_hosts_session() {
     s.author = Some("Ana".into());
     let w = wall(&mut s, 40000);
     let g = s.execute("create_group", &json!({"ids": [w]})).unwrap()["id"].as_u64().unwrap();
-    let none = (None, None);
+    let none = MadeIn::default();
     // Edit Group's commands make no undo step, but the edit is the host session's, as `resolve_group`'s step is: a guest's go
     // there, and while the host lets guests only look they are refused.
     for c in ["edit_group", "add_to_group", "remove_from_group", "finish_group", "cancel_group", "resolve_group"] {
@@ -377,7 +385,7 @@ fn a_whole_model_carries_the_linked_models_a_guest_cant_read_from_its_own_disk()
 fn a_guests_batch_is_one_step_of_theirs_or_nothing() {
     let mut s = house();
     s.author = Some("Ana".into());
-    let none = (None, None);
+    let none = MadeIn::default();
     let walls = |y: i64| ("wall".to_string(), json!({"points": [[0, y], [6000, y]]}));
     let made = batch_for_guest(&mut s, "Bo", "Draw", &[walls(40000), walls(43000)], none.clone(), true).unwrap();
     assert_eq!(made.len(), 2);
@@ -401,7 +409,7 @@ fn a_guests_batch_is_one_step_of_theirs_or_nothing() {
 fn a_guests_script_is_one_step_of_theirs_once_its_dry_run_passes() {
     let mut s = house();
     s.author = Some("Ana".into());
-    let none = (None, None);
+    let none = MadeIn::default();
     let script = "@a = wall {\"points\": [[0, 40000], [6000, 40000]]}\nwall {\"points\": [[6000, 40000], [6000, 46000]]}";
     let done = script_for_guest(&mut s, "Bo", script, none.clone(), true).unwrap();
     assert_eq!(done.len(), 2);
@@ -422,7 +430,7 @@ fn a_guests_script_is_one_step_of_theirs_once_its_dry_run_passes() {
 fn a_guest_imports_a_file_of_its_own_through_the_host_which_keeps_nothing_of_it() {
     let mut s = house();
     s.author = Some("Ana".into());
-    let none = (None, None);
+    let none = MadeIn::default();
     let pat = crate::commands::base64(b"*Guest Diagonal, a guest's\n45, 0,0, 0,3.175\n");
     let params = json!({"path": "/home/bo/patterns.pat"});
     assert_eq!(guest_import("import_fill_patterns", &params).as_deref(), Some("/home/bo/patterns.pat"));

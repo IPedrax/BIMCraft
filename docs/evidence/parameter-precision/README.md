@@ -1,6 +1,6 @@
 # Preserve untouched type dimensions — #513 follow-up
 
-**November 21 refresh:** see [the conflict refresh report](refresh-2026-11-21.md) for the current base and headless validation boundary. The original November 18 test-first, visual and runtime evidence below remains historical and tied to its original build.
+**November 25 refresh:** see [the current conflict refresh report](refresh-2026-11-25.md) for the base, units/Angle compatibility checks and headless validation boundary. The [November 21 report](refresh-2026-11-21.md) and original November 18 test-first, visual and runtime evidence below remain historical and tied to their original builds.
 
 BIMCraft Rust v0.12.0, refreshed against upstream `e61e6d6d6999416ea2282de7d3d60b84ccce2401`. Upstream `c4a3fa25` repaired metric field formatting, and `faaee4fa` added project decimal settings. This PR retains those changes and addresses the remaining raw-value/history regressions. There is no new core formatter or precision UI.
 

@@ -37,6 +37,69 @@ fn precision_family_noop_apply_keeps_stored_lengths() {
 }
 
 #[test]
+fn precision_fractional_lengths_survive_unit_changes_noop_history_and_reopen() {
+    let original = 3.000123456789;
+    let mut h = app(&FAMILY.replace("\"value\":3}", "\"value\":3.000123456789}"));
+    h.state_mut().selection = ids(&h, "component");
+    for unit in ["ft-in", "m", "in", "mm"] {
+        h.state_mut().session.execute("units", &json!({"length":unit})).unwrap();
+        h.run();
+        let before = Arc::clone(&h.state().session.model);
+        press(&mut h, "Edit Type");
+        press(&mut h, "Apply");
+        press(&mut h, "OK");
+        assert!(Arc::ptr_eq(&before, &h.state().session.model), "no-op in {unit}");
+        press(&mut h, "Edit Type");
+        type_into(&mut h, "Width", "1 1/8\"");
+        press(&mut h, "Apply");
+        press(&mut h, "Apply");
+        press(&mut h, "OK");
+        assert_eq!(family_value(&h, "Gap"), original);
+        assert_eq!(family_value(&h, "Width"), 28.575);
+        h.state_mut().session.execute("undo", &json!({})).unwrap();
+        assert_eq!(family_value(&h, "Width"), 55.0, "one Undo in {unit}");
+        h.state_mut().session.execute("redo", &json!({})).unwrap();
+        assert_eq!(family_value(&h, "Width"), 28.575);
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("fractional.bimc");
+        h.state_mut().session.execute("save", &json!({"path":path})).unwrap();
+        let mut reopened = Session::new();
+        reopened.execute("open", &json!({"path":path})).unwrap();
+        let values = reopened.model.families["Precision Block"].values("A", &Default::default()).unwrap();
+        assert_eq!(values["Gap"], bimcraft_core::family::Val::Number(original));
+        assert_eq!(values["Width"], bimcraft_core::family::Val::Number(28.575));
+        h.state_mut().session.execute("undo", &json!({})).unwrap();
+        assert_eq!(family_value(&h, "Width"), 55.0);
+    }
+}
+
+#[test]
+fn precision_instance_units_and_angle_keep_upstream_display_and_parsing() {
+    use egui_kittest::kittest::NodeT;
+    let mut h = app(&format!("{FAMILY}\nunits {{\"length\":\"m\"}}"));
+    let id = ids(&h, "component")[0];
+    h.state_mut().selection = vec![id];
+    h.run();
+    assert_eq!(h.get_by_role_and_label(Role::TextInput, "Height").accesskit_node().value(), Some("0.50 m".into()));
+    assert_eq!(h.get_by_role_and_label(Role::TextInput, "Rotation").accesskit_node().value(), Some("0°".into()));
+    type_into(&mut h, "Rotation", "22.5°");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, id, "angle"), json!(22.5));
+    let original_params = field(&h, id, "params");
+    type_into(&mut h, "Height", "1/8\"");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, id, "params")["Height"], json!(3.175));
+    let before = Arc::clone(&h.state().session.model);
+    press(&mut h, "Apply");
+    assert!(Arc::ptr_eq(&before, &h.state().session.model));
+    h.state_mut().session.execute("undo", &json!({})).unwrap();
+    assert_eq!(field(&h, id, "params"), original_params);
+    assert_eq!(field(&h, id, "angle"), json!(22.5));
+    h.state_mut().session.execute("redo", &json!({})).unwrap();
+    assert_eq!(field(&h, id, "params")["Height"], json!(3.175));
+}
+
+#[test]
 fn precision_family_typed_value_survives_repeat_apply() {
     let mut h = family_dialog("m");
     type_into(&mut h, "Gap", "0.003");

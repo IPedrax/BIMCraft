@@ -27,6 +27,9 @@ zune-jpeg = "0.5"
 zune-jpegxl = "0.5"
 zune-core = "0.5"
 jpeg-encoder = "0.7"
+# Draws a PDF's page to place it in a view (Insert > PDF). Its embedded fonts are PDFium's Foxit fonts (BSD-3, in NOTICE),
+# drawn for a PDF's text in the standard fonts it doesn't embed.
+hayro = "0.9"
 # The code pages a DXF's header names: the East Asian ones Latin-1 cannot read.
 encoding_rs = "0.8"
 # Map projections (pure Rust PROJ.4) and EPSG's definitions, for coordinates' WGS84.
@@ -44,6 +47,7 @@ bimcraft-rvt = { path = "crates/rvt" }
 bimcraft-dwg = { path = "crates/dwg" }
 egui = "0.36"
 eframe = "0.36"
+log = { version = "0.4", features = ["std"] }
 egui_kittest = "0.36"
 rfd = "0.17"
 # The system's language, on Windows and macOS too, where no environment variable says it.

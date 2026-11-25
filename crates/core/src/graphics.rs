@@ -136,6 +136,19 @@ pub const SUBCATEGORIES: &[Sub] = &[
     // of the project's own type's swing.
     Sub { key: "dooropening", parent: "door", name: ui_msg!("Opening"), off: false },
     Sub { key: "windowopening", parent: "window", name: ui_msg!("Opening"), off: false },
+    // A framed wall's studs, plates and headers (`crate::framing`): hidden, its structure layer is drawn as an unframed wall's.
+    Sub { key: "framing", parent: "wall", name: ui_msg!("Framing"), off: false },
+    // A framed floor's joists, rims, trimmers, headers and blocking (`crate::framing::floor`) in 3D and sections: hidden, its
+    // structure layer is drawn as an unframed floor's. In a plan they lie under its top: their outlines, hidden lines, are
+    // `floorframingline` (singular, as every key: a trailing s is read as a plural), off unless a plan shows them, as the
+    // framing plan a framer builds the floor from does.
+    Sub { key: "floorframing", parent: "floor", name: ui_msg!("Framing"), off: false },
+    Sub { key: "floorframingline", parent: "floor", name: ui_msg!("Framing Lines"), off: true },
+    // A framed roof's rafters, ridge boards, rims, trimmers, headers and blocking (`crate::framing::roof`) in 3D and sections:
+    // hidden, its structure layer is drawn as an unframed roof's. In a plan of its level, their outlines, dashed, are
+    // `roofframingline`, off unless a plan shows them, as a roof framing plan does.
+    Sub { key: "roofframing", parent: "roof", name: ui_msg!("Framing"), off: false },
+    Sub { key: "roofframingline", parent: "roof", name: ui_msg!("Framing Lines"), off: true },
     // The three origins, as Revit's Site has them: hidden unless a view shows them.
     Sub { key: "internalorigin", parent: "site", name: ui_msg!("Internal Origin"), off: true },
     Sub { key: "projectbasepoint", parent: "site", name: ui_msg!("Project Base Point"), off: true },
@@ -989,7 +1002,7 @@ impl ViewTemplate {
         }
         self.graphics.check(m)?;
         if let Some(r) = &self.view_range {
-            crate::model::range_ok("its", r)?;
+            crate::view_range::range_ok("its", r, true)?;
         }
         Ok(())
     }
@@ -1087,6 +1100,7 @@ pub fn graphics_of_element(e: &Element) -> Option<&Graphics> {
         Element::PlanView(v) => Some(&v.graphics),
         Element::Section(v) | Element::Elevation(v) => Some(&v.graphics),
         Element::View3D(v) => Some(&v.graphics),
+        Element::DetailView(v) => Some(&v.graphics),
         _ => None,
     }
 }
@@ -1094,6 +1108,14 @@ pub fn graphics_of_element(e: &Element) -> Option<&Graphics> {
 /// The scale, 1 : n, view `id` is held at: its own, or its template's where that controls it, else its project units'
 /// default.
 pub fn scale_of(m: &Model, id: impl Key) -> f64 {
+    // A rebar detail has a scale of its own, and no graphics.
+    if let Some(Element::RebarDetail(rd)) = m.elements.get(id) {
+        return rd.scale;
+    }
+    // A detail view stands at the scale it was made at, whatever a template of its parent's says.
+    if let Some(Element::DetailView(v)) = m.elements.get(id) {
+        return v.scale;
+    }
     graphics_of(m, id).map_or_else(|| m.units.default_scale(), |g| g.resolved(m).scale_n(m.units))
 }
 
@@ -1104,6 +1126,7 @@ pub fn graphics_mut(e: &mut Element) -> Option<&mut Graphics> {
         Element::PlanView(v) => Some(&mut v.graphics),
         Element::Section(v) | Element::Elevation(v) => Some(&mut v.graphics),
         Element::View3D(v) => Some(&mut v.graphics),
+        Element::DetailView(v) => Some(&mut v.graphics),
         _ => None,
     }
 }
@@ -1135,6 +1158,14 @@ pub struct Look {
     parts_hidden: Option<u16>,
     /// What the view's rows for a curtain wall's panels and its mullions say.
     parts: [Override; 2],
+    /// How far its halftone lies toward the paper: the project's.
+    fade: Fade,
+    /// Walls > Framing hidden: a framed wall's structure layer is drawn in place of its members.
+    unframed: bool,
+    /// Floors > Framing hidden: a framed floor's structure layer is drawn in place of its members.
+    unframed_floors: bool,
+    /// Roofs > Framing hidden: a framed roof's structure layer is drawn in place of its members.
+    unframed_roofs: bool,
 }
 
 /// The bits of the stair parts graphics `g` hides; with none, those off unless shown.
@@ -1153,15 +1184,39 @@ pub(crate) fn part_row(kind: crate::curtain::PartKind) -> &'static str {
     }
 }
 
-/// `c` halfway to the paper.
-pub(crate) fn halftone(c: Rgb) -> Rgb {
-    let half = |v: u8| v + (255 - v) / 2;
-    Rgb(half(c.0), half(c.1), half(c.2))
+/// How far toward the paper halftone draws, percent, until the project says otherwise ([`Model::halftone`]): halfway.
+pub const HALFTONE: u8 = 50;
+
+pub(crate) fn default_halftone() -> u8 {
+    HALFTONE
 }
 
-/// `c` as a view's halftone draws it.
-pub(crate) fn halftoned(c: Rgb) -> Rgb {
-    halftone(c)
+pub(crate) fn is_default_halftone(v: &u8) -> bool {
+    *v == HALFTONE
+}
+
+/// How far toward the paper halftone draws, percent: the project's ([`Model::halftone`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fade(pub u8);
+
+impl Default for Fade {
+    fn default() -> Fade {
+        Fade(HALFTONE)
+    }
+}
+
+impl Fade {
+    /// Model `m`'s halftone.
+    pub fn of(m: &Model) -> Fade {
+        Fade(m.halftone.clamp(1, 100))
+    }
+
+    /// `c` this far toward the paper.
+    pub fn apply(self, c: Rgb) -> Rgb {
+        let k = u32::from(self.0.min(100));
+        let toward = |v: u8| v + ((u32::from(255 - v) * k) / 100) as u8;
+        Rgb(toward(c.0), toward(c.1), toward(c.2))
+    }
 }
 
 impl Look {
@@ -1194,7 +1249,7 @@ impl Look {
             _ => Seen::ThreeD,
         };
         let forms = crate::family::visibility::FormView { seen, ..look.forms };
-        Look { section: m.section_box(view), display, forms, ..look }
+        Look { section: m.section_box(view), display, forms, fade: Fade::of(m), ..look }
     }
 
     /// How it looks at a family's forms, and at what detail (F8).
@@ -1210,7 +1265,27 @@ impl Look {
     /// Whether it draws a triangle or a solid whose Visibility Settings are packed as `vis`
     /// ([`crate::family::visibility::packed`]): in projection, or (`cut`) as a section's poché.
     pub fn forms_show(&self, vis: u32, cut: bool) -> bool {
-        vis == 0 || self.forms.shows(vis, cut)
+        match crate::family::visibility::framing(vis) {
+            Some(member) if vis & crate::family::visibility::FLOOR != 0 => member != self.unframed_floors,
+            Some(member) if vis & crate::family::visibility::ROOF != 0 => member != self.unframed_roofs,
+            Some(member) => member != self.unframed,
+            None => vis == 0 || self.forms.shows(vis, cut),
+        }
+    }
+
+    /// Whether it draws a framed wall's structure layer in place of its members: Walls > Framing hidden.
+    pub fn unframed(&self) -> bool {
+        self.unframed
+    }
+
+    /// Whether it draws a framed floor's structure layer in place of its members: Floors > Framing hidden.
+    pub fn unframed_floors(&self) -> bool {
+        self.unframed_floors
+    }
+
+    /// Whether it draws a framed roof's structure layer in place of its members: Roofs > Framing hidden.
+    pub fn unframed_roofs(&self) -> bool {
+        self.unframed_roofs
     }
 
     /// How a 3D view draws its edges and shadows: its Graphic Display Options.
@@ -1249,8 +1324,17 @@ impl Look {
     pub fn with(m: &Model, own: &Graphics) -> Look {
         let g = own.resolved(m);
         let forms = crate::family::visibility::FormView { detail: g.detail, ..Default::default() };
-        let mut look =
-            Look { style: g.style, layers: own.layers.clone(), forms, parts_hidden: Some(parts_mask(Some(&g))), ..Look::default() };
+        let mut look = Look {
+            style: g.style,
+            layers: own.layers.clone(),
+            forms,
+            parts_hidden: Some(parts_mask(Some(&g))),
+            fade: Fade::of(m),
+            unframed: g.hides("framing"),
+            unframed_floors: g.hides("floorframing"),
+            unframed_roofs: g.hides("roofframing"),
+            ..Look::default()
+        };
         look.parts = CURTAIN_PARTS.map(|c| g.categories.get(c).cloned().unwrap_or_default());
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
@@ -1363,14 +1447,14 @@ impl Look {
         let Some(o) = self.paint.get(&id) else { return default };
         let base = if self.pattern_style(id, true).is_some() { crate::render::PAPER } else { default };
         let c = o.cut.fill.map_or(base, |[r, g, b]| Rgb(r, g, b));
-        if o.halftone { halftone(c) } else { c }
+        if o.halftone { self.fade.apply(c) } else { c }
     }
 
     /// The colour a 3D view shades element `id` in, `base` unless it says otherwise.
     pub fn surface(&self, id: Id, base: Rgb) -> Rgb {
         let Some(o) = self.paint.get(&id) else { return base };
         let c = o.projection.fill.map_or(base, |[r, g, b]| Rgb(r, g, b));
-        if o.halftone { halftone(c) } else { c }
+        if o.halftone { self.fade.apply(c) } else { c }
     }
 
     /// Whether the view fills element `id`'s surfaces with a colour of its own (its projection's fill), whatever theirs are.
@@ -1383,12 +1467,17 @@ impl Look {
     pub fn edge(&self, id: Id, base: Rgb) -> Rgb {
         let Some(o) = self.paint.get(&id) else { return base };
         let c = o.projection.color.map_or(base, |[r, g, b]| Rgb(r, g, b));
-        if o.halftone { halftone(c) } else { c }
+        if o.halftone { self.fade.apply(c) } else { c }
     }
 
     /// How much of element `id`'s surface a 3D view sees through, percent.
     pub fn transparency(&self, id: Id) -> u8 {
         self.paint.get(&id).map_or(0, |o| o.transparency)
+    }
+
+    /// How far its halftone lies toward the paper.
+    pub fn fade(&self) -> Fade {
+        self.fade
     }
 
     /// Whether it changes anything.
@@ -1414,7 +1503,7 @@ impl Look {
     fn coloured(&self, kind: Option<crate::curtain::PartKind>, id: Id, base: Rgb, pick: impl Fn(&Override) -> Option<[u8; 3]>) -> Rgb {
         let (part, own) = (kind.map(|k| self.part(k)), self.paint.get(&id));
         let c = part.and_then(&pick).or_else(|| own.and_then(&pick)).map_or(base, |[r, g, b]| Rgb(r, g, b));
-        if part.is_some_and(|o| o.halftone) || own.is_some_and(|o| o.halftone) { halftone(c) } else { c }
+        if part.is_some_and(|o| o.halftone) || own.is_some_and(|o| o.halftone) { self.fade.apply(c) } else { c }
     }
 
     /// [`Look::surface`], for what may be a part of a curtain wall.
@@ -1445,45 +1534,47 @@ impl Look {
             let of_sub = owner.zip(sub).and_then(|k| self.sub_paint.get(&k));
             let Some(over) = of_sub.or_else(|| owner.and_then(|id| self.paint.get(&id))) else { continue };
             let style = if *part == Part::Cut { &over.cut } else { &over.projection };
-            match prim {
-                Prim::Line { color, dash, .. } => {
-                    if *part != Part::Pattern
-                        && let Some([r, g, b]) = style.color
-                    {
-                        *color = Rgb(r, g, b);
-                    }
-                    if !matches!(part, Part::Text | Part::Pattern) {
-                        if let Some(p) = style.weight {
-                            *pen = Some(p);
-                        }
-                        if let Some(k) = style.dash {
-                            *dash = k.pattern(paper);
-                        }
-                    }
-                    if over.halftone {
-                        *color = halftone(*color);
-                    }
-                }
-                Prim::Fill { color, .. } => {
-                    if *part == Part::LinePattern {
-                        if let Some([r, g, b]) = style.color {
+            for prim in prim.paint_mut() {
+                match prim {
+                    Prim::Line { color, dash, .. } => {
+                        if *part != Part::Pattern
+                            && let Some([r, g, b]) = style.color
+                        {
                             *color = Rgb(r, g, b);
                         }
-                        if pen.is_some()
-                            && let Some(p) = style.weight
-                        {
-                            *pen = Some(p);
+                        if !matches!(part, Part::Text | Part::Pattern) {
+                            if let Some(p) = style.weight {
+                                *pen = Some(p);
+                            }
+                            if let Some(k) = style.dash {
+                                *dash = k.pattern(paper);
+                            }
                         }
-                    } else if *part != Part::Pattern
-                        && let Some([r, g, b]) = style.fill
-                    {
-                        *color = Rgb(r, g, b);
+                        if over.halftone {
+                            *color = self.fade.apply(*color);
+                        }
                     }
-                    if over.halftone {
-                        *color = halftone(*color);
+                    Prim::Fill { color, .. } => {
+                        if *part == Part::LinePattern {
+                            if let Some([r, g, b]) = style.color {
+                                *color = Rgb(r, g, b);
+                            }
+                            if pen.is_some()
+                                && let Some(p) = style.weight
+                            {
+                                *pen = Some(p);
+                            }
+                        } else if *part != Part::Pattern
+                            && let Some([r, g, b]) = style.fill
+                        {
+                            *color = Rgb(r, g, b);
+                        }
+                        if over.halftone {
+                            *color = self.fade.apply(*color);
+                        }
                     }
+                    Prim::Image { .. } | Prim::Text { .. } => {}
                 }
-                Prim::Image { .. } => {}
             }
         }
     }
@@ -1517,14 +1608,14 @@ pub(crate) mod testing {
 
     /// The primitives `id` owns.
     pub(crate) fn owned(d: &Drawing, id: u64) -> Vec<&Prim> {
-        d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).map(|(p, _)| p).collect()
+        d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).flat_map(|(p, _)| p.paint()).collect()
     }
 
     /// Pen, colour and dash of the lines `id` owns: `u8::MAX` for a line no pen draws (lettering's).
     /// Each line element `id` draws: its pen, its colour and its dashes, px of a sheet's drawing (on the paper, whatever the zoom).
     pub(crate) fn lines(d: &Drawing, id: u64) -> Vec<(u8, Rgb, Option<Vec<f32>>)> {
         let paper = |x: &f32| (x / d.paper() * 100.0).round() / 100.0;
-        (d.prims.iter().zip(&d.owners).zip(&d.pens))
+        (d.paint_prims().map(|(i, p)| ((p, &d.owners[i]), &d.pens[i])))
             .filter_map(|((p, o), pen)| match p {
                 Prim::Line { color, dash, .. } if *o == Some(id) => {
                     Some((pen.map_or(u8::MAX, |p| p.0), *color, dash.as_ref().map(|v| v.iter().map(paper).collect())))
@@ -1538,12 +1629,12 @@ pub(crate) mod testing {
     pub(crate) fn drawn_near(d: &Drawing, at: P2, r: f32) -> usize {
         let (x, y) = d.view.px(at);
         let near = |p: &(f32, f32)| (p.0 - x).hypot(p.1 - y) <= r;
-        d.prims
-            .iter()
+        d.paint_prims()
+            .map(|(_, p)| p)
             .filter(|p| match p {
                 Prim::Fill { rings, .. } => rings.iter().flatten().any(near),
                 Prim::Line { pts, .. } => pts.iter().any(near),
-                Prim::Image { .. } => false,
+                Prim::Image { .. } | Prim::Text { .. } => false,
             })
             .count()
     }

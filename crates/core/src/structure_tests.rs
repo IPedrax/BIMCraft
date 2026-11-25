@@ -243,7 +243,7 @@ fn made(s: &mut Session, id: &str, p: Value) -> u64 {
 
 /// What a drawing draws of element `id`.
 fn of(d: &Drawing, id: u64) -> Vec<&Prim> {
-    d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).map(|(p, _)| p).collect()
+    d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).flat_map(|(p, _)| p.paint()).collect()
 }
 
 /// The box the closed lines and fills of `id` take in the drawing, in model mm: from the south west corner to the north east.
@@ -253,7 +253,7 @@ fn extent(d: &Drawing, id: u64) -> (P2, P2) {
         .flat_map(|p| match p {
             Prim::Line { pts, .. } => pts.clone(),
             Prim::Fill { rings, .. } => rings.iter().flatten().copied().collect(),
-            Prim::Image { .. } => Vec::new(),
+            Prim::Image { .. } | Prim::Text { .. } => Vec::new(),
         })
         .map(|q| d.view.mm(q))
         .collect();
@@ -718,7 +718,7 @@ fn a_project_whose_run_type_is_round_and_not_as_deep_as_it_is_wide_is_refused() 
     let s = Session::new();
     let mut m = (*s.model).clone();
     assert_eq!(m.check(), Ok(()));
-    let t = crate::model::RunType { width: 100.0, depth: 200.0, round: true, material: String::new(), profile: None };
+    let t = crate::model::RunType { width: 100.0, depth: 200.0, round: true, material: String::new(), profile: None, clear_section: None };
     m.types.runs.entry("beam".into()).or_default().insert("Odd".into(), t);
     assert!(m.check().unwrap_err().contains("round section"), "{:?}", m.check());
     // Or of a category that has no runs, or a material the library hasn't.

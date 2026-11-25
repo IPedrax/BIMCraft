@@ -329,15 +329,21 @@ pub fn draw_cancellable(
             };
             let mut d = Drawing::new(view);
             for (((prim, owner), part), pen) in drawing.prims.into_iter().zip(drawing.owners).zip(drawing.parts).zip(drawing.pens) {
-                let prim = match prim {
-                    Prim::Fill { rings, color } => {
-                        Prim::Fill { rings: rings.into_iter().map(|r| r.into_iter().map(to_view).collect()).collect(), color }
+                let mut prim = prim;
+                if matches!(prim, Prim::Image { .. }) {
+                    continue;
+                }
+                if let Prim::Text { frame, .. } = &mut prim {
+                    frame.at = to_view(frame.at);
+                    frame.angle -= turn.to_radians() as f32;
+                }
+                for p in prim.paint_mut() {
+                    match p {
+                        Prim::Fill { rings, .. } => rings.iter_mut().flatten().for_each(|p| *p = to_view(*p)),
+                        Prim::Line { pts, .. } => pts.iter_mut().for_each(|p| *p = to_view(*p)),
+                        _ => {}
                     }
-                    Prim::Line { pts, width, color, dash, closed } => {
-                        Prim::Line { pts: pts.into_iter().map(to_view).collect(), width, color, dash, closed }
-                    }
-                    Prim::Image { .. } => continue,
-                };
+                }
                 d.prims.push(prim);
                 d.owners.push(owner);
                 d.parts.push(part);
@@ -378,6 +384,14 @@ fn restyle(m: &Model, u: &Underlay, raw: Drawing, view: View) -> Drawing {
         }
         let pattern = matches!(part, Part::Pattern | Part::LinePattern);
         let prim = match prim {
+            Prim::Text { frame, layout, mut fallback } => {
+                for p in &mut fallback {
+                    if let Prim::Fill { color, .. } | Prim::Line { color, .. } = p {
+                        *color = ink;
+                    }
+                }
+                Prim::Text { frame, layout, fallback }
+            }
             Prim::Fill { rings, .. } if text => Prim::Fill { rings, color: ink },
             Prim::Fill { rings, .. } if u.fills && pattern => Prim::Fill { rings, color: fill },
             Prim::Fill { rings, .. } if u.fills => Prim::Fill { rings, color: fill },
@@ -478,4 +492,35 @@ pub fn check(m: &Model, target: Id, u: &Underlay) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod text_carrier_tests {
+    use super::*;
+
+    #[test]
+    fn text_carrier_underlay_keeps_paint_and_hides_annotation() {
+        let m = crate::engine::Session::new().model;
+        let view = View { scale: 1.0, cx: 0.0, cy: 0.0, width: 200, height: 100, angle: 0.0 };
+        let layout = crate::text::layout(&crate::text::TextType::default(), "Notes", &[]);
+        let make = |wrapped: bool| {
+            let mut d = Drawing::new(view);
+            render::lettering(
+                &mut d,
+                &layout,
+                render::NoteFrame { at: (10.0, 10.0), k: 5.0, angle: 0.2 },
+                Rgb(COLOR[0], COLOR[1], COLOR[2]),
+            );
+            if !wrapped {
+                d.prims = d.prims.iter().flat_map(Prim::paint).cloned().collect();
+                d.parts = vec![Part::Text; d.prims.len()];
+                d.owners = vec![None; d.prims.len()];
+            }
+            d
+        };
+        let mut u = Underlay { fills: false, hide_annotation: false, ..Underlay::of(m.guid(100000)) };
+        assert_eq!(render::svg(&restyle(&m, &u, make(true), view)), render::svg(&restyle(&m, &u, make(false), view)));
+        u.hide_annotation = true;
+        assert!(restyle(&m, &u, make(true), view).prims.is_empty());
+    }
 }

@@ -76,6 +76,16 @@ the element's own override). Object Styles has a row for each (`styles::model_su
 Doors > Opening), drawing in its category's pens until given its own (`styles::inherited`). Rooms' subcategories have no Object
 Styles row. Revit's Plan Swing and Elevation Swing aren't rows: BIMCraft has no elevation symbols, and the swing is Opening. A view,
 template or Object Styles naming either key is part of what FORMAT 18 says an older build would refuse.
+Walls > Framing (`framing`) is a framed wall's members ([wood framing](structure-and-mep.md#wood-framing)): shown, the 3D view
+and sections draw the members and not the structure layer they stand in, and a plan at medium or fine detail clears that layer's
+band and fills and outlines the members its cut plane crosses (coarse draws the wall as before); hidden, the layer comes back.
+Floors > Framing (`floorframing`) is a framed floor's joists, rims, trimmers, headers and blocking in the 3D view and sections, in
+place of its structure layer (hidden, the layer comes back whole); Floors > Framing Lines (`floorframingline`), off unless a view
+shows it, draws their outlines dashed in a plan, as hidden lines under the floor's top: the framing plan. It is a subcategory of
+its own because the joists drawn on every plan would hatch the floor, and one key can't be on in 3D and off in plans.
+Roofs > Framing (`roofframing`) and Roofs > Framing Lines (`roofframingline`, off unless a view shows it) are the same for a
+framed roof's rafters, ridge boards, eave boards, trimmers, headers and blocking ([roofs](structure-and-mep.md#roofs)): in place
+of its structure layer in 3D and sections, and dashed in a plan of the roof's level, the roof framing plan.
 The `sheet` command takes a named `size` (A3 by default), landscape: ISO A0–A4 and B1–B4, ARCH A–E and E1–E3, ANSI A–E and Super B
 (13 × 19 in). ISO, ARCH and ANSI accept a space or none (`ISO A4`, `ISOA4`, `ARCH E2`, `ARCHE2`); ISO also accepts the bare name
 (`A4`, `B1`). ANSI A also accepts `LETTER`, ANSI B `TABLOID` or `LEDGER`. Super B accepts `SUPER B`, `SUPERB` or `SUPER-B`. Names
@@ -212,10 +222,12 @@ at most `MAX_LINEWORK` (2,000) edges, ends within `MAX_COORD`, and a line style 
 lines along all its edges in one pass (`render::linework`: the cost is the prims plus the edges, not a pass over every prim for
 each edge). A line style a view's linework uses can't be deleted, and an element's entries go with it.
 
-Drawing labels (for example grid heads) use `font.rs`'s single-stroke capitals, including leaning prime and double-prime
-marks and the ellipsis. Unsupported characters retain the question-mark fallback; `Drawing::notes` and the `render`
-reply's `notes` name their Unicode code points once per drawing, up to the drawing's 32 diagnostic entries. Text notes
-use the separate font fallback below, so a character outside the drawing lettering does not by itself warn for a note.
+Drawing labels (for example grid heads) use `font.rs`'s single-stroke capitals: Latin with its accents, Russian and
+Ukrainian Cyrillic (Ґ, Є, І, Ї), digits, leaning prime and double-prime marks and the ellipsis. A character it has no
+glyph for retains the question-mark fallback; `Drawing::notes` and the `render` reply's `notes` name the character and
+the label it stands in (up to 40 characters), once per drawing each, up to the drawing's 32 diagnostic entries. Text
+notes use the separate font fallback below, so a character outside the drawing lettering does not by itself warn for a
+note.
 
 Text notes and text types (`text.rs`). A `Note` is drawn in one view, as a detail line is, and is of a text type
 (`Model::text_types`, library entries of `Kind::TextType`, so a file names a note's type by GUID and `rename_entry` follows a
@@ -244,9 +256,10 @@ slanting it. A character a face hasn't is lettered from Plex Sans, then Plex Mon
 lets its `runs` (character ranges, a line break one character) count, each setting any of the three either way, so a part
 stays bold, or not, whatever type the note gets. `modify` with new `text` alone keeps the runs on what didn't change
 (`text::remap`: the common start and end keep theirs, what came in takes the format before it). `text::layout` lays a note out
-in mm on paper (lines `LINE_PITCH` sizes apart, each character's place and width), which `render::note` draws (each letter a
-`Prim::Fill` of rings filled by the non-zero rule, our lettering and Plex Mono's bold as lines, underlines as lines; `Part::Text`)
-and which the desktop's editor reads for its caret, its selection and a click's place (`Layout::caret`, `boxes`, `index_at`;
+in mm on paper (lines `LINE_PITCH` sizes apart, each character's place and width), which notes and title blocks carry in
+`Prim::Text` with placement and exact fallback paint (letters as non-zero `Prim::Fill` rings, our lettering, Plex Mono's bold
+and underlines as lines; `Part::Text`). Existing painters draw that fallback. The desktop's editor reads the layout
+for its caret, its selection and a click's place (`Layout::caret`, `boxes`, `index_at`;
 `Drawing::note_frame` turns layout mm into the drawing's pixels and back). The canvas fills a letter, holes and all, from
 `text::triangles` (strips between every corner's and crossing's height), kept by its points for the frames that draw it again.
 A file of format 7 has notes with a `size`: reading it gives each a type of that size (`Model::typed_notes`), and `Model::check`
@@ -694,11 +707,14 @@ The reference workflows are Autodesk's [fill layers](https://help.autodesk.com/c
 and [sketch snaps](https://help.autodesk.com/cloudhelp/2022/ENU/Revit-Customize/files/GUID-A3947840-1F30-41D7-AF75-B61687952A07.htm).
 Boundary weights follow each boundary line's style. See also Autodesk's [region masking behavior](https://www.autodesk.com/support/technical/article/caas/sfdcarticles/sfdcarticles/Filled-Region-with-solid-fill-does-not-cover-all-elements-in-Revit.html).
 
-A material's cut and surface may be one of the project's fill patterns (`Material::cut_pattern`, `surface_pattern`, a
+A material's cut and surface each have a foreground and a background ([materials](materials.md)). Either may be one of the project's fill patterns (`Material::cut_pattern`, `surface_pattern`, a
 library reference like a region type's), over the patterns drawn in code (`model::Pattern`), which stay for the materials
 that name them: `material` takes either name for `cut` and `surface`, and the desktop's material editor lists both. A fill
 pattern a material shows can't be deleted, and is renamed with it. `render::fill_pattern` draws a fill pattern for a
-region, a cut layer (its courses along the layer) and a floor's or a ceiling's surface. A model pattern is aligned and
+region, a cut layer and a floor's or a ceiling's surface. A wall's cut layer in a plan lies on the project's axes from its
+origin, not along the wall (`render::cut_layer` takes `P2(1, 0)` there, as a section already did), so walls of one material show
+one hatch that runs on through their corners whichever way each wall runs; a floor's or a roof's layer in a section still runs along
+its slope. A model pattern is aligned and
 rotated as Revit's: a filled region and a floor hold `pattern_origin` and `pattern_angle` (`fills::strokes_placed`), which
 Move, Rotate and Mirror carry with the element; Align with a pattern line picked second (`render::pattern_line_at`) moves the
 origin so that line lies on the reference, and Properties shows Pattern Angle. `Model::align_pattern(id, reference, line)` is
@@ -706,6 +722,41 @@ that arithmetic (the origin moved across by the gap between the two parallel lin
 element has no model pattern, or the lines aren't parallel or have no length), so every front end gets the same answer and
 sets it with `modify`. `pattern_origin` and `pattern_angle` are in the `modify`, `filled_region` and `floor` command docs, and
 `elements` shows them for a region and a floor even at their defaults.
+
+## View range and the underlay
+
+A plan's view range (`view_range.rs`; `Level::view_range`, `PlanView::view_range`, a template's `view_range`) is Revit's: four planes,
+each a level (`Base`) and an offset over it. `associated` is the plan's own level, `above` and `below` the next level up or down (none
+there: no limit), `{"level": guid}` a level by name, `unlimited` no limit (the top up, the bottom and the view depth down, infinite in
+`PlanRange`). The cut plane is always over the plan's own level. The fields are `top`, `cut`, `bottom`, `depth` (mm) and `top_from`,
+`bottom_from`, `depth_from` (written only when not `associated`); a top with no offset and no base is the level above, as files have
+always said (`ViewRange::plane`, `with`). `Model::plan_range` turns it into heights (`range_heights`, `plane_height`). `Model::check`
+keeps the planes in order in every plan as its template or its own range has them (`check_range`): top ≥ cut plane ≥ bottom ≥ view
+depth, an unlimited bottom taking an unlimited view depth; the level above as the top may still be under the cut plane, which then
+shows nothing over it, as before. A plan's planes may name any level, which `visit_refs!` lists; `delete` measures a plane whose level
+goes from the plan's own level at the height it was (`view_range::rebased`). A template's planes never name one (`range_ok` with
+`template`): it serves every storey, each plan measuring from its own level, and a template made from a plan takes its range so
+(`view_range::relative`).
+
+What a plan draws of an element follows where its heights stand in the range (`PlanRange::zone`, `Zone`): over the cut plane and
+under the top, only doors, windows, casework and generic models (`shown_over_cut`), and the dashed overhead lines of roofs, runs and
+bars; a door or a window all over the cut in a wall the plane cuts is drawn by its jambs and a line between them, the wall not opened
+(`render::opening_over`). What the plane passes through is cut. What lies under it with its top at or over the bottom is seen in
+projection (a floor whose top touches the bottom too). What lies under the bottom with its top over the view depth is the underlay:
+drawn as it would be, then every line and fill of it lightened (`Drawing::fade_owned`, after `Look::dress`). Walls, columns, runs,
+floors, components, curtain walls, roofs, toposolids, railings and ramps of every level are drawn by their heights so; stairs keep
+their storeys' own display.
+
+Halftone is how far toward the paper (`Model::halftone`, 1 to 100 percent, 50 as a project starts; `graphics::Fade`): the underlay,
+Visibility/Graphics' Halftone, a link and a stair's halftone part all take it (`Look::fade`). The `halftone` command sets it, and Manage >
+Annotation Settings > Halftone/Underlay is its slider (`crates/ui-egui/src/halftone.rs`). The desktop's View Range dialog
+(`crates/ui-egui/src/viewrange.rs`, Properties' View Range: Edit…, and the template editor's View Range row) shows each plane as a list
+of what it is measured from and its offset, under a picture of the four planes (`assets/help/view-range.jpg`, the project's own).
+One plan's lists are its levels by name and Unlimited (`Mode::Plan`: its own level is written as `associated`, the level above and
+below by name); plans picked together and a template's are Associated Level, Level Above or Below, and Unlimited (`Mode::Relative`),
+each plan measuring from its own level. A plan following a template that controls its range shows it greyed, the template named.
+An order the core refuses names the plane out of place and the one it crosses, each where it is (`view_range::clash`): "the bottom
+(+2000 over the plan's level) is above its cut plane (+1200 over the plan's level): the bottom can't be higher than the cut plane".
 
 ## Reference planes in views
 
@@ -737,7 +788,87 @@ link at the height of one of the project's (1 mm) is that level, another comes i
 them without knowing: `Look::with` makes a linked id halftone, and picking never answers one (`Drawing::pick_all`, `in_box`, `Image::pick`,
 `in_box`, `shows` and `Mesh::pick` leave them out). The commands that make an image (`render`, `save` to svg, png or pdf) draw `seen`; the desktop's
 `view_model` does, cached by the project's `Arc`. The schedules, `Model::check`, IFC and every command that edits work on the project itself.
-To do: shared coordinates, a link's graphics overrides and visibility per view, hosting on a linked wall, unloading.
+To do: a link's graphics overrides and visibility per view, hosting on a linked wall.
+
+### Manage Links
+
+`links {kind?}` (`link/manage.rs`) lists, as Revit's Manage Links does, every file the project reads from elsewhere, a tab for
+each kind: `projects` and `ifc` (links, by their path's extension), `cad` (`Model::cads`, linked or imported), `clouds`, `models`
+(families made by `import_mesh`, which keep `Family::source`: the file's absolute path, the object, the OBJ's units and up, and
+the point the family stands on in the file), `images` (the pictures placed in plans, a row for each picture and file) and `pdf` (the PDFs' pages placed, the same way). There's one row for each file, as Revit
+lists a link's type: `path` as kept, `path_type`, `resolved` (relative to the project's file), `status` (loaded, not loaded,
+unloaded, not found, imported) and its `instances` with their `ids`.
+
+`unload {id}` sets `Link::unloaded` on every link of that file and drops it from `loaded`. It's an undo step, and it's kept in
+the file, so `open` (`relink`) doesn't read the link. `reload {id}` loads it again, and `reload` without an id reads only the
+loaded links. `reload_from {id, path}` points every link of the file at another and reads it; a file that can't be read
+refuses the command. `reload_cad {cad, path}` is a drawing's Reload From, which links an imported drawing from then on.
+`reload_mesh {path, from?}` rebuilds each family of a 3D model from the object of its name, about the point it stood on, so
+its components stay. The window is `crates/ui-egui/src/manage_links.rs` (Insert > Link);
+tests are `links_tests.rs` and `tests/manage_links.rs`.
+
+### Images in plans
+
+`image {path | picture, level?, view?, at?, width?, link?}` places an `Element::Image` (`model::PlacedImage`), as Revit's Insert >
+Image and Link Image do: a picture of `Model::images` (`texture::Picture`, the one store pictures have, so the same pixels are one
+picture, at most `MAX_SIDE` px a side and `MAX_IMAGES` of them) with its middle on `at` on a level, `width` mm across and as tall as its
+pixels say, in every plan of its level or one (`view`). `render::images` draws it under the CAD drawings and the model: the
+picture's nearest pixel to each of the view's, clipped to the view, as one `Prim::Image` owned by the element, so it's picked,
+moved (`transform` moves its middle; a turn keeps it upright, a mirror is refused) and deleted as any element. Linked, it keeps
+its file (`path`), which `reload_image {id, path?}` reads again for every image of that picture and file, and Manage Links lists on
+its Images tab; the picture it showed goes when nothing else shows it. The Asset Manager lists it among the picture's users.
+A picture placed is kept up to `texture::MAX_PLACED_SIDE` (4096 px) a side, where a material's is kept to `MAX_SIDE` (1024):
+`Picture::import_at`. A file that fits is kept byte for byte, so a JPEG stays the JPEG it came in as (`Picture::is_jpeg`), as
+small as it was; one halved to fit is written again as what it was (a JPEG at quality 90 through jpeg-encoder, or a PNG). A
+project file holds either under the picture's `png` key, which every version reads (both are known by their first bytes).
+
+A PDF's page is placed the same way, as Revit's Insert > PDF: `image {path: "….pdf", page?}` draws page `page` (from 1) through
+`pdf_in.rs` and hayro (Apache-2.0 OR MIT), over white at up to 150 dpi and 4096 px a side. Unless `width` says, it stands at its paper's size at the plan's
+scale (`graphics::scale_of`), so a drawing printed at that scale lies true over the model. `PlacedImage::page` keeps the page,
+which `reload_image` draws again; Manage Links lists it on its PDF tab. A file past `pdf_in::MAX_BYTES`, an encrypted one, or a
+page it hasn't is refused. `pdf_pages {path}` lists a PDF's pages and their paper sizes, which the desktop's Insert > PDF asks
+from when there is more than one (`mesh.rs`, `PdfPageBox`): each page a card with its picture, drawn small on a thread of its
+own by `pdf_in::thumbnails` (up to `MAX_THUMBNAILS`, stopped when the box closes), so a long PDF never holds the window up.
+A PDF's page stands as tall as its paper's aspect says (`PlacedImage::height`), not its picture's, which whole pixels round.
+
+A PDF's page is drawn as vectors, not as its picture: `pdf_in::drawing` runs hayro's interpreter into a `Device` of its own
+(`Collect`) that keeps each path filled or stroked (flattened to 0.05 pt, with its colour, width and dashes), each glyph as the
+fill of its outline, and each raster picture in the page with its transform, up to `pdf_in::MAX_POINTS` points (past that, and
+for patterns, shadings and stencils, the drawing says `cut_short`). The project keeps the PDF itself (`Model::pdfs`, a
+`PdfDoc` keyed by the id of the page's picture in `Model::images`: deflated, as base64, read again when the project opens),
+and `render::pdf_page` draws its items into the plan each time, a line as wide as it prints at the image's size (a pixel at
+least), a picture in it resampled through its transform. The picture of the page (drawn at up to 2048 px) stays beside it,
+which an older version, leaving `pdfs` out of a file, shows instead.
+
+Its fills are drawn by the non-zero rule, as every output fills (PNG, SVG, a sheet's PDF, and the window, which takes a placed
+image's shapes as `render::Part::Picture`, fills them as it fills a letter and feathers every edge half a point each side,
+`canvas::feather`: a mesh has no anti-aliasing of its own, and without it a stroke thinner than a pixel, a serif letter's bars
+at a plan's zoom, showed or vanished by where it fell between pixels): a glyph's counters stay open as
+they're wound, and an even-odd fill's rings are wound again by how many of the others each lies in (`pdf_in::wind_even_odd`),
+so a frame's opening stays open too. Text is its fonts' own outlines where the PDF embeds them, as most do (a subset of each).
+A font it only names comes from `pdf_in::interpreter`'s resolver: one of PDF's standard families (Helvetica or Arial, Times or
+Times New Roman, Courier or Courier New) is this computer's font of it or one drawn to its widths (`text::system::substitutes`:
+Liberation, Arimo), a CID font is looked for by its own name (`pdf_in::system_font`, its PostScript name read as a family by
+`family_of`), and else hayro's Foxit fonts (BSD-3, in `NOTICE`) draw it. hayro reads an ordinary font of another family in the
+standard one nearest it whatever the computer has, so such a font, and a CID font the computer hasn't, is a stand-in: the page's
+resources name them (`pdf_in::stand_ins`), `image` and `reload_image` return them as `missing_fonts`, `elements` shows them, and
+the desktop says so on placing it and shows them in Properties (Fonts Substituted). It is decided where the project is open:
+the project holds the PDF, never a font. In the window a selected or hovered image keeps its own colours under a light tint
+over its whole page, and a selected one is outlined (`image_grips.rs`, `image_frames`).
+
+With `snaps` (Properties' Snap to Its Lines, a PDF's only) a placed PDF is snapped to as a CAD import is: `snap::pdf_scene`
+gives the straight edges of its strokes and of the shapes it fills near the cursor, their ends and middles, and an edge
+shorter than 2 points (a step of a curve followed) its line alone; a glyph's fill (`Item::Fill::letter`) gives nothing, so
+text doesn't crowd the snaps.
+
+An image draws under the model, or over it with `front` (Properties' Draw in Front of Model): `render::images` runs twice, under
+the CAD drawings and after the model. `flip_x` and `flip_y` are what `mirror` makes of it about an upright or a level line (a
+slanted axis is refused: it stands square to the plan). `modify` takes its `width`, and for its size two keys that aren't
+fields: `height`, and a PDF's `scale` (1 : n, its paper's size n times), each setting the width at its aspect; `elements` shows
+a PDF's `paper` and `scale`. In the desktop its corners are grips (`image_grips.rs`): a drag resizes it about the corner
+across, keeping its aspect, and the Modify tab offers only Move, Copy, the Mirrors and Delete while images alone are
+selected. Tests: `image_tests.rs`, `tests/manage_links.rs`. Still to come: on sheets and in sections, turned, and a PDF's clip
+paths (everything on a page is drawn, clipped or not).
 
 ## Grid types
 
@@ -791,12 +922,29 @@ unchanged. See [vertical drawing tools](desktop.md#drawing-tools-in-sections-and
 A dimension (`Dimension`, the `dimension` command) measures the model as it is, so it follows what it measures. Its `refs` are lines
 (`Reference {id, face}`: a wall's centre line, faces and ends, a door's or window's centre and jambs, a column's or structural column's two
 centre lines, along its angle and across it (`Face::Across`, file format 18), its left and right faces and its start and end caps (`Model::column_reference_line`;
-a round one has only its centre lines), a grid, a straight detail line) or, with
+a round one has only its centre lines), a grid, a straight detail line, a component's reference planes) or, with
 `point: start|end`, the point at that end of one (`Model::reference_point`: a wall's centre line ends where its location line does, a face where
 the outline turns off it, so at the mitred corner; a detail line of any shape at its ends; `reference_points` lists them, `endpoint_at` finds the
 nearest, `{endpoint: [x, y]}` in a command). A point given to the command finds what the plan of its level draws (`commands::near_point`): the
 walls its cut plane passes through (`Model::cut_by`) and the columns (`Model::column_cut_by`, the plan's own test, so a column standing on a level
-below that runs up through the cut is one), their doors and windows, the grids and the plan's detail lines. `reference_geometry` gives either as
+below that runs up through the cut is one), their doors and windows, the grids, the components on the level and the plan's detail lines.
+A component is measured as Revit measures a family instance, by its family's reference planes (`Model::component_reference_lines`, issue
+537): those that stand upright, seen edge on in plan, and are a reference (Strong, Weak or one of the named sides and middles, never Not a
+Reference), each where it stands for the component's values (`Family::flexed`), mirrored, turned and moved with it as its symbols are. Its datums
+are its centre lines, `Centre` along it (Center (Front/Back)) and `Across` (Center (Left/Right)), as a column's; any other plane is
+`Face::Plane(GUID)`. Where planes lie over each other, a point and the Dimension tool take a strong or named one before a weak one, as
+Revit prefers the strong reference. A component tilted off the plan or placed by adaptive points has none. The reference names the plane
+by its GUID, so a family loaded again (`family {path | definition, overwrite}`) keeps the project's dimensions to every plane it gives
+again with its GUID, wherever that plane now stands and in whatever order; a plane given with no GUID takes the one of the plane at its
+place before (`library::keep_parts`), so a publisher writes them. A load that takes away a plane a project dimension measures to, or makes
+it Not a Reference or tilts it, is refused whole, naming the dimension; `invalid_dimensions` deletes only the family's own. A linked model's element is
+measured as Revit measures into a link: the reference keeps the link (`Reference::link`, the project's element) and the element's
+GUID in the linked file, which never change, so it survives the link moved, reloaded or linked twice (`link::origin_of` finds them
+for an element the views bring in, whose id there, from `LINKED` up, is given anew each time). It is measured in the link's model
+and placed as the link stands (`Model::link_map`, the views' own `link::placement`). It only measures: no locks, no equality, no
+alignment, and only in a plan. `visit_refs` gives the link for it, so taking the link away takes its references (a dimension left with
+one goes), and `Model::check` keeps a dimension whose link isn't loaded, or whose element is gone, undrawn rather than refuse the
+project. A point given to the command is found in the views' model (`link::seen`), linked walls and all. `reference_geometry` gives either as
 a line, a point as a line of no length, and `crossings` lays
 them along the way the dimension measures (`measured_along`): a linear one's `orient` (horizontal or vertical), else square to its first line,
 else from its first point to the next elsewhere. `Model::check` refuses a line not parallel to the first, or not square to a linear one's line,
@@ -912,6 +1060,26 @@ project's language (`Language::word`, the project catalogs). Their numbers are u
 changes how the sheets of its papers are drawn, so `sizes: []` leaves it for the sheets that name it; two blocks that list one paper
 are told in the reply's `notes`, and the one named first wins.
 
+**Logos.** A title block holds up to 8 logos (`logos`: `Logo`, a picture of the project's, its bottom left corner and its size in mm from the
+title block's corner), drawn under its lines and lettering as an image a pixel to a pixel at the sheet's density (`Picture::rgba`: the
+smallest level of the picture's mip chain that is wide enough, blended bilinearly, 5 px a mm, so a logo prints at about 127 dpi: a
+vector logo, from a DXF hatch, stays sharp). `title_block {logos: [{path, at, width}]}` reads a PNG or a JPEG into the project's pictures
+(`Model::images`, up to 24 shared with textures, each kept once by its hash; a transparent PNG is kept over white, as a texture's is), or
+places one the project holds by its `image` id; one of `width` and `height` keeps the picture's proportions, and a logo is at most 250 mm
+a side. The list replaces the block's; `[]` takes them all away, and `prune_images` then drops a picture no texture and no logo uses.
+`Model::check` refuses a logo of a picture the project doesn't hold, the library's references (`lib_refs_mut`) count a logo's picture as
+used (Purge Unused leaves it, Insert from File brings it), and a copy of a title block (`like`) carries its logos. In the desktop, the
+Logos tab of View > Title Blocks lists them (X, Y, Width, Height, Remove logo) and Add Logo… reads a file, placing it 30 mm wide in the
+bottom left corner to be moved; the preview shows them. No SVG: an SVG logo goes in as a PNG, or as a DXF the title block is read from.
+
+**Presets.** A title block is kept for every project as a favorite (`favorite {kind: "title_block"}`: `save` a project's block, `as` another
+name, `load` it into a project, `as` another name or `replace`, `delete`, and `list` says each one's size, papers and number of logos). The
+user's favorites file (`favorites.rs`: `TitleBlockEntry`, the block and the pictures of its logos by id, so it comes into a project whole,
+and a logo's picture once however many blocks use it; `check` refuses a logo of a picture the file lacks) writes `title_blocks` only when
+there are some, so a file of materials and families is still one an older version reads. In the desktop, View > Title Blocks has Save to
+Favorites (what was typed is applied first), and the Favorites window's Title Blocks tab adds one to the project (as `Name 2` when the project
+has that name) or removes it.
+
 `title_block` makes, edits, renames and deletes them (one a sheet is drawn with can't go), starting a new one as the built-in box drawn
 as one; with `path` it reads a DXF (or a DWG, through the session's reader) drawn at full size on paper in its model space: lines, arcs,
 circles and polylines as lines, in the pen nearest their weight, solid hatches as fills, texts as texts, moved to the corner of their
@@ -939,6 +1107,54 @@ key beside it, with Make Text (`TitleBlock::make_text`: back to plain text, the 
 text has Make Field, keyed by what it says (`TitleBlock::free_key`, numbered past the keys there are) as each sheet's. An
 MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
 ordinals º and ª.
+
+## Callout: detail views and callouts
+
+A Callout (`detail_view`, `model::DetailView`, category `detail`) is a fragment of a plan, section or elevation shown
+larger. In the interface it is called **Callout**, as in Revit; on the ribbon it is **View > Create > Callout**, and in the
+browser it is the **Callouts** group with a subgroup for each parent view. The model keeps its parent (`parent`), the
+fragment rectangle (`region`) and its own scale (`scale`, 1…50, 5 by default); old projects open without migration,
+because it is a new view, not a change to the existing ones. `region` is in the parent's coordinates: the south-west and
+north-east corners of a plan, or its distance along the line from its start and its heights for a section or an elevation.
+`elements` gives `kind: "detail"`, `parent`, `parent_id`, `region`, `scale` and `number`.
+
+Rendering uses the same pipeline as the parent (`render::detail`, `render::detail_at`). A detail of a plan is drawn by
+`draw_plan` with the detail itself as the key: `Model::plan_level` follows the parent's level, `crop_of` gives `region`,
+and `graphics_of` and `scale_of` give the detail's settings. So everything the detail shows is cropped to the fragment,
+and its annotation (`text`, `detail_line`, `filled_region`, `dimension`, `repeating_detail`) is kept in the parent's
+coordinates and follows the model. A detail of a section or an elevation is built by `Model::section_geometry`: the parent
+line is cut by `region` horizontally and by `crop` in height; `section_finish` shifts annotation by the start of the
+region, so it stays in the parent's coordinates. `drawing_plane` uses the parent's line for such a detail.
+
+On the parent, a Callout shows the **fragment boundary** — the `region` rectangle — and its mark (`render::detail_boundary`,
+`render::detail_mark`): an 8 mm circle on the paper with its number (`number`, such as `D-03`) and a leader that leaves the
+mark and **stops on the boundary**, never running on to its middle. The mark's position is kept in `DetailView::mark` (in
+the parent's coordinates); without one it stands at the north-east corner. The mark can be dragged, and the leader follows
+it to the boundary.
+
+The boundary is editable on **both** views: on the parent and on the Callout's own view. A selected Callout shows four edge
+grips; dragging a grip changes `region`, and so both the boundary on the parent and the area the Callout shows. Dragging
+the boundary or the mark moves `region`/`mark`; annotation inside the Callout stays in the parent's coordinates. The mark
+and boundary belong to the view, not to the model, so they never reach a schedule. A number may be given by hand, else it
+is taken in order (`D-01`, `D-02`, …). `modify {region}` moves the fragment; the crop and the mark follow. Deleting a
+Callout removes its mark and boundary; deleting its parent removes the Callout and everything drawn in it.
+
+The mark shows the view's name (`View Name`) without the automatic number prefix: `D-01 Corner` reads as `Corner`, and a
+renamed view shows its new name at once. The number stays a separate `number` field in Properties.
+
+A Callout's scale is changed as any other view's: the **Scale** bar at the foot of the view and **Properties → Graphics →
+View Scale** — a drop-down, with the `Scale Value 1:` field beside it. It is kept in `DetailView::scale` (1 : n), and
+`graphics::scale_of` gives it to everything that reads a view's scale; sheet viewports follow it as they do for a plan,
+section or elevation.
+
+The manual **Callout** tool asks for two opposite corners of the fragment on a plan, section or elevation. The scale
+`1 : n`, name and number are set in the Options Bar; after the second click the view is made, and the boundary and mark
+appear on the parent.
+
+On a sheet a detail takes `region / scale` paper millimetres (`sheet::framing_in` through `render::detail_extent`), is
+placed by `place` as any view, is titled with its name and scale and prints to PNG/PDF; `render {view}` draws the detail
+itself (`detail plan` or `detail section`). The Project Browser lists Callouts in the **Callouts** group; a detail of a
+plan opens as a plan, and a detail of a section as a section.
 
 ## Elevations that look at a reference
 

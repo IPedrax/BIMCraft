@@ -365,6 +365,9 @@ pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) -> Vec<Str
     let gone = |now: &serde_json::Map<String, Value>, key: &str| -> Vec<String> {
         was(key).into_iter().filter(|(k, _)| !now.contains_key(k)).map(|(k, _)| k).collect()
     };
+    // The voltages the project's systems name before the codes change.
+    let named_before: std::collections::BTreeSet<String> =
+        m.distribution_systems.values().flat_map(|d| d.voltage_names().cloned()).collect();
     // What elements name, the systems' voltages aside.
     let mut boards_on = std::collections::BTreeSet::new();
     let mut circuit_voltages = std::collections::BTreeSet::new();
@@ -489,6 +492,17 @@ pub(crate) fn from_codes(m: &mut Model, before: &crate::codes::Codes) -> Vec<Str
             full.push(format!("wire type `{k}`"));
         }
     }
+    // One a system named before the codes changed, that no system names now, no code names and a new project lacks (a
+    // voltage renamed under a system kept for its board, that system now the codes' own again): nothing holds it any more.
+    // One no system ever named (a project's own, an older file's) is left as it is.
+    let named_now: std::collections::BTreeSet<String> = m.distribution_systems.values().flat_map(|d| d.voltage_names().cloned()).collect();
+    m.voltages.retain(|k, _| {
+        voltages.contains_key(k)
+            || starter().voltages.contains_key(k)
+            || !named_before.contains(k)
+            || named_now.contains(k)
+            || circuit_voltages.contains(k)
+    });
     full
 }
 
@@ -527,7 +541,16 @@ fn unsupplied(m: &Model, before: &crate::codes::Codes, codes: &crate::codes::Cod
 /// the project has (a system naming none would never reach the project's settings, and a voltage taken away under a system
 /// leaves it naming nothing), and none an element names is set to null (a board's system, a circuit's voltage or wire type),
 /// as the dialog's commands refuse to take those away.
-pub(crate) fn settings_fit(m: &Model, before: &crate::codes::Codes, codes: &crate::codes::Codes) -> Result<(), String> {
+///
+/// `asked` is what the command took away by name, `(section, name)`: one an element names that was in force is refused
+/// when what is in force for it changes, however the codes now hold it (left out by an amendment that alone gave it, or
+/// another layer's rules coming through), so the element keeps the setting it was given.
+pub(crate) fn settings_fit(
+    m: &Model,
+    before: &crate::codes::Codes,
+    codes: &crate::codes::Codes,
+    asked: &[(String, String)],
+) -> Result<(), String> {
     use crate::codes::Discipline::Electrical;
     let mut named: [std::collections::BTreeSet<&str>; 3] = Default::default();
     for e in m.elements.values() {
@@ -544,9 +567,15 @@ pub(crate) fn settings_fit(m: &Model, before: &crate::codes::Codes, codes: &crat
     }
     for (key, named) in SECTIONS.iter().zip(&named) {
         let was = crate::codes::resolve_in(before, Electrical, key).value;
-        for (k, v) in crate::codes::resolve_in(codes, Electrical, key).value {
-            if v.is_null() && named.contains(k.as_str()) && was.get(&k).is_none_or(|w| !w.is_null()) {
-                return Err(format!("`{}` of {key} is one an element of the project names: change that first", shown(&k)));
+        let now = crate::codes::resolve_in(codes, Electrical, key).value;
+        for (k, v) in &now {
+            if v.is_null() && named.contains(k.as_str()) && was.get(k).is_none_or(|w| !w.is_null()) {
+                return Err(format!("`{}` of {key} is one an element of the project names: change that first", shown(k)));
+            }
+        }
+        for (_, k) in asked.iter().filter(|(s, _)| s == key) {
+            if now.get(k) != was.get(k) && named.contains(k.as_str()) && was.get(k).is_some_and(|w| !w.is_null()) {
+                return Err(format!("`{}` of {key} is one an element of the project names: change that first", shown(k)));
             }
         }
     }

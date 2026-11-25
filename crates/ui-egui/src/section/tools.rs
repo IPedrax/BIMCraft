@@ -22,8 +22,16 @@ impl BimApp {
         hovered: Option<Id>,
     ) -> bool {
         // Move with a curtain grid picked moves that grid, on the wall's face (`curtain_face_tool`).
-        if !matches!(self.tool, Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. })
-            || self.curtain_face_tool()
+        if !matches!(
+            self.tool,
+            Tool::Dimension(..)
+                | Tool::Move(_)
+                | Tool::Scale(_)
+                | Tool::DetailLine(_)
+                | Tool::DetailView(_)
+                | Tool::Trim(_)
+                | Tool::TrimTo { .. }
+        ) || self.curtain_face_tool()
         {
             return false;
         }
@@ -143,6 +151,42 @@ impl BimApp {
                     self.vertical_point(id, at);
                 }
             }
+            // Scale: the point that stays, or two points and the line between them, in the view's own terms.
+            Tool::Scale(step) => {
+                use crate::scale::Step;
+                let cross = |c: egui::Pos2| {
+                    p.circle_stroke(c, 5.0, stroke);
+                    p.line_segment([c - egui::vec2(8.0, 0.0), c + egui::vec2(8.0, 0.0)], stroke);
+                    p.line_segment([c - egui::vec2(0.0, 8.0), c + egui::vec2(0.0, 8.0)], stroke);
+                };
+                let to = |a: P2, b: P2| {
+                    p.line_segment([screen(a), screen(b)], stroke);
+                    p.text(
+                        screen(b) + egui::vec2(12.0, -12.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        m.length(a.dist(b)),
+                        egui::FontId::proportional(13.0),
+                        stroke.color,
+                    );
+                };
+                match (step, cursor) {
+                    (Step::Base(_) | Step::First, Some(at)) => cross(screen(at)),
+                    (Step::Second(a), Some(b)) => {
+                        cross(screen(a));
+                        to(a, b);
+                    }
+                    (Step::Length(a, b), _) => {
+                        cross(screen(a));
+                        to(a, b);
+                    }
+                    _ => {}
+                }
+                if clicked.is_some()
+                    && let Some(at) = cursor
+                {
+                    self.scale_point(at);
+                }
+            }
             Tool::DetailLine(ref path) => {
                 if self.shape() == Shape::Line
                     && let (Some(a), Some(b)) = (path.last(), cursor)
@@ -165,6 +209,21 @@ impl BimApp {
                         };
                     } else {
                         self.place_detail_line(id, at);
+                    }
+                }
+            }
+            Tool::DetailView(first) => {
+                if let (Some(a), Some(b)) = (first, cursor) {
+                    let c = [a, P2(b.0, a.1), b, P2(a.0, b.1)].map(screen);
+                    p.add(egui::Shape::closed_line(c.to_vec(), stroke));
+                }
+                if clicked.is_some()
+                    && let Some(at) = cursor
+                {
+                    match first {
+                        None => self.tool = Tool::DetailView(Some(at)),
+                        Some(a) if a.dist(at) > 1e-6 && self.make_callout(id, a, at) => self.tool = Tool::DetailView(None),
+                        Some(_) => {}
                     }
                 }
             }

@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::family::Family;
 use crate::model::{MAX_TEXT, Material, Model};
-use crate::texture::{Kind, MAX_IMAGES, Picture};
+use crate::texture::{MAX_IMAGES, Picture};
+use crate::titleblock::TitleBlock;
 
 /// Favorites of each kind one file may hold, and how large the file may be, bytes.
 pub const MAX_FAVORITES: usize = 500;
@@ -33,6 +34,15 @@ pub struct FamilyEntry {
     pub materials: BTreeMap<String, MaterialEntry>,
 }
 
+/// A favorite title block: itself, and the pictures its logos are, by id.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TitleBlockEntry {
+    pub title_block: TitleBlock,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub images: BTreeMap<String, Picture>,
+}
+
 /// What a favorites file holds.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -43,6 +53,9 @@ pub struct Favorites {
     pub materials: BTreeMap<String, MaterialEntry>,
     #[serde(default)]
     pub families: BTreeMap<String, FamilyEntry>,
+    /// Left out of a file that has none, so a file of materials and families is still one an older version reads.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub title_blocks: BTreeMap<String, TitleBlockEntry>,
 }
 
 /// Where the user's favorites are kept: where `BIMCRAFT_FAVORITES` says, else in the user's own configuration folder.
@@ -84,7 +97,7 @@ impl Favorites {
 
     /// Whether it's sound: not more than a file may hold, names that are names, textures of pictures that are there.
     pub fn check(&self) -> Result<(), String> {
-        if self.materials.len() > MAX_FAVORITES || self.families.len() > MAX_FAVORITES {
+        if self.materials.len().max(self.families.len()).max(self.title_blocks.len()) > MAX_FAVORITES {
             return Err(format!("it holds more than {MAX_FAVORITES} favorites of a kind"));
         }
         let entry = |who: &str, name: &str, e: &MaterialEntry| -> Result<(), String> {
@@ -94,10 +107,13 @@ impl Favorites {
             if e.images.len() > MAX_IMAGES {
                 return Err(format!("{who} `{name}`: it holds more than {MAX_IMAGES} pictures"));
             }
-            match &e.material.texture {
-                Some(t) => t.check(&e.images).map_err(|er| format!("{who} `{name}`: texture: {er}")),
-                None => Ok(()),
+            if let Some(t) = &e.material.texture {
+                t.check(&e.images).map_err(|er| format!("{who} `{name}`: texture: {er}"))?;
             }
+            for f in [&e.material.cut_image, &e.material.surface_image].into_iter().flatten() {
+                f.check_fill(&e.images).map_err(|er| format!("{who} `{name}`: image fill: {er}"))?;
+            }
+            Ok(())
         };
         for (name, m) in &self.materials {
             entry("material", name, m)?;
@@ -109,6 +125,18 @@ impl Favorites {
             f.family.check(&|m| f.materials.contains_key(m) || !m.is_empty()).map_err(|e| format!("family `{name}`: {e}"))?;
             for (n, m) in &f.materials {
                 entry("material", n, m)?;
+            }
+        }
+        for (name, e) in &self.title_blocks {
+            if name.trim().is_empty() || name.chars().count() > MAX_TEXT {
+                return Err(format!("title block `{name}`: a name is up to {MAX_TEXT} characters, and not empty"));
+            }
+            e.title_block.check(name)?;
+            if e.images.len() > MAX_IMAGES {
+                return Err(format!("title block `{name}`: it holds more than {MAX_IMAGES} pictures"));
+            }
+            if let Some(l) = e.title_block.logos.iter().find(|l| !e.images.contains_key(&l.image)) {
+                return Err(format!("title block `{name}`: a logo is of picture `{}`, which the file doesn't hold", l.image));
             }
         }
         Ok(())
@@ -130,24 +158,43 @@ impl MaterialEntry {
     /// Material `name` of `m`'s library, with the picture its texture is made of.
     pub fn of(m: &Model, name: &str) -> Option<MaterialEntry> {
         let material = m.materials.get(name)?.clone();
-        let images = material
-            .texture
-            .iter()
-            .filter(|t| t.kind == Kind::Image)
-            .filter_map(|t| Some((t.image.clone(), m.images.get(&t.image)?.clone())))
-            .collect();
+        let images = material.pictures().filter_map(|t| Some((t.image.clone(), m.images.get(&t.image)?.clone()))).collect();
         Some(MaterialEntry { material, images })
     }
 
     /// Put into `m`'s library as `name`: its pictures first (the same one once, by its id), where there's room.
     pub fn bring_into(&self, m: &mut Model, name: &str) -> Result<(), String> {
-        for (id, picture) in &self.images {
-            if !m.images.contains_key(id) && m.images.len() >= MAX_IMAGES {
-                return Err(format!("the project holds {} pictures already; take a texture of one away first", m.images.len()));
-            }
-            m.images.insert(id.clone(), picture.clone());
-        }
+        bring_pictures(&self.images, m)?;
         m.materials.insert(name.to_string(), self.material.clone());
+        // The values of parameters this project hasn't stay behind.
+        crate::materials::tidy(m);
+        Ok(())
+    }
+}
+
+/// `images` into `m`, the same one once (by its id), where there's room.
+fn bring_pictures(images: &BTreeMap<String, Picture>, m: &mut Model) -> Result<(), String> {
+    for (id, picture) in images {
+        if !m.images.contains_key(id) && m.images.len() >= MAX_IMAGES {
+            return Err(format!("the project holds {} pictures already; take one away first", m.images.len()));
+        }
+        m.images.insert(id.clone(), picture.clone());
+    }
+    Ok(())
+}
+
+impl TitleBlockEntry {
+    /// Title block `name` of `m`, with the pictures its logos are.
+    pub fn of(m: &Model, name: &str) -> Option<TitleBlockEntry> {
+        let title_block = m.title_blocks.get(name)?.clone();
+        let images = title_block.logos.iter().filter_map(|l| Some((l.image.clone(), m.images.get(&l.image)?.clone()))).collect();
+        Some(TitleBlockEntry { title_block, images })
+    }
+
+    /// Put into `m` as `name`: its pictures first, where there's room.
+    pub fn bring_into(&self, m: &mut Model, name: &str) -> Result<(), String> {
+        bring_pictures(&self.images, m)?;
+        m.title_blocks.insert(name.to_string(), self.title_block.clone());
         Ok(())
     }
 }
@@ -224,15 +271,16 @@ mod tests {
         let picture = Picture::import("grass", &png).unwrap();
         let id = picture.id();
         from.images.insert(id.clone(), picture);
-        let mut texture = crate::texture::Texture::new(Kind::Image);
+        let mut texture = crate::texture::Texture::new(crate::texture::Kind::Image);
         texture.image = id.clone();
         from.materials.insert("Grass".into(), Material { texture: Some(texture), ..Material::default() });
         let entry = MaterialEntry::of(&from, "Grass").unwrap();
         assert_eq!(entry.images.keys().collect::<Vec<_>>(), [&id]);
         let mut into = Model::new("b");
+        let before = into.images.len();
         entry.bring_into(&mut into, "Lawn").unwrap();
         entry.bring_into(&mut into, "Meadow").unwrap();
-        assert_eq!((into.images.len(), into.materials["Lawn"] == into.materials["Meadow"]), (1, true));
+        assert_eq!((into.images.len(), into.materials["Lawn"] == into.materials["Meadow"]), (before + 1, true));
         into.sync_library();
         assert_eq!(into.check(), Ok(()));
         // No room for another picture, and it says so.

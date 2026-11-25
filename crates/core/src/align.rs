@@ -85,6 +85,8 @@ pub(crate) fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
         Element::Text(n) => axes(n.at, n.angle, m.text_types.get(&n.type_name).map_or(crate::model::NOTE_SIZE, |t| t.size)),
         Element::PointCloud(p) => axes(p.at, p.angle, 100.0),
         Element::Link(l) => axes(l.at, l.angle, 100.0),
+        // Its edges, square to the plan.
+        Element::Image(im) => im.bounds(m).map_or(Vec::new(), |[lo, hi]| path(&[lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)], true)),
         Element::CadImport(ci) => {
             let Some(cad) = m.cads.get(&ci.cad) else { return Vec::new() };
             let place = crate::model::cad_place(ci);
@@ -112,9 +114,11 @@ pub(crate) fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
         | Element::Viewport(_)
         | Element::Schedule(_)
         | Element::PanelSchedule(_)
+        | Element::RebarDetail(_)
         | Element::ProjectInfo(_)
         | Element::View3D(_)
-        | Element::PlanView(_) => Vec::new(),
+        | Element::PlanView(_)
+        | Element::DetailView(_) => Vec::new(),
         Element::Room(_) | Element::Spot(_) | Element::Tag(_) | Element::Rebar(_) | Element::Circuit(_) => Vec::new(),
     }
 }
