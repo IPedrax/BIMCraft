@@ -53,6 +53,25 @@ impl Camera {
         self.cy = held.1 - from_centre.1;
     }
 
+    /// The camera after Zoom In Region over the rectangle from `a` to `b` (points of a canvas `size`): its middle brought to the
+    /// canvas's and as close as fills the canvas with it. None for a rectangle with no width or no height, or a corner that is no number.
+    pub fn region(&self, a: (f32, f32), b: (f32, f32), size: (f32, f32)) -> Option<Camera> {
+        if ![a.0, a.1, b.0, b.1].iter().all(|v| v.is_finite()) {
+            return None;
+        }
+        let view = self.view(size.0, size.1);
+        let (dx, dy) = (f64::from((b.0 - a.0).abs()), f64::from((b.1 - a.1).abs()));
+        let f = (f64::from(view.width) / dx).min(f64::from(view.height) / dy);
+        if dx <= 0.0 || dy <= 0.0 || !f.is_finite() || f <= 0.0 {
+            return None;
+        }
+        let P2(cx, cy) = view.mm(((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0));
+        if !(cx.is_finite() && cy.is_finite()) {
+            return None;
+        }
+        Some(Camera { cx, cy, scale: (self.scale * f).clamp(MIN_SCALE, MAX_SCALE), angle: self.angle })
+    }
+
     /// Pans so the content follows a pointer that moved `dx`, `dy` points.
     pub fn pan(&mut self, dx: f32, dy: f32, size: (f32, f32)) {
         if !dx.is_finite() || !dy.is_finite() {
@@ -117,6 +136,34 @@ mod tests {
         c.zoom_about((0.0, 0.0), SIZE, -1.0);
         c.pan(f32::INFINITY, 0.0, SIZE);
         assert_eq!(c, kept);
+    }
+
+    #[test]
+    fn a_region_fills_the_canvas_as_far_as_it_can_about_its_middle() {
+        for angle in [0.0, 30.0] {
+            let c = Camera { cx: 0.0, cy: 0.0, scale: 2.0, angle };
+            let size = (400.0, 200.0);
+            // 100 by 100 points: the canvas's height is the tighter fit, so twice as close.
+            let r = c.region((50.0, 0.0), (150.0, 100.0), size).expect("a region");
+            assert!((r.scale - 4.0).abs() < 1e-9, "angle {angle}: {}", r.scale);
+            let middle = c.view(size.0, size.1).mm((100.0, 50.0));
+            assert!(near(r.view(size.0, size.1).px(middle), (200.0, 100.0)), "the region's middle is the canvas's");
+            assert_eq!(
+                r.region((150.0, 100.0), (50.0, 0.0), size).map(|c| c.scale),
+                r.region((50.0, 0.0), (150.0, 100.0), size).map(|c| c.scale)
+            );
+        }
+    }
+
+    #[test]
+    fn a_region_with_no_size_or_no_number_is_none_and_zoom_stays_in_range() {
+        let c = cam(0.0);
+        assert!(c.region((10.0, 10.0), (60.0, 10.0), SIZE).is_none(), "no height");
+        assert!(c.region((10.0, 10.0), (10.0, 90.0), SIZE).is_none(), "no width");
+        assert!(c.region((f32::NAN, 0.0), (5.0, 5.0), SIZE).is_none());
+        assert!(c.region((0.0, 0.0), (f32::INFINITY, 5.0), SIZE).is_none());
+        let tiny = c.region((10.0, 10.0), (10.001, 10.001), SIZE).expect("a speck is a region");
+        assert_eq!(tiny.scale, MAX_SCALE, "never past the farthest in");
     }
 
     #[test]

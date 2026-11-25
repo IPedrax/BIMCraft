@@ -16,10 +16,10 @@ A window of the sample house that works end to end, small on purpose:
 
 | Module | What it does | Tests |
 |---|---|---|
-| `app.rs` | the state and what its handlers do; the only place that meets the core (`render::draw`, `Drawing::pick`, `Session::execute` for every change: `delete`, `undo`, `redo`, `modify`, `open`, `save`) | 18, no window |
-| `ui/` | the plan canvas, the top bar (Open and Save through the system's file dialogs, Undo, Redo), the Tools palette or the ribbon, Properties (a `rune_kit::TextInput` for each field the core may take a `modify` of), the browser of levels, the status bar, as functions of `App` | 14, Rune's headless `Runtime` (dialogs answered by the test) |
+| `app.rs` | the state and what its handlers do; the only place that meets the core (`render::draw`, `Drawing::pick`, `Session::execute` for every change: `delete`, `undo`, `redo`, `modify`, `open`, `save`) | 22, no window |
+| `ui/` | the plan canvas, the top bar (Open and Save through the system's file dialogs, Undo, Redo), the Tools palette or the ribbon, Properties (a `rune_kit::TextInput` for each field the core may take a `modify` of), the browser of levels, the status bar, as functions of `App` | 15, Rune's headless `Runtime` (dialogs answered by the test) |
 | `project.rs`, `profile.rs` | where a project comes from (`--sample`, `--highrise`, a file through `open`), and the two profiles of one app: BIMCraft's palette, Rev's ribbon | 2 |
-| `camera.rs` | pan and zoom in the core's `View`, hostile numbers refused | 4 |
+| `camera.rs` | pan, zoom and Zoom In Region in the core's `View`, hostile numbers refused | 6 |
 | `select.rs` | what a click or a box does to the selection: Ctrl adds, Shift takes away, a plain pick replaces; a box left to right takes what it holds, right to left what it touches (stage 3, slice 1) | 3 |
 | `paint.rs` | a `Drawing` as Rune shapes: strokes, polygons, dashes split, lettering through `text::triangles`, colours in linear light, the box being dragged | 7 |
 | `tools.rs` | the table of tools both profiles draw (the seed of the shared registry below) | 2 |
@@ -319,8 +319,10 @@ copy keeps merging until then):
 box, solid and blue left to right (what it holds), dashed and green right to left (what it touches), through the core's `Drawing::in_box`;
 Tab and Shift+Tab step through `Drawing::pick_all` at the pointer and a click takes the one Tab reached; Escape puts the tool down, then
 clears the selection. The middle button pans (`El::pointer_buttons`), as in egui, so the primary drag no longer does, except while a tool is
-in hand (a placeholder until the tools take the button). Not in the slice: the Filter dialog (stage 4), grips, snapping and its guides,
-temporary dimensions, the Draw and Modify tools, the context menu, sections and zoom regions, and the live camera (`live_offset`,
+in hand (a placeholder until the tools take the button). Slice 2, the zoom commands, is written too: Zoom to Fit, Zoom In and Out about the middle, Zoom In Region (armed from the top bar, one box, drawn as a
+window whichever way it goes, a click leaves it armed, Escape disarms it) and Previous Pan/Zoom (twenty steps of what the commands left, as in egui's
+`zoom.rs`; the wheel and a pan are no steps). Their Revit shortcuts (ZF, ZR, ZO, ZP) wait for the shared registry. Not in the slices: the Filter
+dialog (stage 4), grips, snapping and its guides, temporary dimensions, the Draw and Modify tools, the context menu, sections, and the live camera (`live_offset`,
 `live_scale`) that the wheel and the pan need to stop drawing the plan again on every event. The tools and grips lean on the tool state
 machines, which are still inside egui's `canvas.rs` (extraction 4 above), so they wait on that pull request.
 

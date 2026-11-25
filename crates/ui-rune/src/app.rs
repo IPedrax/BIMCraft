@@ -21,6 +21,8 @@ const REACH: f32 = 4.0;
 const CLICK: f32 = 4.0;
 /// The canvas's size before the first layout says it, points.
 const FIRST_SIZE: (f32, f32) = (900.0, 640.0);
+/// The steps Previous Pan/Zoom keeps.
+const STEPS: usize = 20;
 
 /// How the plan reaches the screen: as Rune shapes (strokes and polygons the renderer draws), or as the core's own raster of it
 /// (`render::raster`, tiny-skia on the CPU) shown as one image. `BIMCRAFT_RUNE_PLAN=pixels` picks the second: it is what a machine
@@ -76,6 +78,10 @@ pub struct App {
     cycle: usize,
     /// The box being dragged out over the plan, while the press that makes it is held.
     pub rubber: Option<Rubber>,
+    /// Zoom In Region is armed: the next box dragged out over the plan is zoomed to, and selects nothing.
+    pub region: bool,
+    /// How the plan was looked at before each zoom command (not the wheel or a pan), the newest last: what Previous Pan/Zoom goes back to.
+    history: Vec<Camera>,
     /// The tool picked in the Tools palette, by its id in `tools::TOOLS`.
     pub tool: Option<&'static str>,
     pub selection: Vec<Id>,
@@ -113,6 +119,8 @@ impl App {
             under: Vec::new(),
             cycle: 0,
             rubber: None,
+            region: false,
+            history: Vec::new(),
             tool: None,
             selection: Vec::new(),
             cursor: None,
@@ -242,9 +250,9 @@ impl App {
         true
     }
 
-    /// Escape: puts down the tool in hand, else clears the selection. False when there was nothing to do.
+    /// Escape: disarms Zoom In Region, else puts down the tool in hand, else clears the selection. False when there was nothing to do.
     pub fn escape(&mut self) -> bool {
-        if self.tool.take().is_some() {
+        if std::mem::take(&mut self.region) || self.tool.take().is_some() {
             return true;
         }
         let some = !self.selection.is_empty();
@@ -265,6 +273,57 @@ impl App {
         self.camera.zoom_about((x, y), self.size, f64::from(factor));
         self.moved = true;
         self.redraw();
+    }
+
+    /// Notes how the plan is looked at, before a zoom command changes it: a step, unless it is the last one already.
+    fn remember(&mut self) {
+        if self.history.last() != Some(&self.camera) {
+            self.history.push(self.camera);
+        }
+        if self.history.len() > STEPS {
+            self.history.remove(0);
+        }
+    }
+
+    /// Zoom to Fit: the level framed again.
+    pub fn zoom_fit(&mut self) {
+        self.remember();
+        (self.fitted, self.moved) = (false, false);
+        self.fit();
+        self.redraw();
+    }
+
+    /// The zoom buttons: closer (`factor` above 1) or farther, about the middle of the canvas.
+    pub fn zoom_by(&mut self, factor: f64) {
+        if !factor.is_finite() || factor <= 0.0 {
+            return;
+        }
+        self.remember();
+        self.camera.zoom_about((self.size.0 / 2.0, self.size.1 / 2.0), self.size, factor);
+        self.moved = true;
+        self.redraw();
+    }
+
+    /// Zoom In Region over the box from `a` to `b`: it fills the canvas, and the region is disarmed. False for a box with no size.
+    pub fn zoom_region(&mut self, a: (f32, f32), b: (f32, f32)) -> bool {
+        let Some(camera) = self.camera.region(a, b, self.size) else { return false };
+        self.remember();
+        (self.camera, self.moved, self.region) = (camera, true, false);
+        self.redraw();
+        true
+    }
+
+    /// Arms Zoom In Region, or puts it down when it is armed.
+    pub fn arm_region(&mut self) {
+        self.region = !self.region;
+    }
+
+    /// Previous Pan/Zoom: back to how the plan was looked at before the last zoom command. False with nothing to go back to.
+    pub fn previous(&mut self) -> bool {
+        let Some(camera) = self.history.pop() else { return false };
+        (self.camera, self.moved) = (camera, true);
+        self.redraw();
+        true
     }
 
     /// A press on the plan starts a drag.
@@ -288,7 +347,12 @@ impl App {
         if ![from.0, from.1, to.0, to.1].iter().all(|v| v.is_finite()) {
             return;
         }
-        if self.tool.is_some() {
+        if self.region {
+            // A region has no crossing: the box is drawn as a window whichever way it is dragged.
+            if (to.0 - from.0).hypot(to.1 - from.1) > CLICK {
+                self.rubber = Some(Rubber { from: (from.0.min(to.0), from.1.min(to.1)), to: (from.0.max(to.0), from.1.max(to.1)) });
+            }
+        } else if self.tool.is_some() {
             // ponytail: shortcut: a tool in hand pans on the primary button, the middle one's job, until the tools take it (slice 3.3).
             self.drag(to.0 - from.0, to.1 - from.1);
         } else if (to.0 - from.0).hypot(to.1 - from.1) > CLICK {
@@ -308,7 +372,12 @@ impl App {
         if ![from.0, from.1, to.0, to.1].iter().all(|v| v.is_finite()) {
             return;
         }
-        if (to.0 - from.0).hypot(to.1 - from.1) <= CLICK {
+        if self.region {
+            // A click leaves it armed; a box zooms to what it holds.
+            if band.is_some() {
+                self.zoom_region(from, to);
+            }
+        } else if (to.0 - from.0).hypot(to.1 - from.1) <= CLICK {
             self.select_at(to.0, to.1, how);
         } else if band.is_some() {
             let r = Rubber { from, to };
@@ -357,6 +426,7 @@ impl App {
         self.selection.clear();
         (self.hovered, self.rubber, self.cycle) = (None, None, 0);
         self.under.clear();
+        self.history.clear();
         self.level = Some(id);
         self.settle();
     }
@@ -393,6 +463,7 @@ impl App {
         let opened = self.run("open", &json!({ "path": path }));
         if opened {
             (self.fitted, self.moved) = (false, false);
+            self.history.clear();
             self.selection.clear();
             self.settle();
         }
@@ -489,10 +560,13 @@ mod tests {
         assert!(app.selection.is_empty() && app.props.is_empty());
     }
 
+    /// A point of the canvas and the element it picks.
+    type Spot = (f32, f32, Id);
+
     /// Two points of the canvas that pick different elements.
-    fn two_distinct(app: &App) -> Option<((f32, f32, Id), (f32, f32, Id))> {
+    fn two_distinct(app: &App) -> Option<(Spot, Spot)> {
         let (w, h) = app.size;
-        let mut first: Option<(f32, f32, Id)> = None;
+        let mut first: Option<Spot> = None;
         for y in (0..(h as u32)).step_by(6) {
             for x in (0..(w as u32)).step_by(6) {
                 let (x, y) = (x as f32, y as f32);
@@ -602,6 +676,76 @@ mod tests {
         assert_eq!(app.hovered, app.under.first().copied(), "a move starts over from the nearest");
         app.leave();
         assert!(app.under.is_empty() && !app.step(false), "with the pointer gone there is nothing to step through");
+    }
+
+    #[test]
+    fn zoom_to_fit_frames_the_plan_again_and_previous_goes_back_one_command_at_a_time() {
+        let mut app = App::sample();
+        let framed = app.camera;
+        app.zoom(300.0, 200.0, 4.0);
+        let wheeled = app.camera;
+        assert_ne!(wheeled, framed);
+        app.zoom_fit();
+        assert_eq!(app.camera, framed, "the level is framed as it was first shown");
+        assert!(app.previous(), "back to how it was before Fit");
+        assert_eq!(app.camera, wheeled);
+        assert!(!app.previous(), "the wheel is no command: there is nothing before Fit to go back to");
+    }
+
+    #[test]
+    fn the_zoom_buttons_keep_the_middle_of_the_canvas_and_a_bad_factor_does_nothing() {
+        let mut app = App::sample();
+        let centre = (app.size.0 / 2.0, app.size.1 / 2.0);
+        let held = app.camera.view(app.size.0, app.size.1).mm(centre);
+        let scale = app.camera.scale;
+        app.zoom_by(2.0);
+        assert!((app.camera.scale - scale * 2.0).abs() < 1e-9);
+        let back = app.camera.view(app.size.0, app.size.1).px(held);
+        assert!((back.0 - centre.0).abs() < 0.01 && (back.1 - centre.1).abs() < 0.01, "the middle stays the middle: {back:?}");
+        let (camera, revision) = (app.camera, app.revision);
+        for bad in [f64::NAN, 0.0, -1.0, f64::INFINITY] {
+            app.zoom_by(bad);
+        }
+        assert_eq!((app.camera, app.revision), (camera, revision));
+        assert!(app.previous() && (app.camera.scale - scale).abs() < 1e-9, "one step back undoes the button");
+    }
+
+    #[test]
+    fn zoom_in_region_zooms_to_the_box_dragged_either_way_and_selects_nothing() {
+        let mut app = App::sample();
+        let (x, y, _) = pickable(&app).expect("a pickable point");
+        app.select_at(x, y, How::Replace);
+        let (selection, before) = (app.selection.clone(), app.camera);
+        app.arm_region();
+        assert!(app.region);
+        app.sweep((250.0, 150.0), (50.0, 50.0));
+        assert_eq!(app.rubber, Some(Rubber { from: (50.0, 50.0), to: (250.0, 150.0) }), "a region has no crossing: drawn as a window");
+        app.release((250.0, 150.0), (50.0, 50.0), How::Replace);
+        assert!(app.camera.scale > before.scale, "closer");
+        assert!(!app.region && app.rubber.is_none(), "one region per arming");
+        assert_eq!(app.selection, selection, "and nothing was selected");
+        app.arm_region();
+        app.release((10.0, 10.0), (11.0, 11.0), How::Replace);
+        assert!(app.region, "a click leaves it armed");
+        assert!(app.escape() && !app.region, "Escape disarms it before anything else");
+        app.arm_region();
+        app.arm_region();
+        assert!(!app.region, "arming twice puts it down");
+        assert!(app.previous() && app.camera == before, "and Previous gives the plan back");
+    }
+
+    #[test]
+    fn previous_keeps_the_last_twenty_steps() {
+        let mut app = App::sample();
+        for _ in 0..(STEPS + 5) {
+            app.zoom_by(1.1);
+        }
+        assert_eq!(app.history.len(), STEPS);
+        let mut n = 0;
+        while app.previous() {
+            n += 1;
+        }
+        assert_eq!(n, STEPS);
     }
 
     #[test]

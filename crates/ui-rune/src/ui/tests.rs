@@ -197,11 +197,14 @@ fn hold(rt: &mut Runtime<App>, mods: Mods) {
     rt.physical_input(PhysicalInput::Modifiers(mods));
 }
 
+/// A point of the window and the element it picks.
+type Spot = ((f32, f32), u64);
+
 /// Two points of the window over different elements, with what each picks.
-fn two_over(rt: &Runtime<App>) -> Option<(((f32, f32), u64), ((f32, f32), u64))> {
+fn two_over(rt: &Runtime<App>) -> Option<(Spot, Spot)> {
     let (ox, oy) = plan_origin(rt)?;
     let (w, h) = rt.state.size;
-    let mut first: Option<((f32, f32), u64)> = None;
+    let mut first: Option<Spot> = None;
     for y in (0..(h as u32)).step_by(6) {
         for x in (0..(w as u32)).step_by(6) {
             let Some(id) = rt.state.pick(x as f32, y as f32) else { continue };
@@ -289,4 +292,38 @@ fn tab_steps_through_what_is_under_the_pointer_and_escape_clears() {
     rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
     rt.frame(0.0);
     assert!(rt.state.selection.is_empty(), "Escape clears the selection");
+}
+
+#[test]
+fn the_zoom_buttons_zoom_fit_and_go_back_and_the_region_button_arms_a_box() {
+    let mut rt = window();
+    let scale = rt.state.camera.scale;
+    let zoom_in = rt.find("zoom-in").expect("Zoom In");
+    tap(&mut rt, zoom_in);
+    assert!(rt.state.camera.scale > scale, "Zoom In is closer");
+    let fit = rt.find("zoom-fit").expect("Zoom to Fit");
+    tap(&mut rt, fit);
+    assert_eq!(rt.state.camera.scale, scale, "Fit frames the plan as it was first shown");
+    let back = rt.find("zoom-previous").expect("Previous Pan/Zoom");
+    tap(&mut rt, back);
+    assert!(rt.state.camera.scale > scale, "Back goes to how it was before Fit");
+
+    let region = rt.find("zoom-region").expect("Zoom In Region");
+    tap(&mut rt, region);
+    assert!(rt.state.region);
+    let (ox, oy) = plan_origin(&rt).expect("the plan");
+    let before = rt.state.camera.scale;
+    rt.pointer_down(ox + 100.0, oy + 100.0);
+    rt.pointer_move(ox + 300.0, oy + 250.0);
+    rt.frame(0.0);
+    assert!(rt.state.rubber.is_some(), "the box shows while the button is held");
+    rt.pointer_up(ox + 300.0, oy + 250.0);
+    rt.frame(0.0);
+    assert!(rt.state.camera.scale > before, "the plan zoomed to the box");
+    assert!(!rt.state.region && rt.state.selection.is_empty(), "it is disarmed and nothing was selected");
+
+    let buttons: Vec<_> = rt.elements().into_iter().filter(|e| e.role == "button").filter_map(|e| e.key).collect();
+    for key in ["zoom-fit", "zoom-in", "zoom-out", "zoom-region", "zoom-previous"] {
+        assert!(buttons.iter().any(|k| k == key), "{key} is a button to a screen reader: {buttons:?}");
+    }
 }
