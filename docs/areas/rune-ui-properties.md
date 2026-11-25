@@ -1,0 +1,145 @@
+# The Properties palette in the Rune UI
+
+The Properties palette of `crates/ui-rune`, to parity with egui's (`crates/ui-egui/src/properties.rs`, 4,892 lines, read and never edited
+from here). This file is the inventory of what egui's palette does, the design that carries it over by field kind and by a table of
+categories instead of a port line by line, and what is built and what is not. Notes for the crate: [crates/ui-rune/CLAUDE.md](../../crates/ui-rune/CLAUDE.md);
+the plan for the whole Rune UI: [the Rune UI](rune-ui.md).
+
+## 1. What egui's palette is
+
+`BimApp::properties` lays out, top to bottom: the **Type Selector**, a **filter row** (what is shown, a count, Edit Type), the
+**parameters** under group headers, a stack of **extra panels** for what a table of rows cannot say, and **Apply**. Every edit is a
+command, mostly `modify`, so it is checked by `Model::check`, rolled back when it breaks a rule and undone like any change.
+
+### What the palette is about (`Subject`)
+
+| Subject | When | Rows from |
+|---|---|---|
+| `Element(id)` | one element selected (or a view's own element: a section, a sheet, a callout) | `rows(category)` |
+| `Elements(category)` | several selected, all one category | the same rows, values shared or blank |
+| `Mixed(n)` | several categories | none; the filter row is a drop-down of the categories, one picked narrows what the palette shows and edits (`palette_filter`), the selection stays |
+| `New(category)` | nothing selected, a tool in hand | none: the Type Selector picks the type the tool places |
+| `Plan(level)` | nothing selected, a plan | `PLAN` (a level's own plan), `PLAN_VIEW` (a plan view), `PLAN_DEPENDENT`; then the view's graphics, underlay and phasing |
+| `CeilingPlan`, `View3D`, `Schedule` | nothing selected in those views | their own extra panels (camera, section box, schedule fields) |
+
+A group's member selected outside Edit Group of it is greyed apart from the parameters that vary by group instance. A family
+document's Properties are its own (`family_properties`). Several views picked in the Project Browser show what they share
+(`picked_views_properties`, the rows every one has).
+
+### The Type Selector
+
+A 50 point card: an icon of the category, the family (or category) name over the type's name, a drop-down arrow. Its list is
+`Model::type_names(category)`; for a door or a window also each family's types as `Family: Type`; for a component every family's
+types (the Fixture tool's kinds only, from a fixture tool). A wall's list shows each type's layers as a sample and sets curtain walls
+under a heading of their own (`type_sections`). Disabled when the category has no types, or when a floor or ceiling follows a room (`follows_a_room`: its type is the room type's).
+Picking applies `modify {ids, type}`, with `family` too for a family pair and `family: null` for a project type of a door or window.
+With several elements it shows the type they share, else none. **Edit Type** opens the Type Properties dialog (`edit_type`): one
+of `TypeDialog`, `FamilyDialog`, or the dialogs of text, dimension, spot coordinate, grid and filled-region types.
+
+### Groups and rows
+
+A row is `(group, key, label, Kind)` (`type Row`): the group it is under, the field as `elements` names it (a field of a field after
+a dot: `view_range.cut`, `values.Opening Area`, `extrusion.from`), its label, and the editor. The groups are: **Constraints**,
+**Dimensions**, **Identity Data**, **Structural**, **Graphics**, **Text**, **Camera**, **Extents**, **Quantities**, **Other**, then
+per project parameter and per family the groups those name (`Under`), and **Electrical**, **Title Block**, **Tied To**, **Phasing**.
+A group header is a bar that folds; the folded set is by the group's name, shared by every element (`collapsed`).
+
+The table, by category (`rows`, about 400 lines): wall, door, window, room, floor, ceiling, shaft, mass, level, propertyline, grid,
+dimension, text, spot, spotcoordinate, line, region, detailgroup, modelgroup, repeatingdetail, schedule, view3d, tag, sheet,
+viewport, component, column and structuralcolumn, rebar, footing, beam and stripfooting, every run category (`RUN_CATEGORIES`),
+stair, ramp, railing, roof, section and elevation, detail, pointcloud, cadimport, image, link. A category not in the table shows no
+rows. A wall has 19, a floor 15.
+
+### The editor kinds (`enum Kind`)
+
+| Kind | What it is | Shown as | Read back |
+|---|---|---|---|
+| `Text` | text | the string | the string |
+| `Number` | a number, no unit (an angle, a scale) | to the hundredth | `f64`, finite |
+| `Angle` | degrees | `12°` | the number, a trailing `°` allowed |
+| `Length`, `LengthIf`, `Height` | a length in the project's units; `LengthIf` has no row when the element has none; `Height` is typed only while the top is unconnected | `Units::with_unit` | `Units::parse` (`10' 6 1/2"`, `3 m`, a bare number in the project's unit) |
+| `Limit(hint)` | a length or nothing; the hint names blank (`Same as start`, `No Clip`) | as a length, blank for none | blank is `null` |
+| `NumberOr(hint)` | a number or nothing (`Automatic`) | | blank is `null` |
+| `Point`, `PaperPoint`, `Outline` | `x, y` in project lengths; on a sheet a note's point is in paper mm; an outline is corners parted by `;`, blank for none | | split at `,` and `;` |
+| `Flag` | yes or no | a check box | `bool` |
+| `Crop` | cropped or not | a check box | the `crop` command, not `modify` |
+| `Level`, `TopLevel`, `UpperLimit` | a level by name; `TopLevel` or none is Unconnected; `UpperLimit` or none is Not Bounded (and keeps a room's top where it was by setting `limit_offset` with it) | a drop-down of the levels | the name, or `null` |
+| `LocationLine`, `Justification`, `Choice(&[(value, label)])` | one of a fixed list | a drop-down | the value the command names |
+| `LineStyle`, `RegionLines` | one of the project's line styles (a region's also Invisible, which is `null`) | a drop-down | the name |
+| `Framing` | None or one of the project's framing types, with a button for its Type Properties | a drop-down | the name or `null` |
+| `Attached` | whether a wall's top or base is attached, and a link to what it is attached to | a greyed check box and a link | none (Attach and Detach change it) |
+| `Link` | an element it points at (a door's host) | a link that selects it | none |
+| `Shown`, `LengthShown`, `AreaShown` (m² in the model), `Mm2Shown`, `VolumeShown`, `MetresShown`, `Values` (a dimension's) | derived, read only | text, in the project's units (`Units::area`, `Units::volume`) | none |
+| `LevelName`, `ViewName` | a level or view by name, read only | text | none |
+| `Range` | a plan's view range | an Edit… button that opens the View Range dialog | none |
+
+### Which rows show, and what a row turns into
+
+- **Relevant** (`relevant`): a detail line's Center Mark only for an arc or circle, its Revision only for a cloud; a wall's Top Offset
+  only with a top constraint; Opening Area only when the element has one; Slope not for an extrusion roof; a floor's Joist Direction
+  only when framed.
+- **No row for nothing**: a `LengthShown` or `LengthIf` that is `null` for one element (a straight wall's radius); an image shows page,
+  paper and scale only for a PDF.
+- **A kind rewritten by the element** (`parameters`): `Height` is `LengthShown` once the top is a level; a hosted component's
+  `Offset` is shown, not typed; `Point` is `PaperPoint` for a note on a sheet; a floor or ceiling that follows a room shows its level and offset (the room's) and does not take them; a component of a work plane based family shows Schedule Level, Work Plane and Offset
+  from Host, and one that is not shows Level (`work_plane_row`).
+- **Missing numbers are 0** (`field_of`): the JSON leaves a number out at 0, so a length or number it lacks is 0; a `null` it has is none.
+- **Several elements** (`Elements`): each row shows the value they all share, else blank; blank across a selection may be values that
+  differ, so no hint is shown; an edit changes all of them, in one `modify` with `ids`.
+
+### How a value is applied
+
+`modify {ids, <field>: value}`, nested through the dots (`nested`: `view_range.cut` is `{view_range: {cut: v}}`, which `modify` merges
+into an object field and removes on a `null`). Text and numbers commit on Enter or when the field loses the keyboard, and Escape cancels
+(`field`). A value that does not parse says `<key>: <why>` in the status line and changes nothing; a refusal from the core says its reason there too.
+Other commands for other things: `crop` (a view's crop), `panel` and `circuit` (an electrical board's and a circuit's fields),
+`modify {params: {name: v}}` for a component's family parameters and a project parameter, `modify {title_block | fields}` for a sheet,
+and `type` from the Type Properties dialog for a type's own values.
+
+### What else the palette holds
+
+The extra panels, each its own function in egui. **By data, not by rows**: layers of the selected type drawn to thickness (`layer_picture`,
+a click sets a wall's location line), a floor's slope arrow and presets (`floor_slope`), the door or window family picker (`opening_picker`),
+a sketch's slope and pick, a roof profile's coordinates, **Tied To** (a wall's openings, a roof's or floor's attached walls, the dimensions
+holding an element), a stair's flights, landings and turns and a ramp's flights, a curtain wall's part panel, **a component's family
+parameters** (by their groups: lengths, materials, yes or no, text, formulas shown), a board's **Electrical** group, a circuit's,
+**the project's parameters** for the category (`project_parameters`: a field each, a check box for yes or no, areas and lengths with units,
+`vary_by_group`, `read_only`), a sheet's **Title Block**, **Phasing** and a view's phasing, **Graphics** (scale, detail level, discipline,
+view template, V/G overrides: `graphics.rs`), **Underlay**, a 3D view's **Camera** and **Section Box**, a schedule's Edit… buttons, a
+site point's own panel. Type Properties (everything under `TypeDialog`, lines 1133 to 1610 and 3791 to 4012) is the Type Properties
+dialog, which is the dialogs session's work.
+
+## 2. The design in Rune
+
+egui's palette is one 4,900 line file because each panel above is a function of the palette with drawing and logic mixed. Rune keeps
+the logic in `crates/ui-rune/src/props/` as pure code, tested without a window, and draws what it says in `ui/properties/`.
+
+```
+props.rs            the module: what the rest says, a pointer to each part
+props/kind.rs       Kind, field_of, relevant, nested, shown, parse            (units: Units::length, area, volume, parse)
+props/table.rs      rows(category): the table, a row for each parameter of each category, the views' rows
+props/names.rs      category names (one and several) and group names, through lang
+props/panel.rs      Panel::of(model, ids): the groups, rows and editors a selection has, values shared or blank
+props/apply.rs      what an edit of a row becomes: a command and its params, or why it is none
+props/types.rs      the Type Selector's list (slice 3)
+app/properties.rs   App's slice: the panel, the text being typed, what is folded, what choice is open, the seams
+ui/properties.rs    the palette: title, filter, type selector, groups   ui/properties/*.rs  a row's editor, the selector
+```
+
+- **Generalised by field kind and by category data.** A new category costs a row in `table.rs`. A new kind of editor is a `Kind` and
+  an arm in `panel.rs` (what it is as an editor) and `apply.rs` (what it makes of an edit), and nothing in the UI unless it is a new widget.
+- **The panel is a value.** `Panel::of` returns `groups: Vec<Group>`, each with `rows: Vec<Row>`, a row with its label, its text as shown
+  in the project's units and its `Editor` (`Read`, `Text`, `Check`, `Choice` with each option's label and the value `modify` takes,
+  `Link`, `Seam`). The UI draws it and sends back the row's key and what was done (`Edit`); `apply::command` is the only thing that makes
+  params. So the whole palette, for every element of the sample house and the tower, is tested without a window.
+- **Units**: lengths and areas are shown with `Units::with_unit` and `Units::area`, typed with `Units::parse`; files and commands stay in mm.
+- **Never crash**: a hostile element's JSON (a string where a number is, an array of thousands, NaN as text) gives a blank value or a
+  short row, never a panic (a test sweeps every element of both samples and a set of hostile values); counts and lengths are capped
+  (`MAX_IDS`, `MAX_TEXT`, `MAX_OPTIONS`).
+- **Where egui hardcodes what the core could say**: the rows table is in this crate (data, a row per parameter, marked with `msg!` for the
+  catalog tool), the category names too (a copy of egui's `lang::category`, marked in `names.rs` as a duplicate to fold into the core). Nothing
+  here needed a core change yet.
+
+## 3. What is built
+
+Nothing yet beyond this file and what the first slice lists below as it lands.
