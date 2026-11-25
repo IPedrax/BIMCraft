@@ -11,6 +11,7 @@ use std::time::Duration;
 use rune::tok::type_;
 use rune::{El, Phase, PointerButton, Shape, Tx, canvas, el, memo, text};
 
+use super::draw_bar;
 use crate::app::{App, CameraMode, PlanMode};
 use crate::paint::{self, Palette};
 use crate::select::How;
@@ -63,6 +64,9 @@ pub fn plan(s: &App) -> El {
         .tool
         .is_some()
         .then(|| layer("plan-snap", paint::over(&s.picked, s.landing.as_ref(), &s.camera.view(size.0, size.1), &pal).shape));
+    // What the next click would make with a shape in hand: there only while there is a shape to show.
+    let shape = s.shape_preview();
+    let ghost = (!shape.is_empty()).then(|| layer("plan-ghost", paint::ghost(&shape, &s.camera.view(size.0, size.1), &pal).shape));
     let layers =
         [base, lit("plan-selected", &selected, pal.accent, pal.accent_fill), lit("plan-hovered", &hovered, pal.hover, pal.hover_fill)];
     // In `Live` the layers sit in one element the camera moves; in `Exact` they are the canvas's own children, as they were before the
@@ -126,5 +130,7 @@ pub fn plan(s: &App) -> El {
         .children(world)
         .child(band)
         .children(snap)
+        .children(ghost)
         .children(tag(s, &pal))
+        .children(draw_bar::bar(s))
 }

@@ -4,7 +4,8 @@
 //! The layout: `app` is the hub, the state and what its handlers do, which meets the core and holds no widget; `ui` is the
 //! elements, a function of that state; the rest are what both need and a test reaches without a window: `camera` (pan and zoom),
 //! `paint` (a plan's display list as shapes), `props` (the Properties rows), `select` (what a click or a box does to the
-//! selection), `snapping` (where a picked point lands), `status` (the status line) and `lang` (the words).
+//! selection), `snapping` (where a picked point lands), `tooling` (what the points a tool picks make), `status` (the status line)
+//! and `lang` (the words).
 
 #![forbid(unsafe_code)]
 
@@ -19,6 +20,7 @@ pub mod select;
 pub mod snapping;
 pub mod software;
 pub mod status;
+pub mod tooling;
 pub mod tools;
 pub mod ui;
 

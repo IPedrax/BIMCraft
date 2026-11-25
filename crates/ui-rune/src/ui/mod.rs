@@ -10,6 +10,7 @@ use crate::app::App;
 use crate::profile::Profile;
 
 mod browser;
+mod draw_bar;
 mod plan;
 mod properties;
 mod ribbon;
@@ -47,11 +48,14 @@ pub fn poll(s: &mut App, clock: f64, tx: &mut Tx) -> bool {
 }
 
 /// Delete deletes the selection; Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y do again (Cmd on a Mac); Tab and Shift+Tab step through what
-/// lies under the pointer; Escape puts the tool down, then clears the selection. A key none of these takes goes on to the window.
+/// lies under the pointer; Escape puts the tool down, then clears the selection; with a tool in hand Enter finishes what it has
+/// picked and Backspace gives the last point back. A key none of these takes goes on to the window.
 pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
     match (&key.key, key.mods.cmd, key.mods.shift) {
         (Key::Tab, false, back) => return s.step(back),
         (Key::Escape, false, _) => return s.escape(),
+        (Key::Enter, false, _) => return s.finish_tool(),
+        (Key::Backspace, false, _) => return s.back_point(),
         (Key::Delete, false, _) => {
             s.delete_selection();
         }
@@ -68,3 +72,5 @@ pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tooling_tests;

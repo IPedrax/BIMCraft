@@ -11,7 +11,9 @@ use rune::{Color, LineCap, Shape};
 
 use crate::select::Rubber;
 
+mod preview;
 mod snap;
+pub use preview::ghost;
 pub use snap::over;
 
 /// The most strokes one dashed line may split into: a hostile pattern (a dash of a millionth of a point) draws a line, not a hang.
