@@ -17,7 +17,7 @@ index 3bdb64d..1b8a7fb 100644
 +origin and the opening's physical height; a valid stored sill can be negative when its physical bottom is above the base.
 +
 +This first version supports ordinary straight walls on the **same level and base elevation**. Unpin the opening first.
-+Curved/curtain walls, curtain panel replacement walls, grouped openings/walls and Edit Group are unsupported. The action
++Curved/slanted/profiled/curtain walls, curtain panel replacement walls, grouped openings/walls and Edit Group are unsupported. The action
 +is disabled outside plans. This is an explicit command, not dragging between walls. Invalid placement leaves the model
 +unchanged; existing width, overlap and sill-fit rules apply.
 @@ -181,0 +197,12 @@ window {"wall": "@box.ids.1", "offset": 2000, "family": "Casement Window", "type

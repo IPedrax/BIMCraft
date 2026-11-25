@@ -3,18 +3,29 @@
 //! Every change to the project is a `family` command, so it's checked, and undone, like any other.
 
 mod association;
+pub(crate) mod clipboard;
 pub(crate) mod connector_marks;
 pub(crate) mod connectors;
 pub(crate) mod dimensions;
 pub(crate) mod document;
+mod drag_move;
 pub(crate) mod exists;
 mod extrusion;
+pub(crate) mod handle_params;
+pub(crate) mod handles3d;
 pub(crate) mod lit3d;
+mod measure;
+pub(crate) mod modify;
 mod nested;
 pub(crate) mod options;
 mod origin_mark;
 mod pivot;
+mod purge;
+pub(crate) mod select_box;
+pub(crate) mod selection;
+pub(crate) mod shape_handles;
 pub(crate) mod sketch;
+mod sketch_dims;
 pub(crate) mod tabs;
 mod temp_hide;
 mod types_dialog;
@@ -140,6 +151,11 @@ struct FormText {
 static TAGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl FormText {
+    /// A copy of it: `f`, the copy's form (new GUIDs), with what is typed as it is, and a tag of its own.
+    pub(crate) fn copied(&self, f: &Form) -> FormText {
+        FormText { original: f.clone(), host: f.host, tag: TAGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1, ..self.clone() }
+    }
+
     /// Form `f` as typed again, keeping the tag `tag` it is known by while the document is open.
     pub(crate) fn again(f: &Form, tag: u64) -> FormText {
         FormText { tag, ..FormText::of(f) }
@@ -255,6 +271,8 @@ struct ParamText {
     instance: bool,
     value: String,
     formula: String,
+    /// Worked out from the family's geometry, not its parameters: shown, never typed, and never saved as one.
+    derived: bool,
 }
 
 /// The name a parameter's kind goes by.
@@ -323,6 +341,20 @@ impl ParamText {
             instance: p.instance,
             value: value_text(p.kind, &p.value),
             formula: p.formula.clone().unwrap_or_default(),
+            derived: false,
+        }
+    }
+
+    /// A built-in parameter worked out from the family's geometry: its area of the opening it cuts.
+    fn derived(name: &str, kind: Holds) -> ParamText {
+        ParamText {
+            original: Parameter { name: name.to_string(), kind, ..Parameter::default() },
+            name: name.to_string(),
+            kind,
+            instance: false,
+            value: String::new(),
+            formula: String::new(),
+            derived: true,
         }
     }
 
@@ -504,10 +536,11 @@ pub(crate) struct FamilyEditor {
     operation: Option<Operation>,
     /// Its options (Family Category and Parameters, Properties' Other group), as the document edits them (`options.rs`).
     options: options::OptionsText,
-    /// The plan symbol selected (from the Project Browser's Symbols, or made by the Detail panel), whose Properties show.
-    pub(crate) symbol: Option<usize>,
-    /// The connector selected: Properties show its rows.
-    pub(crate) connector: Option<usize>,
+    /// What is selected (FE-1, `select_box.rs`): forms, planes, lines, dimensions, symbols, connectors and nested instances,
+    /// one set; Properties show one alone's rows.
+    pub(crate) selection: select_box::Selection,
+    /// The selection's commands (FE-20, `selection.rs`): Filter's, Select by ID's and IDs of Selection's dialogs.
+    pub(crate) selecting: selection::Selecting,
     /// The connector under the pointer in a view, lit as a click would select it.
     pub(crate) connector_hover: Option<usize>,
     /// What Family Types keeps while it is open: its search, the groups folded, the row selected, its own dialogs.
@@ -532,8 +565,6 @@ pub(crate) struct FamilyEditor {
     pub(crate) dialog: Option<DocDialog>,
     /// The instance it was opened from (Edit Family on it), whose placement Replay Instance takes.
     source: Option<bimcraft_core::model::Id>,
-    /// The form selected (a family that isn't adaptive), whose Properties show as Revit's for an Extrusion (`extrusion.rs`).
-    form: Option<usize>,
     /// Its plans and elevations (`views.rs`): which one shows, and what each keeps for the session.
     pub(crate) views: views::Views,
     /// A form being sketched (F5, `editor/sketch.rs`): no part of the draft until Finish.
@@ -542,9 +573,9 @@ pub(crate) struct FamilyEditor {
     pub(crate) snaps: bimcraft_core::snap::Snaps,
     /// The families loaded into it and their instances placed in it (T6a, `nested.rs`), as the family holds them.
     pub(crate) nested: Vec<bimcraft_core::family::NestedFamily>,
+    /// Manage > Purge Unused, open (FE-19).
+    purging: Option<purge::Purging>,
     pub(crate) nested_instances: Vec<bimcraft_core::family::NestedInstance>,
-    /// The nested instance selected.
-    nested_sel: Option<usize>,
     /// Create > Component, on: the nested family and type a click places.
     pub(crate) placing: Option<(String, String)>,
     /// Opened by Edit Family on a family nested in the document under it: its loads go into that one, not the project.
@@ -565,6 +596,29 @@ pub(crate) enum DocTab {
     Modify,
     /// "Modify | Reference Points" and the like, for the selection or the tool in hand.
     Context,
+}
+
+/// What the project's dialogs say when a family document opens them (FE-19): they change the project, now.
+pub(crate) const PROJECT_NOTE_STYLES: &str =
+    msg!("This changes the project's object styles now, not on Load into Project; the project's Undo takes it back.");
+pub(crate) const PROJECT_NOTE_MATERIALS: &str =
+    msg!("This changes the project's materials now, not on Load into Project; the project's Undo takes it back.");
+pub(crate) const PROJECT_NOTE_UNITS: &str =
+    msg!("This changes the project's units now, not on Load into Project; the project's Undo takes it back.");
+
+impl DocTab {
+    /// Its English name, which its panels' keys carry: `tab:family:<name>/<panel>` (`ТЗ-019`).
+    pub(crate) fn key(self) -> &'static str {
+        match self {
+            DocTab::Create => "Create",
+            DocTab::Insert => "Insert",
+            DocTab::Annotate => "Annotate",
+            DocTab::View => "View",
+            DocTab::Manage => "Manage",
+            DocTab::Modify => "Modify",
+            DocTab::Context => "Context",
+        }
+    }
 }
 
 /// A family document's dialogs: Family Types (its parameters and types) and Family Category and Parameters.
@@ -599,6 +653,16 @@ pub(crate) struct Asked {
     /// The document's own Undo and Redo, done when the frame ends.
     pub(crate) undo: bool,
     pub(crate) redo: bool,
+    /// Manage's Object Styles, Materials or Purge Unused (FE-19), opened when the frame ends.
+    pub(crate) manage: Option<Manage>,
+}
+
+/// What the family document's Manage tab opens (FE-19): the project's Object Styles and Materials, or Purge Unused on the draft.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Manage {
+    ObjectStyles,
+    Materials,
+    Purge,
 }
 
 impl FamilyEditor {
@@ -615,11 +679,17 @@ impl FamilyEditor {
             .iter()
             .map(|(n, set)| (n.clone(), own.iter().filter_map(|p| Some((p.name.clone(), value_text(p.kind, set.get(&p.name)?)))).collect()))
             .collect();
+        let mut params: Vec<ParamText> = f.parameters.iter().map(ParamText::of).collect();
+        if !params.iter().any(|p| p.name == bimcraft_core::family::OPENING_AREA)
+            && (f.category.hosted() || f.forms.iter().any(|x| x.void && x.cuts().host()))
+        {
+            params.push(ParamText::derived(bimcraft_core::family::OPENING_AREA, Holds::Area));
+        }
         FamilyEditor {
             original: Some(name.to_string()),
             name: name.to_string(),
             category: f.category,
-            params: f.parameters.iter().map(ParamText::of).collect(),
+            params,
             types,
             forms: f.forms.iter().map(FormText::of).collect(),
             adaptive: f.adaptive.clone(),
@@ -636,8 +706,8 @@ impl FamilyEditor {
             ifc: f.ifc.clone(),
             operation: f.operation,
             options: options::OptionsText::of(f),
-            symbol: None,
-            connector: None,
+            selection: Default::default(),
+            selecting: Default::default(),
             connector_hover: None,
             types_dialog: Default::default(),
             picked: 0,
@@ -651,13 +721,12 @@ impl FamilyEditor {
             ask: Asked::default(),
             dialog: None,
             source: None,
-            form: None,
             views: Default::default(),
             sketch: None,
             snaps: Default::default(),
             nested: f.nested.clone(),
+            purging: None,
             nested_instances: f.nested_instances.clone(),
-            nested_sel: None,
             placing: None,
             into_host: false,
             open_nested: None,
@@ -692,6 +761,7 @@ impl FamilyEditor {
                 instance: n.instance,
                 value: n.value,
                 formula: String::new(),
+                derived: false,
             });
         }
         if !done {
@@ -769,7 +839,7 @@ impl FamilyEditor {
 
     /// The family as typed, or the first thing that isn't what it should be.
     fn family(&self) -> Result<Family, String> {
-        let parameters: Vec<Parameter> = self.params.iter().map(ParamText::parameter).collect::<Result<_, _>>()?;
+        let parameters: Vec<Parameter> = self.params.iter().filter(|p| !p.derived).map(ParamText::parameter).collect::<Result<_, _>>()?;
         let own: BTreeMap<&str, Holds> =
             parameters.iter().filter(|p| !p.instance && p.formula.is_none()).map(|p| (p.name.as_str(), p.kind)).collect();
         let mut types = BTreeMap::new();
@@ -1181,27 +1251,27 @@ fn symbol_properties(ed: &mut FamilyEditor, ui: &mut Ui, i: usize) {
 }
 
 impl FamilyEditor {
-    /// The symbol selected, while it is there.
+    /// The symbol selected, while it alone is and it is there.
     pub(crate) fn selected_symbol(&self) -> Option<usize> {
-        self.symbol.filter(|i| *i < self.symbols.len())
+        match self.only_selected() {
+            Some(select_box::Picked::Symbol(i)) => Some(i),
+            _ => None,
+        }
     }
 
     /// Symbol `i` alone selected, as the Project Browser selects it: whatever else was selected let go.
     pub(crate) fn select_symbol(&mut self, i: usize) {
-        self.let_everything_go();
-        self.symbol = Some(i);
+        self.select_only(select_box::Picked::Symbol(i));
     }
 
     /// Form `i` alone selected, as the Project Browser selects it: whatever else was selected let go.
     pub(crate) fn select_only_form(&mut self, i: usize) {
-        self.let_everything_go();
-        self.form = Some(i);
+        self.select_only(select_box::Picked::Form(i));
     }
 
     /// Nothing selected: Properties show the family's own.
     pub(crate) fn let_everything_go(&mut self) {
-        (self.form, self.symbol, self.connector, self.nested_sel) = (None, None, None, None);
-        (self.views.plane, self.views.line, self.views.dim) = (None, None, None);
+        self.selection.clear();
     }
 
     /// A symbol of `part` added, as the Detail panel draws one, and selected so Properties show its rows.
@@ -1229,15 +1299,7 @@ impl FamilyEditor {
             return;
         }
         self.forms.swap(i, j);
-        self.form = self.form.map(|f| {
-            if f == i {
-                j
-            } else if f == j {
-                i
-            } else {
-                f
-            }
-        });
+        self.selection.forms_swapped(i, j);
     }
 
     /// Form `i` taken away, with the dimensions and locks measuring to it, as the ribbon's Delete does.
@@ -1249,22 +1311,14 @@ impl FamilyEditor {
         if !gone.is_nil() {
             self.forget_reference(gone);
         }
-        self.form = self.form.and_then(|f| match f.cmp(&i) {
-            std::cmp::Ordering::Equal => None,
-            std::cmp::Ordering::Greater => Some(f - 1),
-            std::cmp::Ordering::Less => Some(f),
-        });
+        self.selection.taken_out(select_box::Picked::Form(i));
     }
 
     /// Symbol `i` taken away.
     pub(crate) fn remove_symbol(&mut self, i: usize) {
         if i < self.symbols.len() {
             self.symbols.remove(i);
-            self.symbol = self.symbol.and_then(|s| match s.cmp(&i) {
-                std::cmp::Ordering::Equal => None,
-                std::cmp::Ordering::Greater => Some(s - 1),
-                std::cmp::Ordering::Less => Some(s),
-            });
+            self.selection.taken_out(select_box::Picked::Symbol(i));
         }
     }
 }
@@ -1444,6 +1498,39 @@ impl BimApp {
         self.family_asked(ctx, ed, ask);
     }
 
+    /// Manage's `m` from family document `ed` (FE-19): the project's Object Styles at the family's category, the project's
+    /// Materials, each saying it changes the project now; or Purge Unused on the draft, leaving out what a placed component of
+    /// the project's holds a value of.
+    fn family_manage(&mut self, ed: &mut FamilyEditor, m: Manage) {
+        let model = Arc::clone(&self.session.model);
+        match m {
+            Manage::ObjectStyles => {
+                self.object_styles_dialog =
+                    Some(crate::objectstyles::ObjectStylesDialog::for_family(&model, ed.category.graphics_category()));
+            }
+            Manage::Materials => {
+                let mut d = crate::materials::MaterialsDialog::new(&model, self.favorites_path.as_ref());
+                d.from_family = true;
+                self.materials_dialog = Some(d);
+            }
+            Manage::Purge => {
+                let name = ed.original.clone().unwrap_or_default();
+                // Of a project's elements only a component, a door and a window name a family and hold values of its
+                // parameters; a family nesting this one holds a copy of its own, which this purge doesn't change.
+                let held = |p: &str| {
+                    model.elements.values().any(|e| match e {
+                        bimcraft_core::model::Element::Component(c) => c.family == name && c.params.contains_key(p),
+                        bimcraft_core::model::Element::Door(o) | bimcraft_core::model::Element::Window(o) => {
+                            o.family.as_deref() == Some(name.as_str()) && o.params.contains_key(p)
+                        }
+                        _ => false,
+                    })
+                };
+                ed.open_purge(&held, &|m| model.materials.contains_key(m));
+            }
+        }
+    }
+
     /// Does what the family document's ribbon asked for: capturing the selection's frames, loading a file, making the family the
     /// project's (Load into Project, placing the test frames), saving it to a file or the Favorites (from a session of its own,
     /// which never touches the project), then closing it on Close Family, or on Load into Project and Close when the family
@@ -1459,6 +1546,9 @@ impl BimApp {
             self.put_family(ed);
             return;
         };
+        if let Some(m) = ask.manage {
+            self.family_manage(&mut ed, m);
+        }
         let base = Arc::clone(&self.session.model);
         let Asked {
             capture: capture_context,

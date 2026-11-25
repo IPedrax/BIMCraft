@@ -35,6 +35,11 @@ pub(crate) const KINDS: [(ConnectorKind, &str, &str); 5] = [
 ];
 
 impl ConnectorText {
+    /// Its GUID, which it keeps wherever it goes in the list: nil for one made since the family was last loaded.
+    pub(super) fn guid(&self) -> bimcraft_core::ids::Guid {
+        self.base.guid
+    }
+
     pub(crate) fn of(c: &Connector) -> ConnectorText {
         let xyz = |p: &Option<[Expr; 3]>| p.as_ref().map(|p| p.each_ref().map(expr_text)).unwrap_or_default();
         let load = match &c.load_va {
@@ -162,15 +167,17 @@ pub(crate) fn kind_name(kind: ConnectorKind) -> &'static str {
 }
 
 impl FamilyEditor {
-    /// The connector selected, while it is there.
+    /// The connector selected, while it alone is and it is there.
     pub(crate) fn selected_connector(&self) -> Option<usize> {
-        self.connector.filter(|i| *i < self.connectors.len())
+        match self.only_selected() {
+            Some(super::select_box::Picked::Connector(i)) => Some(i),
+            _ => None,
+        }
     }
 
     /// Connector `i` alone selected, as the Project Browser selects it: whatever else was selected let go.
     pub(crate) fn select_connector(&mut self, i: usize) {
-        self.let_everything_go();
-        self.connector = Some(i);
+        self.select_only(super::select_box::Picked::Connector(i));
     }
 
     /// A connector of `kind` placed, as Create > Connectors places one, and selected so Properties show its rows.
@@ -183,12 +190,8 @@ impl FamilyEditor {
     pub(crate) fn remove_connector(&mut self, i: usize) {
         if i < self.connectors.len() {
             self.connectors.remove(i);
+            self.selection.taken_out(super::select_box::Picked::Connector(i));
         }
-        self.connector = self.connector.and_then(|c| match c.cmp(&i) {
-            std::cmp::Ordering::Equal => None,
-            std::cmp::Ordering::Greater => Some(c - 1),
-            std::cmp::Ordering::Less => Some(c),
-        });
     }
 
     /// Connector `i`'s name, as the Project Browser lists it and Properties' selector names it.

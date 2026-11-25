@@ -29,6 +29,9 @@ pub const MAX_FIELDS: usize = 200;
 pub const MAX_KEY: usize = 40;
 /// The most papers one title block may list.
 pub const MAX_SIZES: usize = 32;
+/// The most logos one title block may hold, and the longest side of one, mm (at a sheet's density, one is at most 1,250 px).
+pub const MAX_LOGOS: usize = 8;
+pub const MAX_LOGO_SIDE: f64 = 250.0;
 /// The longest a text or a field's value may be.
 pub const MAX_TEXT: usize = 1024;
 /// The smallest and largest lettering, mm on paper.
@@ -134,6 +137,17 @@ pub struct Fill {
     pub color: Option<[u8; 3]>,
 }
 
+/// A logo: a picture of the project's (`Model::images`, a PNG or a JPEG kept once however many title blocks use it) placed in
+/// a title block, its bottom left corner at `at` and `width` by `height` mm, from the title block's bottom left corner.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Logo {
+    pub image: String,
+    pub at: P2,
+    pub width: f64,
+    pub height: f64,
+}
+
 /// A line of lettering: where it starts (or is centred, or ends), mm from its bottom left corner, on its baseline; its
 /// capitals' height, mm; its angle, degrees counter-clockwise; and its text, which may name fields as `{KEY}`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -199,6 +213,9 @@ pub struct TitleBlock {
     pub lines: Vec<Stroke>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fills: Vec<Fill>,
+    /// Pictures placed in it, under its lines and lettering.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub logos: Vec<Logo>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub texts: Vec<Text>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -223,6 +240,7 @@ impl Default for TitleBlock {
                 Stroke { points: vec![P2(w - 50.0, 0.0), P2(w - 50.0, 26.0)], closed: false, pen: Pen::PROJECTION, color: None },
             ],
             fills: Vec::new(),
+            logos: Vec::new(),
             texts: vec![
                 Text {
                     at: P2(4.0, 30.5),
@@ -409,6 +427,24 @@ impl TitleBlock {
             }
             if !f.rings.iter().flatten().all(near) {
                 return Err(format!("{who}: fill {i} has a point that isn't a number, or lies far past the title block"));
+            }
+        }
+        if self.logos.len() > MAX_LOGOS {
+            return Err(format!("{who}: it holds {} logos; up to {MAX_LOGOS}", self.logos.len()));
+        }
+        for (i, l) in self.logos.iter().enumerate() {
+            if l.image.is_empty() || l.image.len() > crate::model::MAX_TEXT {
+                return Err(format!("{who}: logo {i} names no picture"));
+            }
+            if !near(&l.at) {
+                return Err(format!("{who}: logo {i} stands at a point that isn't a number, or lies far past the title block"));
+            }
+            let side = |x: f64| x.is_finite() && x > 0.0 && x <= MAX_LOGO_SIDE;
+            if !(side(l.width) && side(l.height)) {
+                return Err(format!(
+                    "{who}: logo {i}'s width and height are {} by {} mm; each is more than 0, up to {MAX_LOGO_SIDE}",
+                    l.width, l.height
+                ));
             }
         }
         for (i, t) in self.texts.iter().enumerate() {
@@ -701,8 +737,22 @@ const INK: Rgb = Rgb(25, 25, 25);
 
 /// Title block `tb` drawn on sheet drawing `d` with its bottom left corner at paper point `at`, mm, its fields filled in
 /// from `values`.
-pub fn draw(d: &mut Drawing, tb: &TitleBlock, at: P2, values: &BTreeMap<String, String>) {
+pub fn draw(
+    d: &mut Drawing,
+    tb: &TitleBlock,
+    at: P2,
+    values: &BTreeMap<String, String>,
+    images: &BTreeMap<String, crate::texture::Picture>,
+) {
     let ink = |c: Option<[u8; 3]>| c.map_or(INK, |[r, g, b]| Rgb(r, g, b));
+    // Its logos, under all else: a picture a pixel to a pixel at the drawing's density, its top left where its top left falls.
+    for l in &tb.logos {
+        let Some(picture) = images.get(&l.image) else { continue };
+        let side = |mm: f64| (mm * d.view.scale).round().clamp(1.0, 8192.0) as u32;
+        let (width, height) = (side(l.width), side(l.height));
+        let (x, y) = d.view.px(P2(l.at.0 + at.0, l.at.1 + l.height + at.1));
+        d.push(crate::render::Prim::Image { at: (x.round(), y.round()), width, height, rgba: picture.rgba(width, height), ink: false });
+    }
     for f in &tb.fills {
         // A ring inside an odd number of the others is a hole (a hatch's island): wound the other way, so it stays empty.
         let rings: Vec<Vec<(f32, f32)>> = f
@@ -769,7 +819,7 @@ pub fn preview(m: &Model, tb: &TitleBlock, values: &BTreeMap<String, String>) ->
         crate::render::View { angle: 0.0, scale: density, cx: center.0, cy: center.1, width: side(extent.0), height: side(extent.1) };
     let mut d = Drawing::new(view);
     d.weights = m.line_weights().at(m.units.default_scale());
-    draw(&mut d, tb, P2(0.0, 0.0), values);
+    draw(&mut d, tb, P2(0.0, 0.0), values, &m.images);
     d.weigh(|_| true);
     d
 }
@@ -788,6 +838,7 @@ pub fn from_dxf(dxf: &Dxf, mm: f64) -> (TitleBlock, BTreeMap<String, usize>) {
         sizes: Vec::new(),
         lines: Vec::new(),
         fills: Vec::new(),
+        logos: Vec::new(),
         texts: Vec::new(),
         fields: Vec::new(),
     };

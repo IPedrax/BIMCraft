@@ -582,3 +582,76 @@ fn edit_type_from_a_regions_edit_boundary_opens_the_type_the_region_has() {
     assert_eq!(shown.as_deref(), Some("Sand"));
     assert!(h.query_by_label("Type Properties").is_some());
 }
+
+#[test]
+fn a_click_on_a_chain_s_last_point_ends_it_as_escape_does() {
+    // Walls: the chain ends where it is, its walls kept, and the next click starts another.
+    let mut h = app(BOX);
+    tool(&mut h, "Wall");
+    let before = ids(&h, "wall");
+    for p in [P2(1000.0, 1000.0), P2(4000.0, 1000.0), P2(4000.0, 4000.0)] {
+        click(&mut h, p);
+    }
+    assert_eq!(ids(&h, "wall").len(), before.len() + 2);
+    click(&mut h, P2(4000.0, 4000.0));
+    assert!(matches!(&h.state().tool, Tool::Wall(chain) if chain.is_empty()), "the last point again ends the chain");
+    click(&mut h, P2(1000.0, 4000.0));
+    assert_eq!(ids(&h, "wall").len(), before.len() + 2, "the next click starts a chain, building nothing");
+    assert!(matches!(&h.state().tool, Tool::Wall(chain) if chain.len() == 1));
+
+    // Detail lines: the same.
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    let before = ids(&h, "line");
+    for p in [P2(1000.0, 1000.0), P2(4000.0, 1000.0), P2(4000.0, 4000.0)] {
+        click(&mut h, p);
+    }
+    assert_eq!(ids(&h, "line").len(), before.len() + 2);
+    click(&mut h, P2(4000.0, 4000.0));
+    assert!(matches!(&h.state().tool, Tool::DetailLine(path) if path.is_empty()), "the last point again ends the chain");
+    click(&mut h, P2(1000.0, 4000.0));
+    assert_eq!(ids(&h, "line").len(), before.len() + 2);
+
+    // A polyline: the last point again makes it, as Enter does.
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    press(&mut h, "Polyline");
+    for p in [P2(1000.0, 1000.0), P2(3000.0, 1000.0), P2(3000.0, 3000.0), P2(3000.0, 3000.0)] {
+        click(&mut h, p);
+    }
+    assert_eq!(ids(&h, "line").len(), 1, "the polyline is made");
+    assert!(matches!(&h.state().tool, Tool::DetailLine(path) if path.is_empty()));
+
+    // Room separators: the same as walls.
+    let mut h = app(BOX);
+    tool(&mut h, "Room Separator");
+    let before = ids(&h, "roomseparator");
+    for p in [P2(4000.0, 0.0), P2(4000.0, 3000.0), P2(4000.0, 3000.0)] {
+        click(&mut h, p);
+    }
+    assert_eq!(h.state().tool, Tool::RoomSeparator(None), "the last point again ends the chain");
+    click(&mut h, P2(0.0, 3000.0));
+    assert_eq!(ids(&h, "roomseparator").len(), before.len() + 1, "the next click is a new line's start");
+}
+
+#[test]
+fn backspace_deletes_the_selection_as_delete_does_for_a_mac_keyboard() {
+    // A Mac's keyboard has no Delete key: its "delete" is Backspace, so Backspace deletes what is selected when it has
+    // nothing else to take back.
+    let mut h = app(BOX);
+    let walls = ids(&h, "wall");
+    h.state_mut().selection = vec![walls[0]];
+    h.run();
+    key(&mut h, Key::Backspace);
+    assert_eq!(ids(&h, "wall").len(), walls.len() - 1, "the wall selected is deleted");
+    // A number being typed takes Backspace first: a digit goes, the selection stays.
+    let walls = ids(&h, "wall");
+    h.state_mut().selection = vec![walls[0]];
+    h.state_mut().typed_length = "12".into();
+    h.run();
+    key(&mut h, Key::Backspace);
+    assert_eq!(h.state().typed_length, "1");
+    assert_eq!(ids(&h, "wall").len(), walls.len(), "nothing deleted while a number is typed");
+}

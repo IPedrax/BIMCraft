@@ -31,6 +31,8 @@ bimcraft-update = { workspace = true }
 bimcraft-assistant = { workspace = true }
 bimcraft-pyaddins = { workspace = true }
 eframe = { workspace = true }
+# wgpu's and eframe's warnings, into bimcraft.log (`wgpu_log.rs`): the crate they already write through.
+log = { workspace = true }
 rfd = { workspace = true }
 serde_json = { workspace = true }
 

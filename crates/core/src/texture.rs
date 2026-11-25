@@ -14,13 +14,19 @@ use zune_jpeg::zune_core::options::DecoderOptions;
 use crate::model::{MAX_COORD, MAX_TEXT, mix};
 use crate::render::Rgb;
 
-/// Pictures one project may hold.
-pub const MAX_IMAGES: usize = 24;
-/// The longest side a picture is kept at, px: a larger one is halved down to it.
+/// Pictures one project may hold: the five of the starter library's Grass, Gravel, Wood, Paving and Water among them.
+pub const MAX_IMAGES: usize = 32;
+/// The longest side a material's picture is kept at, px: a larger one is halved down to it.
 pub const MAX_SIDE: usize = 1024;
+/// The longest side a picture placed in a view is kept at, px: a drawing needs more than a texture does.
+pub const MAX_PLACED_SIDE: usize = 4096;
 /// What a file may be before it's refused: bytes, and pixels.
 pub const MAX_BYTES: usize = 32 << 20;
 const MAX_PIXELS: u64 = 16_000_000;
+/// A picture an image fill is made of, smaller than a texture's, since a plan draws it pixel by pixel: the longest side it is
+/// kept at, px, and the largest file taken.
+pub const FILL_MAX_SIDE: usize = 512;
+pub const FILL_MAX_BYTES: usize = 8 << 20;
 /// The side of a pattern drawn in code, px.
 const SIDE: usize = 256;
 /// The longest a tile of a texture may be, mm, and the shortest.
@@ -124,6 +130,21 @@ impl Texture {
         Texture { kind, size: kind.natural(), angle: 0.0, offset: [0.0; 2], image: String::new() }
     }
 
+    /// An image fill of picture `image`: a tile of it a metre across, as tall as the picture's `w` by `h` px make it.
+    pub fn image_fill(image: String, (w, h): (usize, usize)) -> Texture {
+        let size = [1000.0, (1000.0 * h as f64 / w.max(1) as f64).clamp(SHORTEST, LONGEST)];
+        Texture { kind: Kind::Image, size, angle: 0.0, offset: [0.0; 2], image }
+    }
+
+    /// Whether it's sound as an image fill, what a material's cut or surfaces show in place of their patterns: as a texture,
+    /// and of a picture.
+    pub fn check_fill(&self, images: &BTreeMap<String, Picture>) -> Result<(), String> {
+        if self.kind != Kind::Image {
+            return Err(format!("an image fill is of a picture, not of `{}`", self.kind.name()));
+        }
+        self.check(images)
+    }
+
     /// Whether it's sound: a tile of a usable size, turned and moved by numbers, and of a picture `images` holds.
     pub fn check(&self, images: &BTreeMap<String, Picture>) -> Result<(), String> {
         if !self.size.iter().all(|s| (SHORTEST..=LONGEST).contains(s)) {
@@ -203,7 +224,7 @@ fn chain(base: Level) -> Vec<Level> {
     levels
 }
 
-/// A picture of a project: the PNG it's kept as, and its levels for texturing with.
+/// A picture of a project: the PNG it's kept as (or the JPEG of one BIMCraft ships with), and its levels for texturing with.
 #[derive(Clone)]
 pub struct Picture {
     name: String,
@@ -224,7 +245,8 @@ impl PartialEq for Picture {
     }
 }
 
-/// How a picture goes in a project file: its name, and its PNG as base64.
+/// How a picture goes in a project file: its name, and its file as base64 under `png`, the name it has always had. It's a
+/// PNG, or a JPEG kept as it came, which every version reads, as both are read from their first bytes.
 #[derive(Serialize, Deserialize)]
 struct PictureFile {
     name: String,
@@ -237,7 +259,7 @@ impl TryFrom<PictureFile> for Picture {
     fn try_from(f: PictureFile) -> Result<Picture, String> {
         let bytes = unbase64(&f.png).ok_or("a picture's data isn't base64")?;
         let base = decode(&bytes).map_err(|e| format!("picture `{}`: {e}", f.name))?;
-        Ok(Picture { name: f.name, png: Arc::new(bytes), levels: Arc::new(chain(shrunk(base))) })
+        Ok(Picture { name: f.name, png: Arc::new(bytes), levels: Arc::new(chain(shrunk_to(base, MAX_SIDE))) })
     }
 }
 
@@ -254,14 +276,86 @@ impl<'de> Deserialize<'de> for Picture {
 }
 
 impl Picture {
-    /// A picture named `name` from the bytes of a PNG or a JPEG file; refused if it's neither, or too big to hold. It's
-    /// kept as a PNG, at most [`MAX_SIDE`] px a side.
+    /// A picture named `name` from the bytes of a PNG or a JPEG file, for a material's texture; refused if it's neither, or too
+    /// big to hold. It's kept at most [`MAX_SIDE`] px a side.
     pub fn import(name: &str, bytes: &[u8]) -> Result<Picture, String> {
-        let base = shrunk(decode(bytes)?);
-        let rgba: Vec<u8> = base.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
-        let size = tiny_skia::IntSize::from_wh(base.w as u32, base.h as u32).ok_or("it has no size")?;
-        let png = tiny_skia::Pixmap::from_vec(rgba, size).ok_or("it has no size")?.encode_png().map_err(|e| e.to_string())?;
-        Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(png), levels: Arc::new(chain(base)) })
+        Picture::import_at(name, bytes, MAX_SIDE)
+    }
+
+    /// [`Picture::import`], kept at most `side` px a side. A file that fits is kept as it came, byte for byte: a JPEG stays
+    /// a JPEG, as small as it was. One halved to fit is written again as what it was, a JPEG (at quality 90) or a PNG.
+    pub fn import_at(name: &str, bytes: &[u8], side: usize) -> Result<Picture, String> {
+        let full = decode(bytes)?;
+        let whole = full.w.max(full.h) <= side;
+        let base = shrunk_to(full, side);
+        let file = if whole {
+            bytes.to_vec()
+        } else if is_jpeg(bytes) {
+            let (w, h) = (u16::try_from(base.w).map_err(|_| "it's too wide")?, u16::try_from(base.h).map_err(|_| "it's too tall")?);
+            let mut out = Vec::new();
+            jpeg_encoder::Encoder::new(&mut out, 90).encode(&base.rgb, w, h, jpeg_encoder::ColorType::Rgb).map_err(|e| e.to_string())?;
+            out
+        } else {
+            let rgba: Vec<u8> = base.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+            let size = tiny_skia::IntSize::from_wh(base.w as u32, base.h as u32).ok_or("it has no size")?;
+            tiny_skia::Pixmap::from_vec(rgba, size).ok_or("it has no size")?.encode_png().map_err(|e| e.to_string())?
+        };
+        Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(file), levels: Arc::new(chain(base)) })
+    }
+
+    /// The same, kept at most `side` px a side ([`MAX_SIDE`] at most): an image fill's at [`FILL_MAX_SIDE`].
+    pub fn import_within(name: &str, bytes: &[u8], side: usize) -> Result<Picture, String> {
+        Picture::import_at(name, bytes, side.clamp(1, MAX_SIDE))
+    }
+
+    /// Whether it is kept as a JPEG (else a PNG).
+    pub fn is_jpeg(&self) -> bool {
+        is_jpeg(&self.png)
+    }
+
+    /// The extension of the file it is kept as.
+    pub fn extension(&self) -> &'static str {
+        if self.is_jpeg() { "jpg" } else { "png" }
+    }
+
+    /// A picture named `name` of the PNG or JPEG `file` as it is, byte for byte: how a `.bima` brings back one a project held,
+    /// its id the same. Anything else is taken as [`Picture::import`] takes it.
+    pub fn from_file(name: &str, file: Vec<u8>) -> Result<Picture, String> {
+        if file.len() > MAX_BYTES {
+            return Err(format!("it's {} bytes; a picture's file is up to {MAX_BYTES}", file.len()));
+        }
+        if !(file.starts_with(b"\x89PNG\r\n\x1a\n") || is_jpeg(&file)) {
+            return Picture::import(name, &file);
+        }
+        let base = decode(&file)?;
+        Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(file), levels: Arc::new(chain(shrunk(base))) })
+    }
+
+    /// Its pixels at its full size: its width and height, px, and their red, green and blue, row by row from the top.
+    pub fn pixels(&self) -> (usize, usize, &[u8]) {
+        self.levels.first().map_or((0, 0, &[][..]), |l| (l.w, l.h, &l.rgb[..]))
+    }
+
+    /// The file it is kept as: a PNG, or a JPEG as it came.
+    pub fn file(&self) -> &[u8] {
+        &self.png
+    }
+
+    /// A picture BIMCraft ships with, named `name`: its file's bytes kept as they are (a JPEG stays one, smaller in a project
+    /// than a PNG of it would be; a file reads either), read once however many projects are made.
+    pub(crate) fn bundled(name: &'static str, bytes: &'static [u8]) -> Option<Picture> {
+        type Read = Mutex<HashMap<&'static str, Picture>>;
+        static READ: OnceLock<Read> = OnceLock::new();
+        let read = READ.get_or_init(Default::default);
+        if let Some(hit) = read.lock().ok().and_then(|r| r.get(name).cloned()) {
+            return Some(hit);
+        }
+        let base = decode(bytes).ok().filter(|l| l.w.max(l.h) <= FILL_MAX_SIDE)?;
+        let picture = Picture { name: name.into(), png: Arc::new(bytes.to_vec()), levels: Arc::new(chain(base)) };
+        if let Ok(mut r) = read.lock() {
+            r.insert(name, picture.clone());
+        }
+        Some(picture)
     }
 
     pub fn name(&self) -> &str {
@@ -273,6 +367,39 @@ impl Picture {
         self.levels.first().map_or((0, 0), |l| (l.w, l.h))
     }
 
+    /// Its pixels scaled to `w` by `h` px as straight RGBA, all opaque (a picture is kept over white): taken from the smallest
+    /// level at least that wide, each pixel the blend of the four nearest.
+    pub fn rgba(&self, w: u32, h: u32) -> Vec<u8> {
+        let (w, h) = (w.max(1) as usize, h.max(1) as usize);
+        let Some(level) = self.levels.iter().rev().find(|l| l.w >= w).or_else(|| self.levels.first()) else {
+            return vec![255; w * h * 4];
+        };
+        let (lw, lh) = (level.w.max(1), level.h.max(1));
+        let pixel = |x: i64, y: i64| -> [f64; 3] {
+            let (x, y) = (x.clamp(0, lw as i64 - 1) as usize, y.clamp(0, lh as i64 - 1) as usize);
+            match level.rgb.get((y * lw + x) * 3..(y * lw + x) * 3 + 3) {
+                Some(&[r, g, b]) => [f64::from(r), f64::from(g), f64::from(b)],
+                _ => [255.0; 3],
+            }
+        };
+        let mut out = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            let v = (y as f64 + 0.5) * lh as f64 / h as f64 - 0.5;
+            let (row, ty) = (v.floor() as i64, v - v.floor());
+            for x in 0..w {
+                let u = (x as f64 + 0.5) * lw as f64 / w as f64 - 0.5;
+                let (col, tx) = (u.floor() as i64, u - u.floor());
+                let (a, b, c, d) = (pixel(col, row), pixel(col + 1, row), pixel(col, row + 1), pixel(col + 1, row + 1));
+                for ((a, b), (c, d)) in a.into_iter().zip(b).zip(c.into_iter().zip(d)) {
+                    let (top, bottom) = (a * (1.0 - tx) + b * tx, c * (1.0 - tx) + d * tx);
+                    out.push((top * (1.0 - ty) + bottom * ty).round().clamp(0.0, 255.0) as u8);
+                }
+                out.push(255);
+            }
+        }
+        out
+    }
+
     /// An id for it among a project's pictures: the same for the same bytes, so the same picture comes in once.
     pub fn id(&self) -> String {
         let hash = self.png.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3));
@@ -280,12 +407,23 @@ impl Picture {
     }
 }
 
-/// `level` halved down until neither side is longer than [`MAX_SIDE`].
-fn shrunk(mut level: Level) -> Level {
-    while level.w.max(level.h) > MAX_SIDE {
+/// `level` halved down until neither side is longer than [`MAX_PLACED_SIDE`]: a picture as a project holds it, which
+/// [`Picture::import`] has already brought to [`MAX_SIDE`] for a material.
+fn shrunk(level: Level) -> Level {
+    shrunk_to(level, MAX_PLACED_SIDE)
+}
+
+/// `level` halved down until neither side is longer than `side`.
+fn shrunk_to(mut level: Level, side: usize) -> Level {
+    while level.w.max(level.h) > side.max(1) {
         level = level.halved();
     }
     level
+}
+
+/// Whether `bytes` are a JPEG's.
+fn is_jpeg(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0xFF, 0xD8, 0xFF])
 }
 
 /// Whether `w` by `h` px is a size to take.
@@ -560,6 +698,14 @@ impl Sampler {
     /// The level of the mip chain a pixel that covers `foot` mm of the face looks up in.
     pub fn level_for(&self, foot: f64) -> usize {
         level_for(self.texel, foot, self.levels.len())
+    }
+
+    /// Its colour on average: its coarsest level's one pixel.
+    pub fn average(&self) -> Rgb {
+        match self.levels.last().and_then(|l| l.rgb.get(..3)) {
+            Some(&[r, g, b]) => Rgb(r, g, b),
+            _ => Rgb(128, 128, 128),
+        }
     }
 
     /// Everything a graphics card needs to look up the colours [`at`](Self::at) does.

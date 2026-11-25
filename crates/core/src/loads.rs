@@ -3,7 +3,7 @@
 //! command is their caller, reading the rooms' areas and perimeters from the model or from its params.
 //!
 //! - Lighting: at least one point in the ceiling of each room, 100 VA up to 6 m² and 100 VA + 60 VA for each whole 4 m² above 6.
-//! - Outlets, by the kind of room (known by its name, or given): a bathroom 1; kitchens, pantries, service areas and laundries
+//! - Outlets, by the kind of room (known by its name, by the rows' `names`, or given): a bathroom 1; kitchens, pantries, service areas and laundries
 //!   one for each 3.5 m of perimeter (a whole number up, 1 at least); rooms and bedrooms one for each 5 m; a veranda 1; the others
 //!   1 up to 6 m² and one for each 5 m of perimeter above.
 //! - Power: bathrooms, kitchens, pantries, service areas and laundries 600 VA for each of the first 3 points of a room and 100 VA
@@ -73,25 +73,14 @@ fn plain(name: &str) -> String {
         .collect()
 }
 
-/// The kind of room a name says (Portuguese or English), `Other` when it says none.
+/// The kind of room a name says, by the default standard's names, `Other` when it says none.
 pub fn kind_of(name: &str) -> Kind {
-    let n = plain(name);
-    let has = |words: &[&str]| words.iter().any(|w| n.contains(w));
-    let word = |w: &str| n.split(|c: char| !c.is_alphanumeric()).any(|x| x == w);
-    if has(&["servico", "lavanderia", "laundry", "utility"]) {
-        Kind::Service
-    } else if has(&["banheiro", "lavabo", "sanitario", "bathroom", "toilet", "restroom"]) || word("wc") || word("bwc") || word("bath") {
-        Kind::Bath
-    } else if has(&["cozinha", "copa", "kitchen", "pantry"]) {
-        Kind::Kitchen
-    } else if has(&["varanda", "sacada", "balcony", "veranda"]) {
-        Kind::Veranda
-    } else if has(&["sala", "dormitorio", "quarto", "suite", "living", "bedroom"]) {
-        Kind::Dry
-    } else {
-        Kind::Other
-    }
+    default_set().kind_of(name)
 }
+
+/// The most names a room's row may hold in each of its lists, and the longest a name may be (characters).
+const MAX_NAMES: usize = 50;
+const MAX_NAME: usize = 64;
 
 /// The standard `load_points` follows when none is named.
 pub const DEFAULT: &str = "NBR 5410:2004";
@@ -135,6 +124,17 @@ pub struct Alternative {
 pub struct RoomRule {
     /// A key of `KINDS`.
     pub kind: String,
+    /// What a room's name says to be of this kind: words found anywhere in it, in lower case without accents. They are
+    /// ours, in the languages BIMCraft speaks, not the standard's: a standard tells the kinds apart, not their names.
+    /// The rows are read in their order, so a name that says two kinds is the first's ("banheiro de serviço" a service area).
+    #[serde(default)]
+    pub names: Vec<String>,
+    /// Short names found only as a whole word of the name (wc, bath), so "bathtub storage" says no bathroom.
+    #[serde(default)]
+    pub words: Vec<String>,
+    /// The names of a kitchen that has a sink's counter, for `counter` (a pantry is a kitchen without one).
+    #[serde(default)]
+    pub counter_names: Vec<String>,
     /// The fewest outlets.
     #[serde(default)]
     pub least: u32,
@@ -164,6 +164,13 @@ pub fn rule_sets() -> &'static [RuleSet] {
     SETS.get_or_init(|| crate::codes::library_sections(crate::codes::Discipline::Electrical, "load_points"))
 }
 
+/// A `load_points` section as a project or an amendment gives it: it must read as a rule set, with its names in bounds.
+pub fn valid(v: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let set: RuleSet = serde_json::from_value(v.clone()).map_err(|e| e.to_string())?;
+    set.check()?;
+    Ok(v.clone())
+}
+
 /// The rule set of a standard, by its name.
 pub fn rule_set(standard: &str) -> Option<&'static RuleSet> {
     rule_sets().iter().find(|s| s.standard == standard)
@@ -181,6 +188,53 @@ fn per(length: f64, step: f64) -> u32 {
 }
 
 impl RuleSet {
+    /// Whether the rows' names are within bounds: a project's code is hostile input, and every room's name is read
+    /// against them.
+    pub fn check(&self) -> Result<(), String> {
+        for r in &self.rooms {
+            for (what, list) in [("names", &r.names), ("words", &r.words), ("counter_names", &r.counter_names)] {
+                if list.len() > MAX_NAMES || list.iter().any(|n| n.trim().is_empty() || n.chars().count() > MAX_NAME) {
+                    return Err(format!(
+                        "load_points: `{}`'s `{what}` holds up to {MAX_NAMES} names, each 1 to {MAX_NAME} characters",
+                        r.kind
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether any row names its kind: a set changed before names were data names none, and reads BIMCraft's instead.
+    fn names_any(&self) -> bool {
+        self.rooms.iter().any(|r| !r.names.is_empty() || !r.words.is_empty() || !r.counter_names.is_empty())
+    }
+
+    /// The set whose names say the kinds: this one, or the default standard's where this names none.
+    fn namer(&self) -> &RuleSet {
+        if self.names_any() { self } else { default_set() }
+    }
+
+    /// The kind of room a name says, by the rows' names in their order; `Other` when it says none.
+    pub fn kind_of(&self, name: &str) -> Kind {
+        let n = plain(name);
+        let namer = self.namer();
+        let has = |w: &String| {
+            let w = plain(w);
+            !w.is_empty() && n.contains(&w)
+        };
+        let word = |w: &String| {
+            let w = plain(w);
+            n.split(|c: char| !c.is_alphanumeric()).any(|x| x == w)
+        };
+        namer
+            .rooms
+            .iter()
+            .filter(|r| r.kind != Kind::Other.key())
+            .find(|r| r.names.iter().take(MAX_NAMES).any(has) || r.words.iter().take(MAX_NAMES).any(word))
+            .and_then(|r| Kind::parse(&r.kind))
+            .unwrap_or(Kind::Other)
+    }
+
     /// The row of a kind of room; one that asks nothing if the set has none.
     pub fn room(&self, kind: Kind) -> &RoomRule {
         static NONE: OnceLock<RoomRule> = OnceLock::new();
@@ -222,7 +276,12 @@ impl RuleSet {
     /// The outlets a kitchen needs over the counter of its sink, at the same point or at others.
     pub fn counter_outlets(&self, kind: Kind, name: &str) -> u32 {
         let n = plain(name);
-        if kind == Kind::Kitchen && ["cozinha", "kitchen", "copa"].iter().any(|w| n.contains(w)) { self.room(kind).counter } else { 0 }
+        let names = &self.namer().room(Kind::Kitchen).counter_names;
+        let said = names.iter().take(MAX_NAMES).any(|w| {
+            let w = plain(w);
+            !w.is_empty() && n.contains(&w)
+        });
+        if kind == Kind::Kitchen && said { self.room(kind).counter } else { 0 }
     }
 
     /// Adds up the rooms; `alternative` is taken only where the standard allows it.

@@ -302,16 +302,68 @@ fn pick_new_host_preserves_moved_origins_on_mirrored_and_rotated_targets() {
 }
 
 #[test]
-fn pick_new_host_does_not_enable_pending_wall_forms() {
-    // #504 is not in this base. If these fields become supported, extend the rehost eligibility guard before this test changes.
-    let (mut s, _, b, _) = fixture();
-    for (key, value) in [("slant", json!(15)), ("profile", json!([[[0, 0], [6000, 0], [6000, 3000], [0, 3000]]]))] {
-        let before = s.model.clone();
-        let mut p = json!({"id": b});
-        p[key] = value;
-        let error = s.execute("modify", &p).unwrap_err();
-        assert!(error.contains(key), "{error}");
-        assert!(std::sync::Arc::ptr_eq(&before, &s.model));
+fn pick_new_host_updates_both_hosts_net_areas_through_history_and_reopen() {
+    let mut s = Session::new();
+    for (name, thickness) in [("Thin", 200), ("Thick", 400)] {
+        run(&mut s, "type", json!({"category": "wall", "name": name, "thickness": thickness}));
+    }
+    let a = run(&mut s, "wall", json!({"points": [[0,0],[6000,0]], "height": 3000, "type": "Thin"}))["ids"][0].as_u64().unwrap();
+    let b = run(&mut s, "wall", json!({"points": [[6000,4000],[0,4000]], "height": 3000, "type": "Thick"}))["ids"][0].as_u64().unwrap();
+    let window = run(&mut s, "window", json!({"wall": a, "offset": 1500, "sill": 900}))["id"].as_u64().unwrap();
+    let door = run(&mut s, "door", json!({"wall": a, "offset": 4000}))["id"].as_u64().unwrap();
+    let quantities = |s: &mut Session, cut_a: f64, cut_b: f64| {
+        let walls = run(s, "elements", json!({"category": "wall"}));
+        for (id, cut, thickness) in [(a, cut_a, 0.2), (b, cut_b, 0.4)] {
+            let row = walls["elements"].as_array().unwrap().iter().find(|e| e["id"] == id).unwrap();
+            for (field, expected) in [("area_m2", 18.0 - cut), ("openings_area_m2", cut), ("volume_m3", (18.0 - cut) * thickness)] {
+                assert!((row[field].as_f64().unwrap() - expected).abs() < 0.001, "{field}: {row}, expected {expected}");
+            }
+        }
+    };
+    quantities(&mut s, 3.69, 0.0);
+    for (id, cut_before, cut_after) in [(window, 0.0, 1.8), (door, 1.8, 3.69)] {
+        let original = s.model.elements.get(id).unwrap().clone();
+        let guid = s.model.guid(id);
+        let history = s.history().len();
+        run(&mut s, "pick_new_host", json!({"id": guid, "wall": b, "offset": if id == window { 1500 } else { 4000 }}));
+        assert_eq!(s.history().len(), history + 1);
+        assert_eq!(s.model.guid(id), guid);
+        let mut expected = original.clone();
+        let (Element::Door(o) | Element::Window(o)) = &mut expected else { panic!("opening") };
+        o.host = s.model.guid(b);
+        assert_eq!(s.model.elements.get(id), Some(&expected));
+        quantities(&mut s, 3.69 - cut_after, cut_after);
+        run(&mut s, "undo", json!({}));
+        assert_eq!(s.model.elements.get(id), Some(&original));
+        quantities(&mut s, 3.69 - cut_before, cut_before);
+        run(&mut s, "redo", json!({}));
+        assert_eq!(s.model.elements.get(id), Some(&expected));
+        quantities(&mut s, 3.69 - cut_after, cut_after);
+    }
+    let saved = run(&mut s, "elements", json!({}));
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("net-areas.bimc");
+    run(&mut s, "save", json!({"path": path}));
+    let mut reopened = Session::new();
+    run(&mut reopened, "open", json!({"path": path}));
+    assert_eq!(run(&mut reopened, "elements", json!({})), saved);
+    quantities(&mut reopened, 0.0, 3.69);
+}
+
+#[test]
+fn pick_new_host_refuses_slanted_and_profiled_source_or_target() {
+    for source in [false, true] {
+        for (key, value) in [("slant", json!(15)), ("profile", json!([[[0, 0], [6000, 0], [6000, 3000], [0, 3000]]]))] {
+            let (mut s, a, b, id) = fixture();
+            let mut p = json!({"id": if source { a } else { b }});
+            p[key] = value;
+            run(&mut s, "modify", p.clone());
+            refused(&mut s, json!({"id": id, "wall": b, "offset": 3000}), "Pick New Host");
+            assert_eq!(crate::rehost::opening(&s.model, id).is_err(), source);
+            p[key] = if key == "slant" { json!(0) } else { json!([]) };
+            run(&mut s, "modify", p);
+            run(&mut s, "pick_new_host", json!({"id": id, "wall": b, "offset": 3000}));
+        }
     }
 }
 

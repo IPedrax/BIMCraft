@@ -279,3 +279,22 @@ mod command {
         }
     }
 }
+
+#[test]
+fn an_outdoor_rule_is_for_outlets_whatever_kinds_it_lists() {
+    // `outdoor` says "an internal outlet that may feed equipment outdoors": a code that leaves its kinds open still asks it of
+    // outlets only, never of a light or a fixed load marked outdoor.
+    let rule: Rule = serde_json::from_value(serde_json::json!({
+        "reason": "outdoor", "says": "an outlet that may feed equipment outdoors", "outdoor": true, "source": "test"
+    }))
+    .unwrap();
+    for kind in [Kind::Lighting, Kind::Fixed] {
+        let mut p = point(Place::Dry, kind);
+        p.outdoor = true;
+        assert!(!rule.holds(&p, true), "{kind:?}");
+    }
+    let mut p = point(Place::Dry, Kind::Outlet);
+    assert!(!rule.holds(&p, true));
+    p.outdoor = true;
+    assert!(rule.holds(&p, true));
+}

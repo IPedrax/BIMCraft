@@ -15,6 +15,7 @@ use crate::pen::Pen;
 use crate::render::{self, Drawing, PAPER, Part, Prim, Rgb, View};
 use crate::{font, schedule, view3d};
 
+pub(crate) mod detail;
 mod panel;
 
 /// Paper px per mm in a sheet's drawing: plan lettering 10 px tall comes out 2 mm on paper.
@@ -62,6 +63,7 @@ fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View
         Element::Section(_) | Element::Elevation(_) => {
             render::section_extent(m, work.get_or_init(|| render::SectionWork::new(m)), view, k, 1.0)?.to_vec()
         }
+        Element::DetailView(_) => render::detail_extent(m, view)?.into_iter().map(|p| turn(p, angle)).collect(),
         Element::Schedule(sc) => {
             let (width, height) = table_size(&sc.name, &table_of(m, m.elements.id(view), sc));
             return Some(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width, height });
@@ -69,6 +71,11 @@ fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View
         Element::PanelSchedule(ps) => {
             let (width, height) = panel::size(m, ps)?;
             return Some(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width, height });
+        }
+        // A rebar detail draws its own picture, at the scale it is placed at.
+        Element::RebarDetail(rd) => {
+            let (width, height) = detail::size(m, rd, k)?;
+            return Some(View { angle: 0.0, scale: k, cx: 0.0, cy: 0.0, width, height });
         }
         Element::View3D(v) => {
             let cam = view3d::camera_in(m, v.azimuth, v.elevation, k, ROOM * DENSITY, &Look::of(m, view));
@@ -382,7 +389,7 @@ fn title_block(d: &mut Drawing, m: &Model, id: impl Key, paper: P2, views: &[&Vi
     if let Some(tb) = template {
         let at = P2(paper.0 - margins.right - tb.width, margins.bottom);
         let scale = scale_value(views, m.language, m.units);
-        crate::titleblock::draw(d, tb, at, &crate::titleblock::values(m, id, &scale));
+        crate::titleblock::draw(d, tb, at, &crate::titleblock::values(m, id, &scale), &m.images);
         if margins.folding_marks {
             draw_folding_marks(d, paper, &sheet.size, margins);
         }
@@ -564,6 +571,21 @@ fn view_into(
             }
             drawing
         }
+        // A detail of a plan is drawn as the plan is, cropped to its region.
+        Some(Element::DetailView(_)) if m.plan_level(id).is_some() => render::detail_at(m, id, view, 1.0),
+        // A detail of a section or an elevation goes over the picture of what lies beyond its fragment.
+        Some(Element::DetailView(_)) => {
+            let w = work.get_or_init(|| render::SectionWork::new(m));
+            let img = render::section_picture_in(m, w, id, view, &[]);
+            let drawing = match &img {
+                Some(img) => render::section_at_over_in(m, w, id, view, 1.0, img),
+                None => render::section_at(m, id, view, 1.0),
+            };
+            if let Some(img) = img {
+                d.push(Prim::Image { at: (ox, oy), width: img.width, height: img.height, rgba: img.rgba, ink: false });
+            }
+            drawing
+        }
         // Its title is its first row; it has no view title under it.
         Some(Element::Schedule(sc)) => {
             table(d, m, m.elements.id(id), sc, (ox, oy));
@@ -572,6 +594,11 @@ fn view_into(
         Some(Element::PanelSchedule(ps)) => {
             panel::draw(d, m, ps, (ox, oy));
             return Some(false);
+        }
+        // Its name and its scale go under it, as any scaled view's do.
+        Some(Element::RebarDetail(rd)) => {
+            detail::draw(d, m, rd, view.scale, (ox, oy));
+            return Some(true);
         }
         Some(Element::View3D(v)) => {
             let look = Look::of(m, id);

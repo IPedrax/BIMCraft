@@ -206,3 +206,55 @@ fn new_from_starter_makes_a_title_block_for_its_papers_and_the_sheets_of_those_p
     h.run();
     assert_eq!(h.get_by_role_and_label(Role::ComboBox, "Title Block").value().as_deref(), Some("ISO 7200 A4-A3 (by paper size)"));
 }
+
+#[test]
+fn the_logos_tab_lists_a_title_blocks_pictures_and_takes_one_away() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("logo.png");
+    // Any picture will do: a plan drawn to a PNG.
+    let script = format!(
+        "{BOX}\nrender {}\ntitle_block {}",
+        json!({"view": "Level 1", "path": file, "width": 120, "height": 80}),
+        json!({"name": "T", "logos": [{"path": file, "at": [2, 2], "width": 20}]})
+    );
+    let mut h = app(&script);
+    assert_eq!(h.state().session.model.title_blocks["T"].logos.len(), 1);
+    // The starter materials hold pictures of their own now (#536): the logo's is the one more.
+    let held = h.state().session.model.images.len();
+    h.state_mut().open_title_blocks(Some("T"));
+    h.run();
+    press(&mut h, "Logos");
+    assert!(h.query_by_label("Add Logo…").is_some() && h.query_by_label("Remove logo").is_some());
+    press(&mut h, "Remove logo");
+    press_near(&mut h, "Apply", "Cancel");
+    let m = &h.state().session.model;
+    assert!(m.title_blocks["T"].logos.is_empty(), "the logo is gone from the title block");
+    assert_eq!(m.images.len(), held - 1, "and its picture from the project");
+}
+
+#[test]
+fn a_title_block_is_saved_to_the_favorites_from_its_dialog_and_added_to_a_project_from_theirs() {
+    let dir = tempfile::tempdir().unwrap();
+    let (file, favorites) = (dir.path().join("logo.png"), dir.path().join("favorites.json"));
+    let script = format!(
+        "{BOX}\nrender {}\ntitle_block {}",
+        json!({"view": "Level 1", "path": file, "width": 120, "height": 80}),
+        json!({"name": "T", "sizes": ["A3"], "logos": [{"path": file, "at": [2, 2], "width": 20}]})
+    );
+    let mut h = app(&script);
+    h.state_mut().favorites_path = Some(favorites.clone());
+    h.state_mut().open_title_blocks(Some("T"));
+    h.run();
+    press(&mut h, "Save to Favorites");
+    let kept = bimcraft_core::favorites::Favorites::read(&favorites).unwrap();
+    assert_eq!((kept.title_blocks["T"].title_block.logos.len(), kept.title_blocks["T"].images.len()), (1, 1), "with its logo's picture");
+    press(&mut h, "OK");
+    // The Favorites window lists it under Title Blocks and adds it, as another name since the project has T.
+    h.state_mut().open_favorites();
+    h.run();
+    press_near(&mut h, "Title Blocks", "Close");
+    press(&mut h, "Add to Project");
+    assert_eq!(h.state().session.model.title_blocks["T 2"], h.state().session.model.title_blocks["T"]);
+    press(&mut h, "Remove");
+    assert!(bimcraft_core::favorites::Favorites::read(&favorites).unwrap().title_blocks.is_empty());
+}

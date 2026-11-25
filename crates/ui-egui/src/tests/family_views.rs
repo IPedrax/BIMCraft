@@ -246,6 +246,48 @@ fn a_click_selects_a_form_or_a_plane_and_a_selected_plane_moves_by_a_drag() {
     assert!(editor(&h).planes.iter().all(|p| !p.datum() || p.as_datum()), "the datums as they are");
 }
 
+/// A drag from a plane that isn't selected selects it and moves it, as a drag from any element moves what it selects;
+/// selected, a drag moves it again.
+#[test]
+fn a_drag_from_a_plane_not_selected_selects_it_and_moves_it() {
+    let (mut h, _) = boxed();
+    view(&mut h, Some(Which::Plan));
+    let edge = plane(&h, "Edge").guid;
+    assert_eq!(editor(&h).selected_plane(), None);
+    let (a, b) = (editor(&h).views.screen_of([-400.0, 0.0, 0.0]).unwrap(), editor(&h).views.screen_of([-100.0, 200.0, 0.0]).unwrap());
+    drag_screen(&mut h, a, b, PointerButton::Primary);
+    assert_eq!(editor(&h).selected_plane(), Some(edge), "the drag selects Edge");
+    let p = plane(&h, "Edge").clone();
+    assert!((p.start[0] + 100.0).abs() < 15.0 && (p.end[0] + 100.0).abs() < 15.0, "and moves it: {p:?}");
+    let (a, b) = (editor(&h).views.screen_of([-100.0, 0.0, 0.0]).unwrap(), editor(&h).views.screen_of([-300.0, 0.0, 0.0]).unwrap());
+    drag_screen(&mut h, a, b, PointerButton::Primary);
+    let p = plane(&h, "Edge");
+    assert!((p.start[0] + 300.0).abs() < 15.0 && (p.end[0] + 300.0).abs() < 15.0, "selected, a drag moves it again: {p:?}");
+}
+
+/// A press on a plane that isn't selected, the hand wobbling 2 or 3 points before it lets go, is a click: within egui's drag
+/// threshold nothing moves, and nothing is a step of the history.
+#[test]
+fn a_press_on_a_plane_not_selected_wobbling_a_few_points_moves_nothing() {
+    let (mut h, _) = boxed();
+    view(&mut h, Some(Which::Plan));
+    let was = plane(&h, "Edge").clone();
+    let a = editor(&h).views.screen_of([-400.0, 0.0, 0.0]).unwrap();
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for off in [vec2(2.0, 1.0), vec2(-1.0, 2.0), vec2(2.0, -2.0)] {
+        h.hover_at(a + off);
+        h.run();
+    }
+    h.event(Event::PointerButton { pos: a + vec2(2.0, -2.0), button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    h.run();
+    assert_eq!(*plane(&h, "Edge"), was, "a wobble within the threshold moves nothing");
+    assert_eq!(editor(&h).steps(), 0, "no step of the history");
+}
+
 /// A window with a Sill plane on Ref. Level, Align-locked to it, and Head 1200 above: as the blank window has Sill (F10c).
 const SILL_WINDOW: &str = r#"family {"name": "Sill Window", "category": "window", "parameters": [{"name": "Width", "value": 900}, {"name": "Height", "value": 1200}], "types": {"T": {}}, "ref_planes": [{"guid": "f1000000-0000-4000-8000-000000000003", "name": "Head", "start": [-1500, 0, 1200], "end": [1500, 0, 1200], "up": [0, 1, 0]}, {"guid": "f1000000-0000-4000-8000-000000000004", "name": "Sill", "start": [-1500, 0, 0], "end": [1500, 0, 0], "up": [0, 1, 0]}], "dimensions": [{"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}, {"plane": "f1000000-0000-4000-8000-000000000004"}], "view": "front", "at": [1300, 0, 0], "locked": [{"segment": 0, "length": 0}], "alignment": true}], "forms": [{"plane": "xz", "profile": [[-450, 0], [450, 0], [450, 1200], [-450, 1200]], "from": -40, "to": 40}]}"#;
 

@@ -46,6 +46,11 @@ def save(stage):
 def rows(category):
     return execute('elements', {'category':category})['elements']
 
+def host_quantities(cut_target):
+    for wall, cut, thickness in zip(rows('wall'), [3.69-cut_target,cut_target], [.2,.4]):
+        for field, expected in [('area_m2',18-cut),('openings_area_m2',cut),('volume_m3',(18-cut)*thickness)]:
+            assert abs(wall[field]-expected)<.001,(wall,field,expected)
+
 try:
     start(*(['--connect'] if connected else []))
     catalog = request('tools/call', {'name':'list_commands', 'arguments':{'filter':'pick_new_host'}})
@@ -55,7 +60,9 @@ try:
             execute('type', dict(category='wall', name=name, thickness=thick))
         a = execute('wall', dict(points=[[0,0],[6000,0]], type='Source 200',height=3000,base_offset=400))['ids'][0]
         b = execute('wall', dict(points=[[6000,4000],[0,4000]], type='Target 400',height=3000,base_offset=400))['ids'][0]
-        execute('window', dict(wall=a,offset=1500,sill=900,mark='WINDOW-KEEP',flip_facing=True))
+        window=execute('window', dict(wall=a,offset=1500,sill=900,mark='WINDOW-KEEP',flip_facing=True))
+        # The setting has identical geometry on upright hosts, but remains an instance value to preserve.
+        execute('modify', dict(id=window['id'],slanted=True))
         execute('door', dict(wall=a,offset=4000,mark='DOOR-KEEP',flip_hand=True,flip_facing=True))
         execute('tag', {})
         level=rows('level')[0]['guid']
@@ -67,19 +74,26 @@ try:
     source,target=[x['guid'] for x in walls]
     before=execute('elements',{})
     opening_rows=rows('window')+rows('door')
+    host_quantities(0)
     save('before')
+    cut_target=0
     for o in opening_rows:
         execute('pick_new_host',dict(id=o['guid'],wall=target,offset=0),error=True)
         if o == opening_rows[0]: assert execute('elements',{}) == before
         execute('pick_new_host',dict(id=o['guid'],wall=target,offset=o['offset']))
+        cut=1.8 if o['category']=='window' else 1.89
+        host_quantities(cut_target+cut)
         changed=execute('elements',{})
         execute('undo'); assert next(x for x in rows(o['category']) if x['id']==o['id']) == o
+        host_quantities(cut_target)
         execute('pick_new_host',dict(id=o['guid'],wall=target,offset=0),error=True)
         execute('redo'); assert execute('elements',{}) == changed
+        cut_target+=cut
+        host_quantities(cut_target)
     after=execute('elements',{})
     for o in opening_rows:
         n=next(x for x in rows(o['category']) if x['id']==o['id'])
-        for field in ['id','guid','mark','family','type','params','sill','flip_hand','flip_facing']:
+        for field in ['id','guid','mark','family','type','params','sill','flip_hand','flip_facing','slanted']:
             assert n.get(field)==o.get(field),(field,o,n)
         assert n['host']==target,(n,target)
     save('after')
@@ -93,6 +107,7 @@ try:
     # Fresh process reads the saved native file; this applies equally to a desktop-made file.
     start(folder/'after.bimc')
     assert execute('elements',{}) == after
+    host_quantities(3.69)
     execute('delete',{'ids':[source]})
     for o in opening_rows:
         assert next(x for x in rows(o['category']) if x['guid']==o['guid'])

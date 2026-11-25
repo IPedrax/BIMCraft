@@ -3,7 +3,7 @@
 //! say so and pass.
 
 use super::*;
-use crate::dock::{Docking, Palette, Side};
+use crate::dock::{Docking, Palette, Policy, Side};
 use bimcraft_pyaddins::{Button, Store};
 
 /// The app on `script`'s model, with a PyAddins folder of its own.
@@ -97,14 +97,14 @@ fn settings_from_before_the_player_keep_it_closed() {
     // What the settings file kept before there was a Script Automation palette: it names neither placed nor closed.
     let old =
         json!({"left": [{"tabs": ["Properties"]}, {"tabs": ["Project Browser"]}], "right": [], "bottom": [], "floats": [], "closed": []});
-    let d = Docking::from_json(&old);
+    let d = Docking::from_json(&old, Policy::Live, &Palette::known());
     assert!(d.shown(Palette::Properties) && d.shown(Palette::Browser));
     assert!(!d.shown(Palette::Scripts));
     assert!(!Docking::default().shown(Palette::Scripts));
     // Kept open, it opens again where it was.
     let mut d = Docking::default();
     d.show(Palette::Scripts, true);
-    let back = Docking::from_json(&d.to_json());
+    let back = Docking::from_json(&d.to_json(&Palette::known()), Policy::Live, &Palette::known());
     assert_eq!(back.docked(Palette::Scripts), Some(Side::Right));
 }
 
@@ -205,7 +205,7 @@ fn stop_ends_a_script_that_would_run_forever() {
     start(&mut h, "Spin");
     h.run_steps(3);
     assert!(h.state().pyaddins.running.is_some());
-    h.key_combination_modifiers(Modifiers::COMMAND, &[Key::X, Key::S]);
+    shortcut(&mut h, "XS");
     h.step();
     h.step();
     until_done(&mut h);

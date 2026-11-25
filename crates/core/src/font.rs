@@ -1,9 +1,9 @@
-//! Our own single-stroke lettering for plan annotation: capitals, Latin and Cyrillic, digits, a few marks and the
-//! accents of Latin languages (acute, grave, circumflex, tilde, diaeresis, double acute, caron, ring,
-//! macron, breve, dot, cedilla, ogonek and the stroke of Ł, Ø and Đ), and Vietnamese's horn (Ơ, Ư) and tones (a hook
-//! above and a dot below besides acute, grave and tilde, a tone over the vowel's own mark in Ấ or Ằ), drawn on an 8 x 12
-//! grid (y up). Lower case is drawn as capitals, as architectural lettering is. What it has no letter for, a text
-//! type in it letters from IBM Plex ([`crate::text`]).
+//! Our own single-stroke lettering for plan annotation: capitals, Latin and Cyrillic (Russian, and Ukrainian's Ґ, Є, І
+//! and Ї), digits, a few marks and the accents of Latin languages (acute, grave, circumflex, tilde, diaeresis, double
+//! acute, caron, ring, macron, breve, dot, cedilla, ogonek and the stroke of Ł, Ø and Đ), and Vietnamese's horn (Ơ, Ư)
+//! and tones (a hook above and a dot below besides acute, grave and tilde, a tone over the vowel's own mark in Ấ or Ằ),
+//! drawn on an 8 x 12 grid (y up). Lower case is drawn as capitals, as architectural lettering is. What it has no letter
+//! for, a text type in it letters from IBM Plex ([`crate::text`]).
 
 type Glyph = &'static [&'static [(i8, i8)]];
 
@@ -120,9 +120,13 @@ fn known(c: char) -> Option<Glyph> {
         'З' => glyph('3'),
         'Б' => &[&[(8, 12), (0, 12), (0, 0), (6, 0), (8, 2), (8, 5), (6, 7), (0, 7)]],
         'Г' => &[&[(8, 12), (0, 12), (0, 0)]],
+        // Ukrainian: Ґ is Г with a short stroke standing above its crossbar's right end, into the accents' height.
+        'Ґ' => &[&[(8, 12), (0, 12), (0, 0)], &[(8, 12), (8, 14)]],
         'Д' => &[&[(0, -2), (0, 0), (8, 0), (8, -2)], &[(1, 0), (3, 12), (7, 12), (7, 0)]],
         'Ж' => &[&[(4, 0), (4, 12)], &[(0, 12), (4, 6), (8, 12)], &[(0, 0), (4, 6), (8, 0)]],
         'И' => &[&[(0, 12), (0, 0), (8, 12), (8, 0)]],
+        // Ukrainian: І is the Latin I; Ї is it with a diaeresis (see `accent`).
+        'І' => glyph('I'),
         'Л' => &[&[(0, 0), (2, 2), (3, 12), (8, 12), (8, 0)]],
         'П' => &[&[(0, 0), (0, 12), (8, 12), (8, 0)]],
         'У' => &[&[(0, 12), (4, 5)], &[(8, 12), (3, 0), (1, 0)]],
@@ -135,6 +139,8 @@ fn known(c: char) -> Option<Glyph> {
         'Ы' => &[&[(0, 12), (0, 0), (4, 0), (6, 2), (6, 5), (4, 7), (0, 7)], &[(8, 12), (8, 0)]],
         'Ь' => &[&[(0, 12), (0, 0), (6, 0), (8, 2), (8, 5), (6, 7), (0, 7)]],
         'Э' => &[&[(0, 10), (2, 12), (6, 12), (8, 10), (8, 2), (6, 0), (2, 0), (0, 2)], &[(3, 6), (8, 6)]],
+        // Ukrainian: Є is a C with a bar from its left side that stops short of its right, where an Э's bar reaches.
+        'Є' => &[&[(8, 10), (6, 12), (2, 12), (0, 10), (0, 2), (2, 0), (6, 0), (8, 2)], &[(0, 6), (5, 6)]],
         'Ю' => &[&[(0, 12), (0, 0)], &[(0, 6), (3, 6)], &[(5, 12), (3, 10), (3, 2), (5, 0), (6, 0), (8, 2), (8, 10), (6, 12), (5, 12)]],
         'Я' => &[&[(8, 0), (8, 12), (2, 12), (0, 10), (0, 8), (2, 6), (8, 6)], &[(4, 6), (0, 0)]],
         '!' => &[&[(4, 12), (4, 3)], &[(4, 1), (4, 0)]],
@@ -156,7 +162,7 @@ fn known(c: char) -> Option<Glyph> {
         '³' => &[&[(2, 12), (6, 12), (4, 10), (6, 9), (5, 7), (2, 7)]],
         '·' => &[&[(4, 6), (4, 7)]],
         '–' | '—' => &[&[(0, 6), (8, 6)]],
-        '‘' | '’' => &[&[(4, 12), (4, 9)]],
+        '‘' | '’' | 'ʼ' => &[&[(4, 12), (4, 9)]],
         '“' | '”' | '„' => &[&[(3, 12), (3, 9)], &[(5, 12), (5, 9)]],
         // Primes lean, distinct from the upright apostrophe and quotation mark.
         '′' => &[&[(5, 12), (3, 8)]],
@@ -190,6 +196,8 @@ fn accent(c: char) -> Option<(char, Glyph)> {
     const HORN_U: Glyph = &[&[(8, 11), (10, 13)]];
     let mark = match c {
         'Ё' => return Some(('Е', DIAERESIS)),
+        // Ukrainian: Ї is І with the same two dots.
+        'Ї' => return Some(('І', DIAERESIS)),
         'Й' => return Some(('И', BREVE)),
         'Á' | 'É' | 'Í' | 'Ó' | 'Ú' | 'Ý' | 'Ć' | 'Ĺ' | 'Ń' | 'Ŕ' | 'Ś' | 'Ź' => ACUTE,
         'À' | 'È' | 'Ì' | 'Ò' | 'Ù' => GRAVE,
@@ -348,6 +356,58 @@ mod tests {
         assert_eq!(short[..i.len()], i[..]);
         let (e, yo) = (strokes("Е", 0.0, 0.0, 12.0), strokes("Ё", 0.0, 0.0, 12.0));
         assert_eq!(yo[..e.len()], e[..]);
+    }
+
+    #[test]
+    fn ukrainian_letters_are_drawn_each_its_own_and_lower_case_as_them() {
+        let unknown = strokes("?", 0.0, 0.0, 12.0);
+        let letters = "ІЇЄҐ";
+        let drawn: Vec<_> = letters.chars().map(|c| strokes(&c.to_string(), 0.0, 0.0, 12.0)).collect();
+        for (c, s) in letters.chars().zip(&drawn) {
+            let lower = c.to_lowercase().next().unwrap_or(c);
+            assert!(has(c) && has(lower), "{c} is not in the font");
+            assert!(!s.is_empty() && *s != unknown, "{c} is not drawn");
+            assert_eq!(strokes(&lower.to_string(), 0.0, 0.0, 12.0), *s, "{c} in lower case");
+        }
+        for (i, a) in drawn.iter().enumerate() {
+            assert!(drawn.iter().skip(i + 1).all(|b| b != a), "{} looks like another", letters.chars().nth(i).unwrap_or(' '));
+        }
+        assert_ne!(strokes("ІЇЄҐ", 0.0, 0.0, 12.0), strokes("????", 0.0, 0.0, 12.0));
+        // І is the Latin I, Ї is І with the diaeresis Ё carries.
+        assert_eq!(strokes("І", 0.0, 0.0, 12.0), strokes("I", 0.0, 0.0, 12.0));
+        let (i, yi) = (strokes("І", 0.0, 0.0, 12.0), strokes("Ї", 0.0, 0.0, 12.0));
+        assert_eq!((yi.len(), yi[..i.len()].to_vec()), (i.len() + 2, i), "Ї is І with two dots");
+        // Ґ is Г with a stroke above its crossbar's right end.
+        let (g, ge) = (strokes("Г", 0.0, 0.0, 12.0), strokes("Ґ", 0.0, 0.0, 12.0));
+        assert_eq!((ge.len(), ge[..g.len()].to_vec()), (g.len() + 1, g), "Ґ is Г with a stroke");
+        // Є is neither С nor Э: its bar runs in from the left and stops short of the right.
+        for other in ["С", "Э"] {
+            assert_ne!(strokes("Є", 0.0, 0.0, 12.0), strokes(other, 0.0, 0.0, 12.0), "Є looks like {other}");
+        }
+        // Ukrainian writes its apostrophe as U+02BC, drawn as the upright one.
+        assert!(has('ʼ'));
+        assert_eq!(strokes("ʼ", 0.0, 0.0, 12.0), strokes("’", 0.0, 0.0, 12.0));
+        // Its width is a character's, as every letter's.
+        assert_eq!(width("ІЇЄҐʼ", 12.0), 5.0 * ADVANCE - 3.0);
+        for word in ["Кухня-вітальня", "Тех. приміщення", "Їдальня", "Ґанок", "Спальня 1", "С/В"]
+        {
+            assert!(word.chars().all(has), "{word}");
+        }
+    }
+
+    #[test]
+    fn latin_and_russian_lettering_keeps_the_strokes_it_had() {
+        let unknown = strokes("?", 0.0, 0.0, 12.0);
+        let control = "AZaz АЯая 0123";
+        for c in control.chars().filter(|c| *c != ' ') {
+            assert!(has(c), "{c} is no longer in the font");
+            assert_ne!(strokes(&c.to_string(), 0.0, 0.0, 12.0), unknown, "{c} is no longer drawn");
+        }
+        // Each letter's own strokes, and the whole line's: the counts they have always had.
+        let lines = |s: &str| strokes(s, 0.0, 0.0, 12.0).len();
+        assert_eq!(control.chars().filter(|c| *c != ' ').map(|c| lines(&c.to_string())).sum::<usize>(), lines(control));
+        assert_eq!(lines(control), 20);
+        assert_eq!(width(control, 12.0), 151.0);
     }
 
     #[test]

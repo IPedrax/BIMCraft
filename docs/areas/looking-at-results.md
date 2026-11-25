@@ -37,6 +37,10 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   touching `Drawing::grow`, a layer or opening symbol's detail, or `Scene::wireframe`, look at them. In the desktop, the bar's menus in the three looks.
 - Schedules: `bimcraft-cli run --sample --cmd 'schedule {"category": "rooms"}'` returns its columns, rows and totals (and
   `available`, the fields there are); one placed on a sheet prints as a table: render the sheet and look at it.
+- Callout: `detail_view {"parent": "Level 1", "region": [[0,0],[2000,1500]], "scale": 5}` makes a plan fragment,
+  `render {"view": "D-01", "path": "/tmp/detail.png"}` draws it, and `render {"view": "Level 1"}` shows its mark on the
+  parent. After touching `render::detail`, `render::detail_mark` or `render::section_geometry`, check that the fragment
+  matches the parent when `region` changes, and that annotation stays where it is in the model.
 - Sheets: `bimcraft-cli run --sample --save /tmp/sheets.pdf` prints every sheet; read them back with poppler (`pdfinfo`,
   `pdftoppm -png`) when it's installed. `render {"view": "A101"}` draws one sheet as a PNG.
 - Glass: a wall whose layer is the Glass material (or a window), rendered in `{3D}` with a column behind it, shows the column through it;

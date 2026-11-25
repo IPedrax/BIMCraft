@@ -64,6 +64,14 @@ fn harness(script: &str, step: f32, profile: crate::style::Profile) -> Harness<'
     h
 }
 
+/// A tool of the Modify Wall panel: from its list where a narrow ribbon has handed it over.
+fn wall_tool(h: &mut Harness<BimApp>, label: &str) {
+    if h.query_by_label(label).is_none() {
+        press(h, "Modify Wall ▾");
+    }
+    press(h, label);
+}
+
 fn press(h: &mut Harness<BimApp>, label: &str) {
     h.get_by_label(label).click();
     h.run();
@@ -341,12 +349,17 @@ fn shift_key(h: &mut Harness<BimApp>, k: Key) {
     h.run();
 }
 
-/// Letters typed over the view: a two-letter shortcut.
-/// `letters` typed with Ctrl held, as BIMCraft's shortcuts are, all in one go.
+/// Letters typed over the view: a two-letter shortcut, read from the physical keys as the window does.
+/// The keys go down and up in turn, as a hand does, with no modifier: a sequence is typed plainly, and Ctrl is left to the
+/// combinations Keyboard Shortcuts assigned.
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
     let keys: Vec<Key> = letters.chars().filter_map(|c| Key::from_name(&c.to_ascii_uppercase().to_string())).collect();
     assert_eq!(keys.len(), letters.chars().count(), "every letter of {letters} is a key");
-    h.key_combination_modifiers(Modifiers::COMMAND, &keys);
+    for key in keys {
+        for pressed in [true, false] {
+            h.input_mut().events.push(Event::Key { key, pressed, modifiers: Modifiers::NONE, repeat: false, physical_key: None });
+        }
+    }
     h.run();
 }
 
@@ -469,6 +482,21 @@ fn a_click_is_made_where_the_button_went_down_not_where_the_hand_had_got_to_by_t
     let (here, gone) = (h.state().screen(P2(1000.0, 1000.0)), h.state().screen(P2(5000.0, 3000.0)));
     // The button goes down and up at one spot; the hand is far off when the window gets round to the frame.
     deliver(&mut h, vec![Event::PointerMoved(here), button(here, true), button(here, false), Event::PointerMoved(gone)]);
+    assert_eq!(h.state().tool, Tool::Wall(vec![P2(1000.0, 1000.0)]));
+}
+
+#[test]
+fn a_click_made_while_a_software_frame_waits_lands_where_it_was_made() {
+    // Without a graphics card the window waits up to a second between frames (`pacing::BUDGET`): all that the hand did meanwhile
+    // reaches the app as one frame's events, a sweep across the plan with a click in the middle of it.
+    let mut h = app("");
+    tool(&mut h, "Wall");
+    let here = h.state().screen(P2(1000.0, 1000.0));
+    let mut events: Vec<Event> =
+        (0..30).map(|i| Event::PointerMoved(h.state().screen(P2(8000.0 - 230.0 * f64::from(i), 4000.0 - 100.0 * f64::from(i))))).collect();
+    events.extend([Event::PointerMoved(here), button(here, true), button(here, false)]);
+    events.extend((0..30).map(|i| Event::PointerMoved(h.state().screen(P2(1000.0 + 150.0 * f64::from(i), 1000.0 + 90.0 * f64::from(i))))));
+    deliver(&mut h, events);
     assert_eq!(h.state().tool, Tool::Wall(vec![P2(1000.0, 1000.0)]));
 }
 
@@ -891,47 +919,90 @@ fn the_selection_stays_as_views_change_and_a_schedule_shows_and_picks_it() {
 }
 
 #[test]
-fn a_ctrl_key_of_its_own_waits_for_a_second_letter_and_does_its_job_when_none_comes() {
+fn a_ctrl_chord_runs_at_once_and_ctrl_is_never_part_of_a_sequence() {
     let mut h = app("");
     for y in [0, 3000, 6000] {
         h.state_mut().session.execute("wall", &json!({"points": [[0, y], [4000, y]]})).unwrap();
     }
     h.run();
     let walls = |h: &Harness<BimApp>| ids(h, "wall").len();
-    // Ctrl held, Z, and still held: Z waits for a second letter.
+    // Ctrl+Z is the Undo chord: it runs the moment the key goes down, with no wait for a second letter.
+    let chord = |h: &mut Harness<BimApp>, key: Key, command: Modifiers| {
+        for pressed in [true, false] {
+            h.input_mut().events.push(Event::Key { key, pressed, modifiers: command, repeat: false, physical_key: None });
+        }
+    };
     h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
-    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    chord(&mut h, Key::Z, Modifiers::COMMAND);
     h.step();
-    assert_eq!(walls(&h), 3, "not yet undone");
-    // None comes: after the wait (a step is a quarter of a second here), Z undoes.
-    h.run_steps(3);
-    assert_eq!(walls(&h), 2, "undone once the wait is over");
-    // Z then F with Ctrl held is Zoom to Fit, not undo.
-    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
-    h.input_mut().events.push(Event::Key { key: Key::F, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
-    h.step();
+    assert_eq!(walls(&h), 2, "undone at once");
+    // Ctrl held and F is Ctrl+F, which no action has: nothing happens, and no sequence is typed either.
+    chord(&mut h, Key::F, Modifiers::COMMAND);
     h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
-    assert_eq!(walls(&h), 2, "ZF fits the view and undoes nothing");
-    // Z, Z is no shortcut: the first undoes, and the second does as Ctrl is let go.
-    shortcut(&mut h, "ZZ");
-    assert_eq!(walls(&h), 0, "twice undone");
+    assert_eq!(walls(&h), 2, "Ctrl+F does nothing");
+    // A sequence is typed plainly: W and A are Wall, with no Ctrl.
+    shortcut(&mut h, "WA");
+    assert!(matches!(h.state().tool, Tool::Wall(_)));
+}
+
+#[test]
+fn a_ctrl_combination_assigned_in_the_dialog_runs_and_one_that_was_never_assigned_does_nothing() {
+    let mut h = app(BOX);
+    // Ctrl+J is no action's: it touches nothing, and W after it is no sequence either.
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
+    for pressed in [true, false] {
+        h.input_mut().events.push(Event::Key { key: Key::J, pressed, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+        h.input_mut().events.push(Event::Key { key: Key::W, pressed, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    }
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Modify), "Ctrl+J, Ctrl+W is nothing");
+
+    // Assigned in the dialog, the same combination runs: Door on Ctrl+J.
+    let door = crate::shortcuts::resolve_action("Door").unwrap();
+    let ctrl_j = crate::shortcuts::Binding::Chord(crate::shortcuts::KeyChord::new(Key::J, true, false, false, false));
+    h.state_mut().shortcuts.add_binding(&door, ctrl_j, true).unwrap();
+    h.run();
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
+    for pressed in [true, false] {
+        h.input_mut().events.push(Event::Key { key: Key::J, pressed, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    }
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Door), "the combination assigned runs at once");
+}
+
+#[test]
+fn a_plain_letter_that_begins_no_sequence_does_nothing() {
+    let mut h = app(BOX);
+    // Q begins no sequence: typed with another key that would make one, it is dropped, so QW is no Wall.
+    h.input_mut().events.push(Event::Key { key: Key::Q, pressed: true, modifiers: Modifiers::NONE, repeat: false, physical_key: None });
+    h.input_mut().events.push(Event::Key { key: Key::Q, pressed: false, modifiers: Modifiers::NONE, repeat: false, physical_key: None });
+    h.input_mut().events.push(Event::Key { key: Key::W, pressed: true, modifiers: Modifiers::NONE, repeat: false, physical_key: None });
+    h.input_mut().events.push(Event::Key { key: Key::W, pressed: false, modifiers: Modifiers::NONE, repeat: false, physical_key: None });
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Modify), "QW is no shortcut");
+    // W alone begins Wall and waits; A completes it.
+    shortcut(&mut h, "WA");
+    assert!(matches!(h.state().tool, Tool::Wall(_)));
 }
 
 #[test]
 fn typed_shortcuts_pick_tools_like_revit() {
     let mut h = app(SAMPLE);
-    // Letters typed without Ctrl are no shortcut.
+    // Text events are no shortcut: the keys themselves are, read from their physical keys.
     h.event(Event::Text("WA".into()));
     h.run();
     assert!(matches!(h.state().tool, Tool::Modify));
-    // With Ctrl held they are, a letter a frame as well as together; letting Ctrl go between two ends the first.
-    let down = |key| Event::Key { key, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None };
-    h.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), down(Key::W)]);
+    // Two letters, a letter a frame as well as together, without Ctrl.
+    let down = |key| Event::Key { key, pressed: true, modifiers: Modifiers::NONE, repeat: false, physical_key: None };
+    let up = |key| Event::Key { key, pressed: false, modifiers: Modifiers::NONE, repeat: false, physical_key: None };
+    h.input_mut().events.push(down(Key::W));
     h.step();
     h.input_mut().events.push(down(Key::A));
     h.step();
-    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.input_mut().events.extend([up(Key::W), up(Key::A)]);
     h.run();
     assert!(matches!(h.state().tool, Tool::Wall(_)));
     shortcut(&mut h, "dr");
@@ -946,6 +1017,65 @@ fn typed_shortcuts_pick_tools_like_revit() {
     assert!(matches!(h.state().tool, Tool::Demolish));
     key(&mut h, Key::Escape);
     assert!(matches!(h.state().tool, Tool::Modify));
+}
+
+#[test]
+fn copy_cut_and_paste_are_no_letters_of_a_sequence() {
+    fn press(h: &mut Harness<BimApp>, command: Modifiers, key: Key) {
+        for pressed in [true, false] {
+            h.input_mut().events.push(Event::Key { key, pressed, modifiers: command, repeat: false, physical_key: None });
+        }
+    }
+    let mut h = app(SAMPLE);
+    let command = Modifiers::COMMAND;
+    // A key held with Ctrl is no part of a sequence, and the window turns Ctrl+C, Ctrl+X and Ctrl+V into Copy, Cut and
+    // Paste events, not key events: none of them types a letter, so CW, VV and TX are not reached this way.
+    h.input_mut().events.extend([Event::ModifiersChanged(command), Event::Copy]);
+    press(&mut h, command, Key::W);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(h.state().cowork_dialog.is_none(), "Ctrl+C, W is no sequence");
+    h.input_mut().events.extend([Event::ModifiersChanged(command), Event::Paste("x".into())]);
+    press(&mut h, command, Key::V);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(h.state().vg_dialog.is_none(), "Ctrl+V, V is no sequence");
+    // Typed plainly, the same letters are the sequences they name.
+    shortcut(&mut h, "CW");
+    assert!(h.state().cowork_dialog.is_some(), "CW is Co-Work");
+    h.state_mut().cowork_dialog = None;
+    h.run();
+    shortcut(&mut h, "VV");
+    assert!(h.state().vg_dialog.is_some(), "VV is Visibility/Graphics");
+    h.state_mut().vg_dialog = None;
+    h.run();
+    shortcut(&mut h, "TX");
+    assert!(matches!(h.state().tool, Tool::Text), "TX is Text");
+}
+
+#[test]
+fn copy_and_paste_stay_the_clipboard_in_a_text_field() {
+    let mut h = app(SAMPLE);
+    h.state_mut().find = Some("ab".into());
+    h.run();
+    // The Find field has the keys: Ctrl+A selects what it holds and Copy puts it on the system's clipboard.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.run();
+    h.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), Event::Copy]);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.step();
+    let copied: Vec<String> = h
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .filter_map(|c| match c {
+            egui::OutputCommand::CopyText(text) => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(copied, ["ab"], "the field's selection is copied, not taken as the letter C");
+    assert!(matches!(h.state().tool, Tool::Modify), "nothing in a field types a sequence");
 }
 
 #[test]
@@ -1046,7 +1176,7 @@ fn sa_selects_every_element_of_the_selected_ones_type_the_view_shows() {
 fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     let mut h = app(BOX);
     shortcut(&mut h, "KS");
-    for label in ["Create Similar", "CS", "Select All Instances", "SA", "CR", "WA", "KS", "ZF, ZE, ZA", "Demolish", "DW"] {
+    for label in ["Create Similar", "CS", "Select All Instances", "SA", "CR", "WA", "KS", "ZF", "ZE", "ZA", "Demolish", "DW"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
     shortcut(&mut h, "WA");
@@ -1080,6 +1210,15 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
         "Graphic Display Options",
         "Pin",
         "Unpin",
+        "Duct",
+        "Down Conductor",
+        "Earthing Conductor",
+        "Cabling",
+        "Filled Region",
+        "Detail Line",
+        "Join into Polyline",
+        "Explode Polyline",
+        "Wall Footing",
         "Co-Work",
         "Building Codes",
         "Code Check",
@@ -1108,8 +1247,9 @@ fn manage_tab_opens_keyboard_shortcuts_dialog() {
     press(&mut h, "Manage");
     from_list(&mut h, "Settings", "Shortcuts");
     assert!(h.state().show_shortcuts);
-    assert!(h.query_by_label("Load File...").is_some());
-    assert!(h.query_by_label("Add Shortcut").is_some());
+    assert!(h.query_by_label("Import…").is_some());
+    assert!(h.query_by_label("Export…").is_some());
+    assert!(h.query_by_label("Help (Markdown)…").is_some());
     press(&mut h, "Close");
     assert!(!h.state().show_shortcuts);
 }
@@ -1903,18 +2043,21 @@ fn properties_show_0_where_the_json_leaves_a_number_out_and_blank_where_it_is_no
     // A floor on its level, flat: its JSON leaves its offset and its slope out.
     h.state_mut().selection = floors[..1].to_vec();
     h.run();
-    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope (°)")), ("0".into(), "0".into()));
+    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope")), ("0 mm".into(), "0°".into()));
     // Both floors: the slopes they share show, their offsets differ.
     h.state_mut().selection = floors;
     h.run();
-    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope (°)")), (String::new(), "0".into()));
-    // None is not 0: a section with no far clip sees all there is, a plan's top is the level above.
+    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope")), (String::new(), "0°".into()));
+    // None is not 0: a section with no far clip sees all there is, a plan's top is the level above (its View Range says so).
     h.state_mut().selection = ids(&h, "section");
     h.run();
     assert_eq!(value(&h, "Far Clip Offset"), "");
     h.state_mut().selection.clear();
     h.run();
-    assert_eq!(value(&h, "Top"), "");
+    h.state_mut().open_view_ranges(&[100000]);
+    h.run();
+    assert_eq!(h.get_by_role_and_label(Role::ComboBox, "Top").value().unwrap_or_default(), "Level 2");
+    assert_eq!(value(&h, "Top"), "0");
 }
 
 #[test]
@@ -2640,14 +2783,21 @@ fn ramps_climb_at_the_options_bars_slope_and_turn_at_landings() {
     h.get_by_role_and_label(Role::TextInput, "Height:").type_text("600");
     h.run();
     type_into(&mut h, "Slope:", "10");
-    // 360 mm up its first run, 3.6 m at 10%; then back beside it, to its left.
+    // A flight east at 10%, a landing north, then a flight back west: done where it reaches its top.
     click(&mut h, P2(1000.0, 1000.0));
     click(&mut h, P2(4600.0, 1000.0));
+    press(&mut h, "Landing");
+    click(&mut h, P2(4600.0, 2400.0));
     assert!(ids(&h, "ramp").is_empty());
-    click(&mut h, P2(1000.0, 2200.0));
+    press(&mut h, "Flight");
+    click(&mut h, P2(-2000.0, 2400.0));
     let r = ids(&h, "ramp");
-    assert_eq!((r.len(), field(&h, r[0], "height"), field(&h, r[0], "length")), (1, json!(600.0), json!(6000.0)));
-    assert_eq!(field(&h, r[0], "landings"), json!([{"at": 360.0, "turn": 180.0}]));
+    assert_eq!((r.len(), field(&h, r[0], "height")), (1, json!(600.0)));
+    let path = field(&h, r[0], "path");
+    assert_eq!(path.as_array().map(Vec::len), Some(3), "{path}");
+    assert_eq!(path[1]["landing"], json!(true));
+    // The last flight is cut short where it reaches the top, before the point clicked.
+    assert!(path[2]["to"][0].as_f64().is_some_and(|x| x > -2000.0 && x < 4600.0), "{path}");
     assert_eq!(ids(&h, "railing").len(), 2, "with its railings");
 }
 
@@ -2687,7 +2837,7 @@ fn the_roof_tool_roofs_the_walls_of_the_plan_on_the_level_above() {
     );
     assert_eq!(field(&h, roof[0], "boundary")[0], json!([-600.0, -600.0]), "500 mm past the walls' faces");
     assert_eq!(h.state().selection, roof, "finished, the roof is selected");
-    assert!(h.query_by_label("Modify | Roofs").is_some() && h.query_by_label("Slope (°)").is_some());
+    assert!(h.query_by_label("Modify | Roofs").is_some() && h.query_by_label("Slope").is_some());
 }
 
 #[test]
@@ -3083,22 +3233,98 @@ fn a_box_dragged_in_a_section_selects_as_in_a_plan() {
 }
 
 #[test]
-fn a_plans_view_range_is_in_its_properties() {
+fn a_plans_view_range_is_edited_in_its_own_dialog_each_plane_from_a_level() {
     let mut h = app(BOX);
-    assert!(h.query_by_label("View Range").is_some());
-    type_into(&mut h, "Cut Plane", "1500");
-    key(&mut h, Key::Enter);
-    assert_eq!(field(&h, 100000, "view_range"), json!({"top": null, "cut": 1500.0, "bottom": 0.0, "depth": 0.0}));
-    type_into(&mut h, "Top", "2600");
-    key(&mut h, Key::Enter);
-    assert_eq!(field(&h, 100000, "view_range")["top"], json!(2600.0));
-    // Cleared, back to the level above.
-    h.get_by_label("Top").focus();
+    // The palette's last row may lie under its fold: clicked as a screen reader would.
+    let open = |h: &mut Harness<BimApp>| {
+        h.get_by_label("Edit View Range").click_accesskit();
+        h.run();
+    };
+    let field_in = |h: &mut Harness<BimApp>, plane: &str, text: &str| {
+        let f = h.get_by_role_and_label(Role::TextInput, plane);
+        f.focus();
+        h.run();
+        h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+        h.get_by_role_and_label(Role::TextInput, plane).type_text(text);
+        h.run();
+    };
+    open(&mut h);
+    assert!(h.state().view_range_dialog.is_some());
+    field_in(&mut h, "Cut Plane", "1500");
+    press(&mut h, "OK");
+    assert!(h.state().view_range_dialog.is_none());
+    assert_eq!(h.state().session.model.view_range_of(100000u64).cut, 1500.0);
+    // Measured from no limit at all: the bottom and the view depth.
+    open(&mut h);
+    choose(&mut h, "Bottom", "Unlimited");
+    choose(&mut h, "View Depth", "Unlimited");
+    press(&mut h, "OK");
+    let r = h.state().session.model.plan_range(100000u64);
+    assert_eq!((r.bottom, r.depth), (f64::NEG_INFINITY, f64::NEG_INFINITY));
+    // Out of order: the dialog says so and stays.
+    open(&mut h);
+    // One plan's planes are measured from its levels by name: no Associated Level. The cut plane's list reads Level 1 too:
+    // the open list's item is the last.
+    h.get_by_role_and_label(Role::ComboBox, "Bottom").click_accesskit();
+    h.run();
+    // (Properties' own Associated Level row is the one there is.)
+    assert_eq!(h.get_all_by_label("Associated Level").count(), 1);
+    assert!(h.query_by_label("Level Below").is_none() && h.query_by_label("Unlimited").is_some());
+    h.get_all_by_label("Level 1").last().unwrap().click_accesskit();
+    h.run();
+    if egui::Popup::is_any_open(&h.ctx) {
+        h.get_by_role_and_label(Role::ComboBox, "Bottom").click_accesskit();
+        h.run();
+    }
+    field_in(&mut h, "Bottom", "2000");
+    press(&mut h, "OK");
+    assert!(h.state().view_range_dialog.is_some(), "the bottom over the cut plane");
+    // Which plane is out of place, against which.
+    let said = h.state().view_range_dialog.as_ref().and_then(|d| d.error.clone()).unwrap_or_default();
+    assert!(said.contains("bottom (+2000 over the plan's level) is above its cut plane (+1500 over the plan's level)"), "{said}");
+    assert!(said.ends_with("the bottom can't be higher than the cut plane"), "{said}");
+    assert_eq!(h.state().session.model.plan_range(100000u64).bottom, f64::NEG_INFINITY);
+    press(&mut h, "Cancel");
+    assert!(h.state().view_range_dialog.is_none());
+}
+
+#[test]
+fn plans_picked_together_share_a_view_range_each_from_its_own_level() {
+    let mut h = app(BOX);
+    h.state_mut().open_view_ranges(&[100000, 100001]);
+    h.run();
+    assert!(h.query_by_label("View Range: 2 plans").is_some());
+    assert_eq!(h.get_by_role_and_label(Role::ComboBox, "Bottom").value().unwrap_or_default(), "Associated Level");
+    let f = h.get_by_role_and_label(Role::TextInput, "Cut Plane");
+    f.focus();
     h.run();
     h.key_press_modifiers(Modifiers::COMMAND, Key::A);
-    key(&mut h, Key::Backspace);
-    key(&mut h, Key::Enter);
-    assert_eq!(field(&h, 100000, "view_range")["top"], Value::Null);
+    h.get_by_role_and_label(Role::TextInput, "Cut Plane").type_text("1500");
+    h.run();
+    press(&mut h, "OK");
+    assert!(h.state().view_range_dialog.is_none());
+    let m = &h.state().session.model;
+    assert_eq!((m.plan_range(100000u64).cut, m.plan_range(100001u64).cut), (1500.0, 4500.0));
+}
+
+#[test]
+fn halftone_underlay_sets_how_far_toward_the_paper_halftone_draws() {
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    press(&mut h, "Annotation Settings");
+    press(&mut h, "Halftone/Underlay");
+    assert!(h.state().halftone_dialog.is_some());
+    h.state_mut().halftone_dialog.as_mut().unwrap().fade = 70;
+    // The dialog's Apply: the last one, over the palette's.
+    h.get_all_by(|n| n.role() == Role::Button && n.label().as_deref() == Some("Apply")).last().unwrap().click_accesskit();
+    h.run();
+    assert_eq!(h.state().session.model.halftone, 70);
+    h.get_by_role_and_label(Role::Slider, "Fade").focus();
+    h.run();
+    key(&mut h, Key::ArrowRight);
+    press(&mut h, "OK");
+    assert!(h.state().halftone_dialog.is_none());
+    assert_eq!(h.state().session.model.halftone, 71);
 }
 
 #[test]
@@ -3235,7 +3461,7 @@ fn lengths_typed_while_drawing_read_in_the_project_units() {
 fn the_interface_speaks_portuguese() {
     let mut h = app(BOX);
     press(&mut h, "View");
-    press(&mut h, "User Interface");
+    from_list(&mut h, "Windows", "User Interface");
     press(&mut h, "Português (Brasil)");
     for label in ["Arquitetura", "Anotar", "Vista", "Gerenciar", "Modificar", "Propriedades", "Plantas de piso", "Intervalo da vista"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
@@ -3266,7 +3492,7 @@ fn the_interface_speaks_portuguese() {
 fn the_interface_speaks_spanish() {
     let mut h = app(BOX);
     press(&mut h, "View");
-    press(&mut h, "User Interface");
+    from_list(&mut h, "Windows", "User Interface");
     press(&mut h, "Español");
     for label in ["Arquitectura", "Anotar", "Vista", "Gestionar", "Modificar", "Propiedades", "Plantas", "Rango de vista"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
@@ -3293,7 +3519,7 @@ fn the_interface_speaks_spanish() {
 fn the_interface_speaks_dutch() {
     let mut h = app(BOX);
     press(&mut h, "View");
-    press(&mut h, "User Interface");
+    from_list(&mut h, "Windows", "User Interface");
     press(&mut h, "Nederlands");
     assert_eq!(h.state().lang, crate::lang::Lang::Dutch);
     for label in ["Architectuur", "Annoteren", "Beheren", "Wijzigen", "Eigenschappen", "Plattegronden", "Weergavebereik"] {
@@ -3322,11 +3548,23 @@ fn nothing_a_translated_interface_shows_is_left_in_english() {
     // A label in English that the table translates is a string the window forgot to translate: a
     // widget's name, or a plain label's text, which egui gives screen readers as its value.
     // A shortcut key (PR, UP) is not English prose: the Keyboard Shortcuts window shows it as it is in every language.
-    let keys: Vec<&str> = crate::shortcuts().into_iter().map(|(k, _)| k).collect();
+    let mut keys: Vec<String> = crate::shortcuts().into_iter().map(|(k, _)| k.to_string()).collect();
+    for a in crate::shortcuts::registry().actions() {
+        for b in &a.defaults {
+            if let Ok(b) = crate::shortcuts::parse_binding(b) {
+                keys.push(crate::shortcuts::display_binding(b));
+            }
+        }
+    }
+    for (_, list) in crate::shortcuts::Shortcuts::defaults(crate::shortcuts::Profile::BimCraft).actions() {
+        for b in list {
+            keys.push(crate::shortcuts::display_binding(*b));
+        }
+    }
     let english = |h: &Harness<BimApp>, l: Lang| -> Vec<String> {
         h.query_all(By::new())
             .filter_map(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value()))
-            .filter(|s| !keys.contains(&s.as_str()))
+            .filter(|s| !keys.contains(s))
             .filter(|s| crate::lang::translated_in(l, s).is_some_and(|x| x != s))
             .collect()
     };
@@ -3581,8 +3819,9 @@ fn a_selected_wall_attaches_flips_and_takes_another_location_line() {
     h.run();
     press(&mut h, "Finish Face: Interior");
     assert_eq!((field(&h, wall, "location"), field(&h, wall, "start")), (json!("interior-finish"), json!([0.0, -100.0])));
-    // Attach Top/Base, then the roof, by its edge seen overhead: the wall's top follows it.
-    press(&mut h, "Attach Top/Base");
+    // Attach Top/Base, then the roof, by its edge seen overhead: the wall's top follows it. Beside the wall's Mode panel a 1280
+    // ribbon lists it in the Modify Wall panel.
+    wall_tool(&mut h, "Attach Top/Base");
     let roof = ids(&h, "roof")[0];
     click(&mut h, P2(4000.0, -600.0));
     assert_eq!(field(&h, wall, "attach_top"), json!(roof));
@@ -3592,7 +3831,7 @@ fn a_selected_wall_attaches_flips_and_takes_another_location_line() {
     // Flipped from the same tab, it runs the other way; detached, its top is its own again.
     press(&mut h, "Flip");
     assert_eq!(walls(&h)[0], (P2(8000.0, -100.0), P2(0.0, -100.0)));
-    press(&mut h, "Detach Top/Base");
+    wall_tool(&mut h, "Detach Top/Base");
     assert_eq!(field(&h, wall, "attach_top"), Value::Null);
 }
 
@@ -4292,8 +4531,9 @@ fn the_materials_window_edits_the_projects_library() {
     press(&mut h, "Materials");
     // A new one, picked: its cut pattern, then its name.
     press(&mut h, "New");
+    press(&mut h, "Custom");
     assert!(h.state().session.model.materials.contains_key("Material 1"));
-    h.get_by_role_and_label(Role::ComboBox, "Cut Pattern").click();
+    h.get_by_role_and_label(Role::ComboBox, "Cut Foreground Pattern").click();
     h.run();
     press(&mut h, "Diagonal");
     assert_eq!(h.state().session.model.materials["Material 1"].cut, Pattern::Diagonal);
@@ -4311,7 +4551,7 @@ fn the_materials_window_edits_the_projects_library() {
     press(&mut h, "Delete");
     assert!(!h.state().session.model.materials.contains_key("Oak"));
     press(&mut h, "Close");
-    assert!(h.query_by_label("Cut Pattern").is_none());
+    assert!(h.query_by_label("Cut Foreground Pattern").is_none());
 }
 
 #[test]
@@ -5910,12 +6150,12 @@ fn ph_and_do_open_phasing_and_design_options_and_so_do_the_manage_tabs_buttons()
 #[test]
 fn a_ribbon_tab_wider_than_the_window_folds_its_last_panels_to_buttons_that_list_their_tools() {
     let mut h = app(BOX);
-    // Narrow enough that Manage folds its last panels: at 1020 Settings, handing its last tools over, makes room enough for
+    // Narrow enough that Manage folds its last panels: at 970 Settings, handing its last tools over, makes room enough for
     // Design Options to stay whole.
-    h.set_size(vec2(990.0, 800.0));
+    h.set_size(vec2(945.0, 800.0));
     h.run();
     let window = h.ctx.content_rect().right();
-    // Set, not pressed: at 990 the tab strip clips the Manage tab (its button runs from about 924 to 993, past the strip's
+    // Set, not pressed: this narrow, the tab strip clips the Manage tab (its button runs from about 924 to 993, past the strip's
     // end), so a click on it lands outside the strip and does nothing, upstream too.
     h.state_mut().tab = Tab::Manage;
     h.run();
@@ -5990,8 +6230,7 @@ fn the_units_shortcut_gets_to_the_choices_in_the_smallest_window_too() {
     h.run();
     // The Manage tab takes about a hundred frames to fit its Settings panel in the smallest window (measured on CI, 2026-11-16),
     // past the harness's 32: frames until the ribbon has settled, then the list.
-    let keys: Vec<Key> = "UN".chars().filter_map(|c| Key::from_name(&c.to_string())).collect();
-    h.key_combination_modifiers(Modifiers::COMMAND, &keys);
+    shortcut(&mut h, "UN");
     for _ in 0..400 {
         h.step();
         if !h.ctx.has_requested_repaint() {
@@ -6553,7 +6792,7 @@ fn the_materials_window_gives_a_material_a_texture_and_keeps_it_in_the_favorites
     key(&mut h, Key::Enter);
     assert!(h.state().status.error && texture(&h) == Some(t));
     // Kept in the Favorites, once, whatever it is now.
-    press(&mut h, "Save to Favorites");
+    pick(&mut h, Role::CheckBox, "Favorite Brick");
     let kept = bimcraft_core::favorites::Favorites::read(&file).unwrap();
     assert_eq!(kept.materials["Brick"].material.texture.as_ref().map(|t| t.angle), Some(45.0));
     // And, from the Favorites window, into the project again, under another name, since it has that one.
@@ -6748,6 +6987,7 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
 
 mod adaptive_modelling;
 mod align;
+mod asset_manager;
 mod assistant;
 mod autosave;
 mod browser;
@@ -6767,6 +7007,7 @@ mod dimensions;
 mod dims3d;
 mod display;
 mod dock;
+mod dock_policy;
 mod draw;
 mod electrical;
 mod export;
@@ -6775,17 +7016,23 @@ mod file_extensions;
 mod fills;
 mod filter;
 mod fonts;
+mod framing;
+mod framing_floors;
+mod framing_roofs;
 mod gpu;
 mod graphics;
 mod groups;
 mod guides;
 mod inspector;
 mod korean;
+mod labels;
 mod light_canvas;
 mod lines;
 mod lineweights;
 mod links;
 mod look;
+mod manage_links;
+mod materials;
 mod mep;
 mod minimap;
 mod notes;
@@ -6806,10 +7053,12 @@ mod publisher;
 mod purge;
 mod pyaddins;
 mod qol;
+mod rebar_detail;
 mod reinforce;
 mod revit;
 mod ribbon_fit;
 mod rooms;
+mod scale;
 mod section_box;
 mod shape3d;
 mod sheets;
@@ -6834,6 +7083,7 @@ mod typeprops;
 mod underlay;
 mod vertical_tools;
 mod view_controls;
+mod wall_shapes;
 mod window;
 mod work_plane_based;
 mod working3d;
@@ -7795,6 +8045,26 @@ fn adaptive_test_frames_place_where_they_are_even_on_a_raised_level() {
     assert!((low(m.component_pieces(c)) - want).abs() < 1e-6, "the test frames are the project's, whatever the level's elevation");
 }
 
+/// The View Range and Halftone/Underlay dialogs in the three looks, to look at: run with `BIMCRAFT_VIEW_RANGE_UI_DUMP` a folder.
+#[test]
+fn view_range_and_halftone_dialogs_in_three_looks() {
+    let Ok(folder) = std::env::var("BIMCRAFT_VIEW_RANGE_UI_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (name, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+        let mut h = app(BOX);
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.state_mut().light_canvas = light_canvas;
+        h.set_size(vec2(1600., 1000.));
+        h.state_mut().open_view_ranges(&[100000]);
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("view-range-{name}.png"))).unwrap();
+        h.state_mut().view_range_dialog = None;
+        h.state_mut().open_halftone();
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("halftone-{name}.png"))).unwrap();
+    }
+}
+
 #[test]
 fn adaptive_editor_visual_preview_in_three_looks() {
     let Ok(folder) = std::env::var("BIMCRAFT_ADAPTIVE_UI_DUMP") else { return };
@@ -7870,16 +8140,35 @@ mod family_align_turn;
 mod family_already_exists;
 mod family_angles;
 mod family_blend;
+mod family_box_select;
 mod family_category_dialog;
+mod family_clipboard;
 mod family_dimensions;
 mod family_document;
+mod family_drag_copy;
+mod family_drag_move;
+mod family_edges_not_hull;
 mod family_exit;
+mod family_handle_params;
+mod family_handle_review;
+mod family_handle_snap;
+mod family_handles_3d;
+mod family_manage;
+mod family_measure;
+mod family_modify;
+mod family_modify_3d;
+mod family_modify_3d_more;
 mod family_nav3d;
 mod family_open;
 mod family_origin;
+mod family_ortho;
 mod family_pivots;
 mod family_properties;
+mod family_reference_line;
+mod family_selection;
+mod family_shape_handles;
 mod family_sketch;
+mod family_sketch_dimensions;
 mod family_sketch_locks;
 mod family_tabs;
 mod family_tabs_async;

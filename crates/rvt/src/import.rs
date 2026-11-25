@@ -92,6 +92,8 @@ pub(crate) struct Import {
     /// The model's wall for each Revit wall made, and the walls left out for having no layers (curtain walls): hosts of doors.
     pub walls: HashMap<u32, Id>,
     pub curtain: BTreeSet<u32>,
+    /// The doors and windows set in curtain walls, which come in as components (`generic.rs`).
+    pub in_curtain: BTreeSet<u32>,
     /// The model's roof for each Revit roof made: the walls whose tops follow one name it.
     pub roofs: HashMap<u32, Id>,
     /// What was left out or noted, by (left out, kind, reason): the ids it concerned. Told as one line each in the end.
@@ -255,6 +257,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
         levels: HashMap::new(),
         walls: HashMap::new(),
         curtain: BTreeSet::new(),
+        in_curtain: BTreeSet::new(),
         roofs: HashMap::new(),
         groups: BTreeMap::new(),
         looks: BTreeMap::new(),
@@ -267,7 +270,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     walls::wanted(&facts, &mut wants.data);
     floors::wanted(&facts, &mut wants.data);
     roofs::wanted(&facts, &mut wants.data);
-    openings::wanted(&facts, &mut wants.data);
+    openings::wanted(&facts, &mut wants);
     columns::wanted(&facts, &mut wants);
     rooms::wanted(&facts, &mut wants);
     pipes::wanted(&facts, &mut wants.data);

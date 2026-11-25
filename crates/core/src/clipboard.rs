@@ -148,7 +148,7 @@ fn sort(e: &Element) -> Result<Sort, &'static str> {
     Ok(match e {
         Element::Level(_) => return Err("a level is added in a section or an elevation, not pasted"),
         Element::Sheet(_) | Element::Viewport(_) => return Err("a sheet and its views are duplicated in the Project Browser"),
-        Element::Schedule(_) | Element::PanelSchedule(_) | Element::PlanView(_) => {
+        Element::Schedule(_) | Element::PanelSchedule(_) | Element::RebarDetail(_) | Element::PlanView(_) => {
             return Err("a view is duplicated in the Project Browser");
         }
         Element::View3D(v) if v.camera.is_none() => return Err("a 3D view is duplicated in the Project Browser"),
@@ -327,8 +327,14 @@ struct Raw<'a> {
 
 /// Whether `text` looks like a clipboard of BIMCraft's, without reading it: what a window checks before offering Paste.
 pub fn is_clipboard(text: &str) -> bool {
+    marked(text, KIND)
+}
+
+/// Whether `text` is a JSON object that says early on it is a clipboard of `kind`: a project's ([`KIND`]) or a family's
+/// ([`crate::family::clipboard::KIND`]).
+pub(crate) fn marked(text: &str, kind: &str) -> bool {
     let t = text.trim_start();
-    t.starts_with('{') && t.get(..64).unwrap_or(t).contains(KIND)
+    t.starts_with('{') && t.get(..64).unwrap_or(t).contains(kind)
 }
 
 /// A clipboard's text read.
@@ -787,7 +793,7 @@ fn paste_one(to: &mut Model, clip: &Clip, t: &Target, models: bool) -> Result<Pa
             Element::Spot(s) if s.host.is_some_and(|h| !copied(&h) && !here(&h)) => {
                 need = Some("it goes with what it measures; copy that too")
             }
-            Element::Dimension(d) if d.refs.iter().any(|r| !copied(&r.id) && !here(&r.id)) => {
+            Element::Dimension(d) if d.refs.iter().any(|r| !copied(&r.target()) && !here(&r.target())) => {
                 need = Some("it goes with what it measures; copy that too")
             }
             Element::Dimension3D(_) if !t.in_place => need = Some("it measures the model where it was; paste it to the same place"),

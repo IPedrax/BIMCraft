@@ -123,3 +123,29 @@ fn a_demolished_outlet_is_not_counted() {
     let r = run(&mut s, "load_points", json!({}));
     assert_eq!(r["rooms"][0]["tug_points"], 1, "{r}");
 }
+
+#[test]
+fn a_room_with_its_outlets_but_no_light_point_is_short() {
+    // Lighting is drawn (one in the Sala), so the Cozinha's none is counted: enough outlets do not make up for it.
+    let mut s = Session::new();
+    two_rooms(&mut s);
+    run(&mut s, "component", json!({"family": "Ceiling Luminaire", "at": [2000, 1500]}));
+    let least = run(&mut s, "load_points", json!({}))["rooms"]
+        .as_array()
+        .and_then(|a| a.iter().find(|x| x["name"] == "Cozinha").cloned())
+        .unwrap_or_default()["tug_minimum"]
+        .as_u64()
+        .unwrap_or(0);
+    for i in 0..least.max(1) {
+        run(&mut s, "component", json!({"family": "Outlet", "at": [4500 + 300 * (i % 10), 500 + 400 * (i / 10)]}));
+    }
+    let r = run(&mut s, "load_points", json!({}));
+    let cozinha = r["rooms"].as_array().and_then(|a| a.iter().find(|x| x["name"] == "Cozinha").cloned()).unwrap_or_default();
+    assert!(cozinha["tug_points"].as_u64() >= cozinha["tug_minimum"].as_u64(), "{cozinha}");
+    assert_eq!((&cozinha["lighting_points"], &cozinha["ok"]), (&json!(0), &json!(false)), "{cozinha}");
+    // Its light drawn, the same room is enough.
+    run(&mut s, "component", json!({"family": "Ceiling Luminaire", "at": [6000, 2600]}));
+    let r = run(&mut s, "load_points", json!({}));
+    let cozinha = r["rooms"].as_array().and_then(|a| a.iter().find(|x| x["name"] == "Cozinha").cloned()).unwrap_or_default();
+    assert_eq!((&cozinha["lighting_points"], &cozinha["ok"]), (&json!(1), &json!(true)), "{cozinha}");
+}

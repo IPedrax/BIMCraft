@@ -1651,8 +1651,16 @@ pub fn dragged(m: &Model, st: &Stair, grip: Grip, to: P2) -> Stair {
     out
 }
 
-/// A ramp's runs: its rise split at its landings' heights, each run as long as its slope makes it.
+/// A ramp's runs and landings and its walk line: laid by `ramps` when it is drawn along a line, sketched or flipped.
 pub fn ramp(m: &Model, r: &Ramp) -> Layout {
+    if !r.path.is_empty() || !r.sketch.is_empty() || r.flipped {
+        return crate::ramps::layout(m, r);
+    }
+    ramp_chain(m, r)
+}
+
+/// A ramp laid as runs and turns: its rise split at its landings' heights, each run as long as its slope makes it.
+pub fn ramp_chain(m: &Model, r: &Ramp) -> Layout {
     let (base, top) = m.span(r.level, 0.0, r.top_level, r.height);
     let k = if r.slope > 0.0 { r.slope / 100.0 } else { 1.0 };
     let mut ups: Vec<f64> = vec![0.0];
@@ -2655,6 +2663,13 @@ fn all_nosings(m: &Model, st: &Stair, l: &Layout) -> Vec<Nosing> {
 /// stair or a ramp, its walk line moved out to the side, [`RAILING_INSET`] in from its edge; else
 /// its path, on its level and `base_offset` above it.
 pub fn railing(m: &Model, rl: &Railing) -> Vec<(P2, f64)> {
+    // Along a ramp drawn along a line or sketched: its side, in from its edge.
+    if let (Some(Element::Ramp(r)), Some(side)) = (rl.host.and_then(|h| m.elements.get(h)), rl.side)
+        && (!r.path.is_empty() || !r.sketch.is_empty())
+    {
+        let line = crate::ramps::side(m, r, side == Side::Left);
+        return offset(&line, if side == Side::Left { -RAILING_INSET } else { RAILING_INSET });
+    }
     let host = rl.host.and_then(|h| m.elements.get(h)).and_then(|e| layout(m, e));
     match (host, rl.side) {
         (Some(l), Some(side)) => {

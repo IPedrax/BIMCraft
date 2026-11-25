@@ -31,6 +31,33 @@
    }
   },
   {
+   "name": "Italia (Nazionale)",
+   "note": "DM 5 July 1975 for rooms (heights, least areas, windows of 1/8 of the floor), DM 236/1989 for stairs, ramps and doors, and the Eurocodes for structure.",
+   "choices": {
+    "architectural": {
+     "code": "it-dm-1975"
+    },
+    "structural": {
+     "code": "eurocode"
+    }
+   }
+  },
+  {
+   "name": "Italia (Friuli Venezia Giulia)",
+   "note": "The national rules with Friuli Venezia Giulia's over them: LR 44/1985 (rooms 2.50 m high, windows of 1/10 of the floor in a seismic zone) and LR 19/2009 art. 39 (attics made habitable).",
+   "choices": {
+    "architectural": {
+     "code": "it-dm-1975",
+     "amendments": [
+      "it-fvg"
+     ]
+    },
+    "structural": {
+     "code": "eurocode"
+    }
+   }
+  },
+  {
    "name": "Brasil",
    "note": "ABNT's standards: NBR 9050 for stairs, ramps and doors on an accessible route (pick NBR 9077 for an emergency exit, and add the state fire brigade's instruction as it rules over it), NBR 6118 for concrete, NBR 5410 for low-voltage installations (add the utility's standard as it rules over it), NBR 5626, 8160 and 10844 for water, sewage and storm water, with São Paulo's IT 22 for hydrants.",
    "choices": {

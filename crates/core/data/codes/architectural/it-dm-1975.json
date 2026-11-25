@@ -1,0 +1,253 @@
+{
+ "code": "it-dm-1975",
+ "discipline": "architectural",
+ "name": "D.M. 5 luglio 1975 e D.M. 236/1989",
+ "edition": "1975",
+ "region": "Italia",
+ "references": [
+  "D.M. 5 luglio 1975 (Ministero della Sanità): altezze minime e requisiti igienico-sanitari dei locali d'abitazione",
+  "D.M. 14 giugno 1989, n. 236: prescrizioni tecniche per l'accessibilità, l'adattabilità e la visitabilità degli edifici"
+ ],
+ "note": "Italy's national rules for dwellings: DM 5 July 1975 for rooms (heights 2.70 m, 2.40 m for service rooms, bedrooms of 9 and 14 m², a living room of 14 m², openable windows of 1/8 of the floor) and DM 236/1989 for stairs, ramps and doors. The stairs and the doors are a dwelling's own (stairs 0.80 m wide, treads of 25 cm); a common or public stair is 1.20 m wide with treads of 30 cm. A region's own rules go over it as an amendment (it-fvg).",
+ "sections": {
+  "stairs": {
+   "riser": 160.0,
+   "going": 300.0,
+   "riser_min": 140.0,
+   "riser_max": 170.0,
+   "going_min": 250.0,
+   "going_max": 350.0,
+   "step_min": 620.0,
+   "step_max": 640.0,
+   "width_min": 800.0,
+   "headroom": 2100.0,
+   "flight_rise_max": 3200.0,
+   "flight_risers_max": 20,
+   "landing_rule": "fixed",
+   "landing_length": 1200.0,
+   "winders": true,
+   "walk_line": "centre",
+   "walk_line_offset": 300.0,
+   "winder_going_min": 250.0,
+   "winder_narrow_min": 100.0,
+   "nosing_min": 0.0,
+   "nosing_max": 25.0,
+   "open_risers": false,
+   "uniformity": 5.0,
+   "handrail_min": 900.0,
+   "handrail_max": 1000.0,
+   "guard_min": 1000.0
+  },
+  "ramps": {
+   "slope": 8.0,
+   "width": 1200.0,
+   "slope_max": 8.0,
+   "slope_by_rise": [],
+   "run_rise_max": 800.0,
+   "width_min": 900.0,
+   "landing_length_min": 1500.0
+  },
+  "doors": {
+   "clear_width_min": 800.0,
+   "clear_height_min": 2100.0,
+   "leaf_width_max": 1200.0,
+   "frame_allowance": 0.0,
+   "exempt": [
+    "closet",
+    "ripostiglio",
+    "cabina armadio"
+   ]
+  },
+  "rooms": {
+   "kinds": [
+    {
+     "kind": "double_bedroom",
+     "names": [
+      "matrimoniale",
+      "doppia",
+      "camera matrimoniale",
+      "camera doppia",
+      "due letti",
+      "master bedroom"
+     ],
+     "area_min": 14.0,
+     "side_min": 0.0,
+     "height_min": 2700.0,
+     "light_min": 0.125
+    },
+    {
+     "kind": "single_bedroom",
+     "names": [
+      "singola",
+      "cameretta",
+      "camera",
+      "letto",
+      "camera singola",
+      "bedroom"
+     ],
+     "area_min": 9.0,
+     "side_min": 0.0,
+     "height_min": 2700.0,
+     "light_min": 0.125
+    },
+    {
+     "kind": "living_room",
+     "names": [
+      "soggiorno",
+      "salotto",
+      "living",
+      "pranzo",
+      "sala",
+      "sala da pranzo",
+      "soggiorno pranzo",
+      "tinello"
+     ],
+     "area_min": 14.0,
+     "side_min": 0.0,
+     "height_min": 2700.0,
+     "light_min": 0.125
+    },
+    {
+     "kind": "kitchen",
+     "names": [
+      "cucina",
+      "cucinotto",
+      "angolo cottura",
+      "kitchen",
+      "pantry"
+     ],
+     "area_min": 0.0,
+     "side_min": 0.0,
+     "height_min": 2700.0,
+     "light_min": 0.125
+    },
+    {
+     "kind": "habitable",
+     "names": [
+      "studio",
+      "abitabile"
+     ],
+     "area_min": 0.0,
+     "side_min": 0.0,
+     "height_min": 2700.0,
+     "light_min": 0.125
+    },
+    {
+     "kind": "bathroom",
+     "names": [
+      "bagno",
+      "wc",
+      "bwc",
+      "lavabo",
+      "toilette",
+      "sanitario",
+      "servizio igienico",
+      "servizi igienici",
+      "doppio servizio",
+      "lavanderia",
+      "bathroom",
+      "toilet",
+      "restroom"
+     ],
+     "area_min": 0.0,
+     "side_min": 0.0,
+     "height_min": 2400.0,
+     "light_min": 0.0
+    },
+    {
+     "kind": "service",
+     "names": [
+      "corridoio",
+      "disimpegno",
+      "ingresso",
+      "atrio",
+      "disimpegno notte",
+      "vano scale",
+      "scale",
+      "ripostiglio",
+      "guardaroba",
+      "cabina armadio",
+      "cantina",
+      "soffitta",
+      "sgabuzzino",
+      "centrale termica",
+      "hall",
+      "corridor",
+      "closet",
+      "storage"
+     ],
+     "area_min": 0.0,
+     "side_min": 0.0,
+     "height_min": 2400.0,
+     "light_min": 0.0
+    }
+   ]
+  }
+ },
+ "sources": {
+  "stairs.riser": "Practice: a riser of 16 cm with a 30 cm tread gives 2a + p = 62 cm (DM 236/1989, 8.1.10)",
+  "stairs.going": "DM 236/1989, 8.1.10: tread of at least 30 cm on a common stair",
+  "stairs.riser_min": "Practice: DM 236/1989 gives no riser, only 2a + p between 62 and 64 cm",
+  "stairs.riser_max": "Practice: DM 236/1989 gives no riser, only 2a + p between 62 and 64 cm",
+  "stairs.going_min": "DM 236/1989, 8.1.10: tread of at least 25 cm on a stair that is not common or public (30 cm on one that is)",
+  "stairs.going_max": "Practice",
+  "stairs.step_min": "DM 236/1989, 8.1.10: twice the riser plus the tread between 62 and 64 cm",
+  "stairs.step_max": "DM 236/1989, 8.1.10: twice the riser plus the tread between 62 and 64 cm",
+  "stairs.width_min": "DM 236/1989, 8.1.10: 0.80 m for a stair that is not common or public (1.20 m for one that is)",
+  "stairs.headroom": "Not in the standard: a forgiving number (2.10 m)",
+  "stairs.flight_rise_max": "Not in the standard: a forgiving number",
+  "stairs.flight_risers_max": "Not in the standard: a forgiving number",
+  "stairs.landing_rule": "Practice",
+  "stairs.landing_length": "Practice",
+  "stairs.winders": "Practice",
+  "stairs.walk_line": "Practice",
+  "stairs.walk_line_offset": "Practice",
+  "stairs.winder_going_min": "Practice",
+  "stairs.winder_narrow_min": "Practice",
+  "stairs.nosing_min": "DM 236/1989, 8.1.10: a continuous profile is preferred (a nosing of 2 to 2.5 cm on a discontinuous one)",
+  "stairs.nosing_max": "DM 236/1989, 8.1.10: a nosing of 2 to 2.5 cm on a discontinuous profile",
+  "stairs.open_risers": "DM 236/1989, 8.1.10: the riser is inclined to the tread, a continuous profile preferred",
+  "stairs.uniformity": "Practice: DM 236/1989, 8.1.10 asks a limited and constant pitch and gives no tolerance",
+  "stairs.handrail_min": "DM 236/1989, 8.1.10: handrail between 0.90 and 1.00 m",
+  "stairs.handrail_max": "DM 236/1989, 8.1.10: handrail between 0.90 and 1.00 m",
+  "stairs.guard_min": "DM 236/1989, 8.1.10: a guard of at least 1.00 m, not passed by a sphere of 10 cm",
+  "ramps.slope": "Practice: the steepest DM 236/1989, 8.1.11 allows",
+  "ramps.width": "Practice",
+  "ramps.slope_max": "DM 236/1989, 8.1.11: a slope of no more than 8%",
+  "ramps.run_rise_max": "Not in the standard: a forgiving number",
+  "ramps.width_min": "DM 236/1989, 8.1.11: 0.90 m for a wheelchair (1.50 m for two people to pass)",
+  "ramps.landing_length_min": "DM 236/1989, 8.1.11: a level landing of 1.50 x 1.50 m every 10 m",
+  "doors.clear_width_min": "DM 236/1989, 8.1.1: a clear width of 80 cm for the door into a building or a dwelling (75 cm for the others)",
+  "doors.clear_height_min": "Not in the standard: a forgiving number (2.10 m)",
+  "doors.leaf_width_max": "DM 236/1989, 8.1.1: leaves of no more than 120 cm are preferred",
+  "doors.frame_allowance": "The project's: what a door type's width loses to its frame",
+  "doors.exempt": "The project's: rooms whose doors are not held to the clear width",
+  "rooms": "DM 5 July 1975: art. 1 (heights 2.70 m, 2.40 m for corridors, bathrooms and closets), art. 2 (bedrooms 9 and 14 m², living room 14 m²), art. 5 (openable windows of at least 1/8 of the floor)"
+ },
+ "kinds": {
+  "stairs.riser": "practice",
+  "stairs.riser_min": "practice",
+  "stairs.riser_max": "practice",
+  "stairs.going_max": "practice",
+  "stairs.headroom": "forgiving",
+  "stairs.flight_rise_max": "forgiving",
+  "stairs.flight_risers_max": "forgiving",
+  "stairs.landing_rule": "practice",
+  "stairs.landing_length": "practice",
+  "stairs.winders": "practice",
+  "stairs.walk_line": "practice",
+  "stairs.walk_line_offset": "practice",
+  "stairs.winder_going_min": "practice",
+  "stairs.winder_narrow_min": "practice",
+  "stairs.nosing_min": "recommendation",
+  "stairs.open_risers": "recommendation",
+  "stairs.uniformity": "practice",
+  "ramps.slope": "practice",
+  "ramps.width": "practice",
+  "ramps.run_rise_max": "forgiving",
+  "doors.clear_height_min": "forgiving",
+  "doors.leaf_width_max": "recommendation",
+  "doors.frame_allowance": "assumption",
+  "doors.exempt": "assumption"
+ }
+}

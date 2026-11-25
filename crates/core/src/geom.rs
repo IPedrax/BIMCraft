@@ -550,6 +550,76 @@ impl Region {
     }
 }
 
+/// A selection box dragged from one point to another (a screen's pixels or a plan's millimetres alike): dragged
+/// left to right it is a window, which takes what lies wholly inside it; right to left a crossing, which takes what lies inside
+/// it or crosses its edges too. The one rule every view that boxes elements goes by (an adaptive family's modelling view, a
+/// family's plans and elevations), each handing it what it draws an element with.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SelectBox {
+    pub lo: P2,
+    pub hi: P2,
+    pub crossing: bool,
+}
+
+impl SelectBox {
+    /// The box dragged from `from` to `to`: a crossing when dragged leftwards, else a window.
+    pub fn dragged(from: P2, to: P2) -> SelectBox {
+        SelectBox { lo: P2(from.0.min(to.0), from.1.min(to.1)), hi: P2(from.0.max(to.0), from.1.max(to.1)), crossing: to.0 < from.0 }
+    }
+
+    /// Whether `p` lies in it, its edges counting.
+    pub fn holds(&self, p: P2) -> bool {
+        p.0 >= self.lo.0 && p.0 <= self.hi.0 && p.1 >= self.lo.1 && p.1 <= self.hi.1
+    }
+
+    /// Whether some of segment `a`-`b` lies in it: clipped to it, something is left (Liang-Barsky).
+    pub fn meets(&self, a: P2, b: P2) -> bool {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
+        for (den, num) in [(-dx, a.0 - self.lo.0), (dx, self.hi.0 - a.0), (-dy, a.1 - self.lo.1), (dy, self.hi.1 - a.1)] {
+            if den.abs() < 1e-12 {
+                if num < 0. {
+                    return false;
+                }
+            } else {
+                let t = num / den;
+                if den < 0. { lo = lo.max(t) } else { hi = hi.min(t) }
+            }
+        }
+        lo <= hi
+    }
+
+    /// Whether it takes an element drawn as `pieces`, segments (a point is one of no length): a window when every one of them
+    /// lies in it, a crossing when any lies in it or crosses its edges. What draws nothing, or anything not finite, is never
+    /// taken.
+    pub fn takes(&self, pieces: &[(P2, P2)]) -> bool {
+        if pieces.is_empty() || pieces.iter().any(|(a, b)| !a.is_finite() || !b.is_finite()) {
+            return false;
+        }
+        if self.crossing {
+            pieces.iter().any(|(a, b)| self.holds(*a) || self.holds(*b) || self.meets(*a, *b))
+        } else {
+            pieces.iter().all(|(a, b)| self.holds(*a) && self.holds(*b))
+        }
+    }
+
+    /// Whether some of triangle `t` lies in it, its edges counting: a corner of the triangle in it, an edge of the triangle
+    /// across it, or the whole of it inside the triangle. What a crossing takes a face by, where a face selects what it is
+    /// of (Select Elements by Face). A triangle not finite is never touched.
+    pub fn touches(&self, t: &[P2; 3]) -> bool {
+        if t.iter().any(|p| !p.is_finite()) {
+            return false;
+        }
+        if t.iter().any(|p| self.holds(*p)) || (0..3).any(|k| self.meets(t[k], t[(k + 1) % 3])) {
+            return true;
+        }
+        // None of its edges reaches the box: the box is wholly inside it or wholly outside, as any one of its corners is.
+        let side = |a: P2, b: P2, p: P2| (b.0 - a.0) * (p.1 - a.1) - (b.1 - a.1) * (p.0 - a.0);
+        let s = [side(t[0], t[1], self.lo), side(t[1], t[2], self.lo), side(t[2], t[0], self.lo)];
+        side(t[0], t[1], t[2]).abs() > 1e-12 && (s.iter().all(|x| *x >= 0.0) || s.iter().all(|x| *x <= 0.0))
+    }
+}
+
 /// The region around `p`: the smallest loop of segments enclosing it, minus any separate pieces
 /// standing inside it (a shaft in an open office). `None` when nothing encloses `p`.
 pub fn region_at(segs: &[(P2, P2)], p: P2, tol: f64) -> Option<Region> {
@@ -766,6 +836,63 @@ mod tests {
         for p in [P2(1000.0, 1000.0), P2(7000.0, 2000.0), P2(4200.0, 4200.0), P2(-10.0, 5.0)] {
             assert_eq!(region_in(&all, p, 1.0), region_at(&segs, p, 1.0), "at {p:?}");
         }
+    }
+
+    /// A selection box: dragged left to right a window, which takes what lies wholly inside it; right to left a
+    /// crossing, which takes what it touches too. Its edges count as inside; what draws nothing, or isn't finite, is never
+    /// taken.
+    #[test]
+    fn a_box_dragged_rightwards_takes_what_lies_wholly_inside_it_and_leftwards_what_it_touches_too() {
+        let (a, b) = (P2(0.0, 0.0), P2(100.0, 50.0));
+        let window = SelectBox::dragged(a, b);
+        let crossing = SelectBox::dragged(b, a);
+        assert!(!window.crossing && crossing.crossing);
+        assert_eq!((window.lo, window.hi), (crossing.lo, crossing.hi), "the same box either way");
+        // Upwards or downwards makes no difference: only left or right does.
+        assert!(!SelectBox::dragged(P2(0.0, 50.0), P2(100.0, 0.0)).crossing);
+        assert!(SelectBox::dragged(P2(100.0, 0.0), P2(0.0, 50.0)).crossing);
+        let inside = [(P2(10.0, 10.0), P2(90.0, 40.0))];
+        let half_out = [(P2(50.0, 25.0), P2(150.0, 25.0))];
+        let through = [(P2(-50.0, 25.0), P2(150.0, 25.0))];
+        let outside = [(P2(-50.0, 80.0), P2(150.0, 80.0))];
+        let point = [(P2(30.0, 30.0), P2(30.0, 30.0))];
+        let on_edge = [(P2(0.0, 0.0), P2(100.0, 50.0))];
+        let ring = [(P2(10.0, 10.0), P2(90.0, 10.0)), (P2(90.0, 10.0), P2(90.0, 60.0))];
+        for (what, pieces, by_window, by_crossing) in [
+            ("inside", &inside[..], true, true),
+            ("half out", &half_out[..], false, true),
+            ("through it, both ends out", &through[..], false, true),
+            ("outside", &outside[..], false, false),
+            ("a point inside", &point[..], true, true),
+            ("on its edges", &on_edge[..], true, true),
+            ("a ring with one side out", &ring[..], false, true),
+            ("nothing", &[][..], false, false),
+        ] {
+            assert_eq!((window.takes(pieces), crossing.takes(pieces)), (by_window, by_crossing), "{what}");
+        }
+        let lost = [(P2(f64::NAN, 10.0), P2(20.0, 20.0))];
+        assert!(!window.takes(&lost) && !crossing.takes(&lost), "what isn't finite is never taken");
+    }
+
+    /// A face is touched by a box that lies inside it, that it lies inside, or that crosses its edge: Select Elements by
+    /// Face's crossing box.
+    #[test]
+    fn a_box_touches_a_triangle_it_lies_in_holds_or_crosses_and_none_it_misses() {
+        let boxed = SelectBox::dragged(P2(100.0, 50.0), P2(0.0, 0.0));
+        for (what, t, touched) in [
+            ("round the box, none of its edges near", [P2(-500.0, -500.0), P2(900.0, -500.0), P2(-500.0, 900.0)], true),
+            ("the same, wound the other way", [P2(-500.0, -500.0), P2(-500.0, 900.0), P2(900.0, -500.0)], true),
+            ("inside the box", [P2(10.0, 10.0), P2(40.0, 10.0), P2(10.0, 40.0)], true),
+            ("a corner in the box", [P2(90.0, 40.0), P2(300.0, 40.0), P2(300.0, 200.0)], true),
+            ("an edge across it, no corner in it", [P2(-50.0, 25.0), P2(150.0, 25.0), P2(50.0, 400.0)], true),
+            ("meeting it at a corner", [P2(100.0, 50.0), P2(200.0, 50.0), P2(100.0, 150.0)], true),
+            ("beside it", [P2(101.0, 0.0), P2(200.0, 0.0), P2(101.0, 50.0)], false),
+            ("its sloping edge past the box's corner", [P2(110.0, 60.0), P2(200.0, 60.0), P2(200.0, -100.0)], false),
+            ("of no area, its line through the box's corner", [P2(-300.0, -150.0), P2(-200.0, -100.0), P2(-100.0, -50.0)], false),
+        ] {
+            assert_eq!(boxed.touches(&t), touched, "{what}");
+        }
+        assert!(!boxed.touches(&[P2(f64::NAN, 0.0), P2(10.0, 10.0), P2(20.0, 0.0)]), "what isn't finite is never touched");
     }
 
     #[test]

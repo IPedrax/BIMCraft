@@ -8,6 +8,9 @@ fn wall(m: &Model, id: Id) -> Result<&Wall, String> {
     if w.arc != 0.0 || w.panel_of.is_some() || crate::curtain::pattern(m, w).is_some() {
         return Err("Pick New Host supports ordinary straight walls, not curved walls or curtain panels".into());
     }
+    if w.slant != 0.0 || !w.profile.is_empty() {
+        return Err("Pick New Host does not support slanted or profiled walls; choose an ordinary upright wall".into());
+    }
     if crate::groups::group_of(m, id).is_some() {
         return Err("Pick New Host does not support grouped walls; choose an ungrouped wall".into());
     }

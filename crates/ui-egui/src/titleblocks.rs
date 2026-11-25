@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Element, Model};
 use bimcraft_core::pen::{MAX_PEN, Pen};
+use bimcraft_core::texture::Picture;
 use bimcraft_core::titleblock::{self, Align as TextAlign, Field, Scope, Stroke, Text, TitleBlock};
 use egui::{Align, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, RichText, ScrollArea, Sense, TextEdit, Ui, vec2};
 use serde_json::{Value, json};
@@ -19,7 +20,7 @@ use crate::lang::{t, tf};
 use crate::popup::{self, Modal};
 use bimcraft_i18n::msg;
 
-const TABS: [&str; 4] = [msg!("Fields"), msg!("Texts"), msg!("Lines"), msg!("Size")];
+const TABS: [&str; 5] = [msg!("Fields"), msg!("Texts"), msg!("Lines"), msg!("Size"), msg!("Logos")];
 
 /// The Title Blocks dialog: the one picked, as typed, and the project's values of its fields, as typed.
 #[derive(Clone, Debug, PartialEq)]
@@ -102,6 +103,7 @@ impl TitleBlocksDialog {
             o.insert("drawing_area".into(), json!(self.tb.drawing_area));
             o.insert("template_border".into(), json!(self.tb.template_border));
             o.insert("sizes".into(), json!(self.tb.sizes));
+            o.insert("logos".into(), json!(self.tb.logos));
             for key in ["lines", "fills", "texts", "fields"] {
                 o.entry(key).or_insert(json!([]));
             }
@@ -385,6 +387,49 @@ fn size_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
     });
 }
 
+/// Its logos: each picture's place and width, mm from the title block's bottom left corner; its height follows the picture's
+/// proportions. Add Logo… reads a PNG or a JPEG.
+fn logos_tab(ui: &mut Ui, d: &mut TitleBlocksDialog, images: &BTreeMap<String, Picture>, add: &mut bool) {
+    ui.label(t(
+        "A picture (PNG or JPEG) placed in the title block, under its lines and lettering: its bottom left corner and its width, in mm from the title block's bottom left corner. The project keeps each picture once.",
+    ));
+    if ui.add_enabled(d.tb.logos.len() < titleblock::MAX_LOGOS, egui::Button::new(t("Add Logo…"))).clicked() {
+        *add = true;
+    }
+    if d.tb.logos.is_empty() {
+        return;
+    }
+    let mut gone = None;
+    Grid::new("title-block-logos").striped(true).num_columns(6).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
+        for h in [msg!("Picture"), "X", "Y", msg!("Width"), msg!("Height"), ""] {
+            ui.label(RichText::new(t(h)).strong());
+        }
+        ui.end_row();
+        for (i, l) in d.tb.logos.iter_mut().enumerate() {
+            let known = images.get(&l.image);
+            ui.label(known.map_or(l.image.as_str(), Picture::name));
+            ui.add(mm(&mut l.at.0, -titleblock::MAX_SIZE, titleblock::MAX_SIZE));
+            ui.add(mm(&mut l.at.1, -titleblock::MAX_SIZE, titleblock::MAX_SIZE));
+            let aspect = known.map_or(l.height / l.width.max(f64::MIN_POSITIVE), |p| p.size().1 as f64 / p.size().0.max(1) as f64);
+            if ui.add(mm(&mut l.width, 1.0, titleblock::MAX_LOGO_SIDE)).changed() {
+                l.height = l.width * aspect;
+                // A tall picture reaches the longest side first.
+                if l.height > titleblock::MAX_LOGO_SIDE {
+                    (l.width, l.height) = (titleblock::MAX_LOGO_SIDE / aspect, titleblock::MAX_LOGO_SIDE);
+                }
+            }
+            ui.label(format!("{:.1} mm", l.height));
+            if ui.button(t("Remove logo")).clicked() {
+                gone = Some(i);
+            }
+            ui.end_row();
+        }
+    });
+    if let Some(i) = gone {
+        d.tb.logos.remove(i);
+    }
+}
+
 /// The title block as it prints, to pick a text on and drag it: a click picks the text under it (or none), a drag moves the text
 /// picked, and the arrow keys nudge it half a millimetre while no field has the keyboard.
 fn canvas(ui: &mut Ui, model: &Model, d: &mut TitleBlocksDialog, values: &BTreeMap<String, String>) {
@@ -570,6 +615,23 @@ impl BimApp {
         });
     }
 
+    /// Add Logo…: the PNG or JPEG the user picks, placed in the title block `name` in its bottom left corner, 30 mm wide, and
+    /// the dialog open on it again.
+    fn add_title_block_logo(&mut self, ctx: &Context, name: String) {
+        let dialog = rfd::AsyncFileDialog::new().add_filter(t("Pictures (PNG, JPEG)"), &["png", "jpg", "jpeg"]);
+        self.ask_files(ctx, dialog, move |app, paths| {
+            let Some(path) = paths.into_iter().next() else { return };
+            let Some(tb) = app.session.model.title_blocks.get(&name) else { return };
+            let mut logos = serde_json::to_value(&tb.logos).unwrap_or_else(|_| json!([]));
+            if let Some(list) = logos.as_array_mut() {
+                list.push(json!({"path": path.to_string_lossy(), "at": [2, 2], "width": 30}));
+            }
+            if app.run("title_block", json!({"name": name, "logos": logos})).is_some() {
+                app.open_title_blocks(Some(&name));
+            }
+        });
+    }
+
     /// View > Title Blocks, while it's open.
     pub(crate) fn title_blocks_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.title_blocks_dialog.take() else { return };
@@ -578,6 +640,8 @@ impl BimApp {
         let (mut ok, mut apply, mut cancel) = (false, false, false);
         let (mut pick, mut make, mut duplicate, mut delete, mut import) = (None, None, false, false, false);
         let mut starter: Option<String> = None;
+        let mut add_logo = false;
+        let mut favorite = false;
         let r = Modal::new(UiId::new("title-blocks-dialog"), t("Title Blocks")).width(1120.0).show(ctx, |ui| {
             popup::body(ui, |ui| {
                 ui.horizontal_top(|ui| {
@@ -607,6 +671,10 @@ impl BimApp {
                                 delete = true;
                             }
                         });
+                        let tip = t("Keep it in your Favorites, with its logos, for every project");
+                        if !d.name.is_empty() && ui.button(t("Save to Favorites")).on_hover_text(tip).clicked() {
+                            favorite = true;
+                        }
                         let l = ui.label(t("New from starter:"));
                         let combo = ComboBox::from_id_salt("title-block-starter").selected_text("").width(180.0).show_ui(ui, |ui| {
                             for n in bimcraft_core::title_starters::names() {
@@ -673,7 +741,8 @@ impl BimApp {
                             0 => fields_tab(ui, &mut d),
                             1 => texts_tab(ui, &mut d),
                             2 => lines_tab(ui, &mut d),
-                            _ => size_tab(ui, &mut d),
+                            3 => size_tab(ui, &mut d),
+                            _ => logos_tab(ui, &mut d, &model.images, &mut add_logo),
                         });
                     });
                 });
@@ -782,6 +851,22 @@ impl BimApp {
             // What was typed is kept first, so the drawing goes over what the user sees.
             if commit(self, &mut d) {
                 self.import_title_block(ctx, d.name.clone());
+            }
+            keep = false;
+        }
+        if favorite {
+            // What was typed first, so the favorite is what the user sees.
+            if commit(self, &mut d) {
+                let p = self.favorite_params("save", "title_block", &d.name);
+                if self.run("favorite", p).is_some() {
+                    self.status = crate::Status { text: tf("Saved {} to your Favorites", &[&d.name]), error: false };
+                }
+            }
+        }
+        if add_logo {
+            // The same: what was typed first, then the picture the user picks, and the dialog open on it again.
+            if commit(self, &mut d) {
+                self.add_title_block_logo(ctx, d.name.clone());
             }
             keep = false;
         }

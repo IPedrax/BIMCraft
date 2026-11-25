@@ -1,5 +1,35 @@
 # Pick New Host evidence
 
+## November 25 compatibility refresh
+
+Merged main `73aceeae81efdece268de404644a2b72822ce408`, including slanted/profiled walls and net planar quantities.
+The ordinary-host boundary is now explicit for both source and target: nonzero `slant` and nonempty `profile` are refused.
+The new eligibility regression first failed because rehosting to a slanted target returned success; after adding the
+shared guard, all **12 focused core tests passed**. The initial attempt stopped at unresolved catalog markers and is
+not counted as a behavioral RED. Formatting, catalog checking and all-target Clippy with warnings denied also passed.
+
+The new quantity test moves a window and door between 200/400 mm walls and checks net/opening areas, volumes, opening
+identity, one-step history, Undo/Redo and fresh native reopen. `replay.py` repeats the quantities through standalone MCP;
+`verify_ifc.py` independently tessellates the exported walls and compares their net side-area quantities with geometry.
+No native desktop, local egui harness or updater launch test is run for this refresh. Full hosted CI results and the
+audited local subset are reported separately; these checks do not claim manual workflow acceptance.
+
+On macOS arm64, Rust 1.99.1, the audited headless subset passed **4,205 tests, 0 failed, 15 ignored**:
+`cargo test --locked --config ci/fast-build.toml --workspace --exclude bimcraft --exclude bimcraft-ui-egui --exclude bimcraft-update`.
+The wasm sample plugin was rebuilt first; the hostile-input sweep and both scene random-edit oracles passed. Builds used
+two jobs with incremental compilation disabled. [Exact local totals](refresh-2026-11-25.json).
+
+Standalone MCP and independent IfcOpenShell 0.9.0.post1 checks passed, including preservation of `slanted: true` on an upright
+host. Both exports have zero schema/EXPRESS findings. Source/target net side areas change from 14.31/18.00 to 18.00/14.31 m²;
+the corresponding volumes are 2.862/7.200 before and 3.600/5.724 m³ after. [Measurements](ifc-measurements-2026-11-25.json).
+Fresh software renders were inspected; these are model-output checks, not native UI captures:
+
+| Before | After |
+|---|---|
+| ![Before plan](before-plan-2026-11-25.png) | ![After plan](after-plan-2026-11-25.png) |
+
+![Rehosted openings and restored source wall](after-3d-2026-11-25.png)
+
 BIMCraft Rust, refreshed against `81ebe7f2a937786387c81775daed18d793a48120` (November 21 development main, package 0.12.0).
 All public cases are synthetic. Agent: Codex desktop, `gpt-6-astra`, high reasoning effort, verified from this chat's local
 turn configuration. No native Revit session or manual user acceptance is claimed.
@@ -56,8 +86,10 @@ target walls, independent vertex/hole calculations, Undo/Redo and native reopen.
 click placement, including Space leaving the live opening unchanged during the pending pick.
 
 This base includes #437 origins, #443 flips, #455 same-host dragging, #473 clipboard, #490 vertical tools and #495 roofs.
-Their existing paths remain intact. The slanted/profiled wall schema proposed in #504 is absent; a control verifies that
-its proposed fields still fail strict modification on this base. Its eventual integration requires a new eligibility audit.
+Their existing paths remain intact. The November 25 refresh includes #504 and explicitly refuses slanted/profiled source
+and target walls through the shared eligibility guard. Controls reset each form to an ordinary wall and verify rehosting
+works again. A command regression checks both hosts' net/opening areas and volumes, identity, Undo/Redo and native reopen;
+the IFC replay independently measures both solids and verifies their net side-area quantities.
 
 ## November 18 automated UI captures
 

@@ -173,8 +173,9 @@ the draft curve, keeps its id, GUID and style, and moves joined endpoints so a c
 reference stays fixed. Changes use the sketch's Ctrl+Z history and reach the model only through Finish Edit Mode; Cancel
 leaves the model as it was. Invalid geometry leaves the draft and reference intact, and undo or Escape drops stale picks.
 
-A sketch line picked alone in Modify has a small palette over the view at its middle (`BimApp::edge_palette`, both profiles): Add
-Vertex (which no panel offers while sketching), Split Element, Offset and Trim/Extend to Corner, each starting its tool. The sketch's contextual ribbon includes Align, Trim/Extend to Corner, Trim/Extend Single/Multiple Elements, Split and
+A sketch line picked alone in Modify has a small palette over a plan at its middle (`BimApp::edge_palette`, both profiles): Add
+Vertex (which no panel offers while sketching), Split Element, Offset and Trim/Extend to Corner, each starting its tool. Edit Profile
+and a sketch in the 3D view have none: the ribbon has the same tools. The sketch's contextual ribbon includes Align, Trim/Extend to Corner, Trim/Extend Single/Multiple Elements, Split and
 Offset. Trim highlights sketch candidates and keeps its first pick lit; its prompt says which line to pick and to click
 the part to keep. A failed trim leaves that first pick available for another target; a successful edit clears the error.
 Multiple Trim keeps the boundary across successive target edits while that indexed line is unchanged, and drops it if
@@ -200,6 +201,15 @@ is an endpoint, and its sight line gives no nearest point. Rotate's Place Centre
 running from the centre), and the angle is the exact one between the snapped points. Digits typed over the view while Rotate
 (or Rotate Project North) waits for its angle are the angle (`BimApp::typed_angle`, a leading minus turns clockwise), shown
 on the ghost as "45° (Enter)", and Enter turns by it.
+Scale (RE, `scale.rs`) is `Tool::Scale(Step)`: `Choose` while its popup asks how (`BimApp::scaling` keeps the choice, the
+percentage and the length from one use to the next), `Base(factor)` waiting for the point that stays, `First` and `Second(a)` for
+the two points (snapped through `found`, Shift squaring the second, a line and its length following the cursor), and
+`Length(a, b)` while the popup at the second click asks the length they come to. It starts only in a plan, a ceiling plan, a
+section or an elevation and with something selected it takes (`bimcraft_core::scale::scalable`; `BimApp::scale_refused` says
+why not), and runs the core's `scale_elements` in the view's own terms, so a section's detail lines scale by its along and up.
+The plan's preview draws what it scales grown about the point (`ghost_of` with the factor, the percentage's at the cursor, the
+length's as typed). What the core leaves out goes in the status bar, each with why. The 3D view and sheets show nothing it
+takes, so it says so there.
 Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
@@ -208,7 +218,7 @@ then its angle, both degrees counter-clockwise from east (`line_angle_field`), a
 typed angle stands as typed until the pointer is swept, then mirrors into the quadrant the pointer is in (60, -60, 120
 and -120 for 60), so a line is flipped without retyping it; while a length or angle is in hand, `Ctrl+A` selects that
 field for overwrite, its whole number replaced by the next digit or emptied by Backspace or Delete; Enter or a click places
-the point they show; an alignment
+the point they show. Backspace goes, in this order, to a whole-selected field, a digit typed, a chain's last point and a dimension's last reference; with none of them it deletes the selection as Delete does, since a Mac's keyboard has no Delete key (`backspace_deletes_the_selection_as_delete_does_for_a_mac_keyboard`); an alignment
 guide says what the point lines up by — "Horizontal", "Vertical", "Parallel" — or both at a crossing, "Intersection: Horizontal, Parallel"), and a point that moves with the cursor goes through them. A guide along an axis is anchored at a reference point of what's drawn; a
 borrowed one is anchored at the point being drawn from and runs parallel or square to a straight run near it
 (`AlignmentAxis::Inferred`, `AlignmentGuideService::inferred`), so a line drawn beside a slanted wall comes out
@@ -229,7 +239,7 @@ wall lends one edge pin — marking another of its faces moves the pin (`Marked:
 the three — while a point marked at a corner is a reference of its own. A marked edge lends its own line (a `Collinear`
 guide, "On Line"), its direction parallel or square, and its middle; a marked point lends its X and Y and the directions
 of the walls joined there, so a rotated corner gives its walls' directions and not the world's. A chain whose first point
-the snap put on a wall draws with that line's direction and extension (`Canvas::start_edge`). `Snaps::mark_on_hover` turns
+the snap put on a wall draws with that line's direction and extension (`Canvas::start_edge`). A click on a chain's last point again ends it, as Escape does (walls and room separators) or Enter does (detail lines: a polyline is made); what was built stays and the next click starts another chain (`a_click_on_a_chain_s_last_point_ends_it_as_escape_does`). `Snaps::mark_on_hover` turns
 the ring off;
 `Q` stays. The rays are drawn only near the cursor: one enters at 8 px and leaves at 12 (`Canvas::alignments`), at most
 two run at once (`find_alignments`), and each fades out 100 px past the point it locks, so a plan is never crossed by a
@@ -342,6 +352,28 @@ sizing pass comes at once) so that frames come no closer than the monitor's refr
 driver's vsync, to compare. The tests have no pacer (`frames: None`). The core's own times on Windows matched Linux's (`docs/performance.md`), so
 a Windows-only slowness is to be looked for in presentation first: run the benchmark and compare the frames' interval with their `cpu_ms`.
 
+No graphics card (software rendering). Where the machine has no graphics card, wgpu draws on a software adapter: Direct3D's WARP
+("Microsoft Basic Render Driver") on Windows, llvmpipe or lavapipe on Linux. Measured on a two-core Windows 11 VM with only a QXL display
+(0.12.0, 2026-11-24): a frame that cost the window 4 to 7 ms took WARP 450 to 1000 ms of both cores, moving the pointer over a plan held
+the process at 1.78 of 2 cores and starved the other applications, the processor stayed busy for 2 s after the pointer stopped (two frames
+queued), and the pan's frames alternated between about 1050 ms and 50 to 90 ms, wgpu's one-second wait for the swap chain timing out. Now
+`main` reads the adapter's type when the window comes up (`pacing::software`: type `Cpu`, or a known rasterizer's name), the log's
+`window up:` line names it (`(Dx12, Cpu, software rendering, …)`), and `BimApp::software_rendering` says so once on the status bar and on
+Settings > Performance. On a software adapter the surface is Fifo with one frame in flight (`pacing::surface_for`: Mailbox renders frames
+only to throw them away), and the pacer paces frames by their cost (`Pacer::every_for`): a running average of the time from one frame's
+start to the next (a gap of over 1.5 s is a pause, not a cost), and frames no closer than that over `BUDGET` (0.5), so a 400 ms frame is
+followed by 400 ms of rest, never more than a second. Input that comes meanwhile is gathered into the next frame, and `BimApp::pace`
+still cuts it after a click, so a click lands where it was made. Settings > Performance > Frame rate limit (Automatic, 60, 30, 15, 10;
+`frame_limit` in `settings.json`, `pacing::Limit`) caps the rate on any adapter; on Linux, where vsync paces a card, a limit makes the
+pacer wait too (`Pacer::active`). `BIMCRAFT_SOFTWARE=1` draws on a software adapter anyway (DirectX 12's WARP on Windows; on Linux
+lavapipe where Mesa has it), to reproduce a machine with no card, or for a user whose driver is broken; like `WGPU_BACKEND` it is never
+kept. wgpu's, egui-wgpu's and eframe's own warnings now reach `bimcraft.log` (`apps/bimcraft/src/wgpu_log.rs`: the first 20 of a start,
+then one line a minute counting the rest), and the frames whose surface wgpu couldn't give are counted (`on_surface_status`,
+`pacing::surface_failures`) and reported by the benchmark per step and in all (`surface_failures`). Not changed, for now: dithering
+(egui-wgpu's renderer is made before the adapter is known, so it would mean choosing the adapter before the window); the 3D view's CPU
+workers (already `cores − 1`, so one on a two-core machine); the process's priority (it needs Win32 calls, and so `unsafe`). The real
+fix, drawing egui on the processor ourselves and presenting with `softbuffer`, is phase 2 of the plan in the pull request.
+
 Tags. A `Tag` names an element at a `host` by a `label`: the name of one of the fields its category's schedule has (`schedule::field_text` reads it
 as the schedule shows it, in the project's units), or, with none, the category's usual one (`Tag::usual`: a door's or window's `Mark`, a room's `Name`, else
 the `Type`), `?` while that has no value. The host is anything `Model::anchor` finds a point for (a door or window's centre, the middle of a wall's or a run's
@@ -378,13 +410,27 @@ BIMCraft's title bar and an icon among Rev's; the tools are the Tools palette or
 are window settings in `settings.json`, never in a project, and work the same on both. The project's scale (`presets::Scale`: Sketch,
 Studio, Team, Team the default so nobody loses a tool) leaves out panels and tools a project doesn't need yet (`Scale::hides`, by English
 name: below Team design options, links and inquiry, in Sketch also sheets, phasing and view templates); a chip on the title bar of both
-profiles switches it at any time and lists the presets, Edit Tools and Manage Presets. Edit Tools turns every tool, a ribbon button or a
+profiles switches it at any time and lists the presets with the one applied ticked, Edit Tools and Manage Presets. Edit Tools turns every
+tool, a ribbon button or a
 palette row, into a box to tick (`edit_tool`): a click ticks or clears it and takes no tool, and what is cleared is `tools_hidden`, left
-out of the ribbon and the palette (Find still lists it). The ribbon and the palette read both through `ribbon::tool_rules`, set each frame;
-`ribbon::panel` leaves out a panel the scale does, `big_button`, `small_button`, `stacked_button` and `list_row` a tool. A preset
-(`presets::Preset`) keeps, by name, where the palettes are, the tools shown, the scale and the layout; Settings > User Interface > Presets
-saves the layout now under a name, uses or deletes one, and shows every tool again. A settings file's presets are read as hostile: unnamed,
-over-long or repeated ones are left out, 32 at most.
+out of the ribbon and the palette (Find still lists it). A panel's name is a box too: clearing it hides the whole panel, in either profile,
+and keeps its tools in Edit Tools and Find; what is cleared is `panels_hidden`, keyed by `tab:<tab>/<panel>` (a plugin's
+`tab:plugin:<name>/<panel>`). A tab every panel of which is hidden says so, with a button that brings them all back. **Done** in Edit
+Tools keeps the palette layout, the panels and the tools in the preset the window wears (the one ticked in the Project scale chip); with
+no preset chosen it changes the window only and says so. The ribbon and the
+palette read both through `ribbon::tool_rules` and `ribbon::panel_rules`, set each frame; `ribbon::panel` leaves out a panel the scale or
+the user does, `big_button`, `small_button`, `stacked_button` and `list_row` a tool. A preset (`presets::Preset`) keeps, by name, where the
+palettes are and which are closed, the panels and tools shown, the profile, the scale and the layout; reading a preset's palettes keeps
+exactly the set it was saved with (`Policy::Preset`), so a palette added by a later version stays closed in an old preset, while the
+window's own layout (`Policy::Live`) still opens it. Applying a preset puts its profile first, then its layout, panels, tools and scale.
+Settings > User Interface > Presets saves the layout now under a name, uses, edits or deletes one, shows every tool and every panel again,
+and edits a preset's profile, palettes, panels and scale without touching the window until Use. A preset's **Reset to Standard View**
+resets its content (the standard layout of its profile, no hidden panels or tools, Team, floating), keeping its name, its place and its
+profile; the window's own **Reset Palette Layout** is a separate action: the standard docking of its profile, every panel and every tool
+shown again, the project's scale untouched. A settings file's presets are read as hostile: unnamed, over-long
+or repeated ones are left out, 32 at most; a preset from before profiles were kept in them leaves the window's profile alone when applied.
+Rev's ribbon never draws the Tools palette, but the palette stays in the layout as the user's intent: switching profiles no longer
+rewrites the saved palettes or the presets.
 
 Themes, the same in both profiles. The window follows the system's light or dark until the user picks (Settings > User Interface >
 Theme, or View > Dark Mode); beside the profile's own light, dark and dark-with-a-light-canvas are three presets, dark ones (`style::Scheme`:
@@ -679,23 +725,32 @@ popup open, so a popup of a row's own closes the panel's list that holds the row
 submenu of the row; a request to open them at once (UN) opens the panel's list when the tool has no button, and waits for a tab's second
 frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_opens_them_from_a_panels_list`).
 
-Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
-(`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,
-typed with Ctrl held (Cmd on a Mac; `ctrl_letters` takes them out of the frame's events, in the project's `keys` and the family document's
-`family_typed` alike), and a custom one is tried before the defaults. Letters typed without Ctrl are no shortcut (digits and a unit still make a
-typed length). A letter that is a Ctrl key of its own (`ctrl_key`: S saves, O opens, N new, K Find, P prints to PDF, D the start page, Z undoes — mid-chain first a typed number, then the chain's last point and the segment built to it, `undo_chain_point` — Y
-redoes, 1 Properties) waits for a second letter (`CTRL_WAIT`, half a second): with one it is a shortcut (Ctrl held, S then A: Select All
-Instances); if the two aren't one, the first does its own job and the second waits in its place, so Ctrl held and Z, Z, Z undoes three times; with
-none, or once Ctrl is let go, it does its own job. In a text field Ctrl's keys are the field's, but S, O, N, K, P and 1, which act there at once,
-and no shortcut is typed. The user chose Ctrl, and the wait, on 2026-11-13. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
-carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, Reference Plane, the duct tools): it waits
-for the tool. Load File reads JSON (`{"WA": "Wall"}`), Revit's `<Shortcut CommandName=… Shortcuts="WA#W1">` lines, or `KEY - Name` lines, up to 64 KiB;
-a description is an action only by its whole name in one of the interface's languages (`resolve_action`), and a key that is not two characters, names no action or
-is another action's is skipped and counted in the message. Custom shortcuts are kept in `settings.json` (`shortcuts`: key to the action's English name, as `Settings::shortcuts`), written when one is added, edited or loaded and
-read into `BimApp::custom_shortcuts` at startup (`use_settings`), so they last past the window; Restore Defaults is kept too, as an empty object, and New and Open keep them.
-`Settings::from_json` keeps only what the dialog could have made (a key of two letters or digits, in upper case whatever its case in the file, and a name in `ACTIONS`),
-at most `MAX_SHORTCUTS`; a value that isn't an object leaves what the window had. Tests: `tests/shortcuts_kept.rs`. Match Properties (MA) is the `match_properties`
+Keyboard Shortcuts. Manage > Shortcuts (or KS, or Ctrl+Shift+K) opens `shortcuts_window` (`shortcuts.rs`): every action in the registry
+(`ui_actions` plus `engine::commands()`, and the old names kept as legacy actions), with the bindings it has. A binding is a chord
+(`Ctrl+D`, `Ctrl+Shift+D`, `F8`) or a two-key sequence (`WA`, `MV`); an action may have several, and the dialog's chips add, edit and remove them.
+Sequences are typed plainly, without Ctrl, as the user chose on 2026-11-15: `sequence_letters` takes the letters and digits out of the frame's
+events (a key held with Ctrl, Alt or Cmd is never one of them), and `BimApp::sequences` feeds them to the registry's sequences. A letter that begins
+no sequence is dropped, and one that begins one waits for the next (`SEQUENCE_WAIT`, two seconds) before it is forgotten. A combination with Ctrl runs
+only when Keyboard Shortcuts assigned it (`action_for_chord`), at once and with no wait. Digits and a unit still make a typed length while a tool takes one,
+and a letter typed after them is the length's too, so a length never becomes a sequence.
+Bindings are read from `Event::Key`'s `physical_key`, never from `Event::Text`, so `Ctrl+D` and `Ctrl+В` are the same key and the two letters work on a
+Russian layout; modifiers match exactly (`matches_exact`), so `Ctrl+Shift+D` never runs `Ctrl+D`. Ctrl+C, Ctrl+X and Ctrl+V stay the clipboard's
+everywhere, on a view too, because egui-winit turns them into Copy, Cut and Paste events rather than key events. The family document's keys come the same way,
+through `sequence_letters` (never while a text field has the keys), its two-letter actions are looked up in the same registry (`family_shortcut`), and its
+Ctrl chords (Save, Save As, Find, Undo, Redo) are the registry's too (`family_shortcut_action`). The registry's actions have stable ids
+(`cmd.move`, `ui.file.save_as`, `legacy.…`) and are saved in `settings.json` as `Settings::shortcuts` (`version`, `profile`, `bindings`), a full effective
+set, so a default the user deleted does not creep back. Controls: All, Assigned, Without keys and Changed; category and profile; Import (`bks`, `txt`, `json`, Revit XML),
+Export (`txt`/`json`), Help (Markdown) and Reset All. The text format is `action = binding`, one line per binding, `#` comments; the same parser reads the old
+`{"WA": "Wall"}` JSON, `<Shortcut … Shortcuts="WA#W1"/>` and `WA - Wall` / `WA = Wall` lines. Import has a preview with line-numbered errors and conflicts,
+replace and merge modes, and writes `shortcuts.bak` beside the settings before applying; Markdown is a read-only cheat sheet and is refused on import.
+The BIMCraft profile keeps the Revit-style sequences and adds chords; Home is `Ctrl+D`, `Ctrl+U` is free, and the guides are
+`F8` only. A text field keeps its letters but allows Save, Save As, Open, New, Find, Settings, Export PDF and Properties (Ctrl+P and Ctrl+1); dialogs and
+menus keep all global bindings away. A key never carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System,
+Reference Plane, the duct tools): it waits for the tool.
+`BimApp::keys` checks bindings before the tool's contextual keys, and a binding that finds nothing to run reports it in the status bar rather than falling through.
+Tests: `tests/shortcuts_kept.rs` and the unit tests in `shortcuts.rs`. Match Properties (MA) is the `match_properties`
 command; with one element selected the window remembers its type for the next one drawn, with several it gives the others of the first's category its type.
+The user-facing format, the ЙЦУКЕН table and the migration are described in [`shortcuts.md`](shortcuts.md).
 
 Annotation dialogs and draw tools. Manage > Annotation Settings lists Line Weights, Line Styles, Line Patterns (Line Styles on its
 Patterns tab) and Fill Patterns. Fill Patterns (`fillpatterns.rs`, also Edit Type of a filled region) and Line Styles
@@ -864,7 +919,9 @@ quit
 ```
 
 Each step prints a line on standard error (its time, its frames, the median, 95th percentile and longest frame, the memory
-allocated) and the report has every frame's interval. A benchmark sends nothing to the network. Every frame is drawn while it
+allocated) and the report has every frame's interval, and the frames whose surface wgpu couldn't give (`surface_failures`, per step
+and in all: a swap chain that timed out). To measure a machine without a graphics card on one that has it, set `BIMCRAFT_SOFTWARE=1`,
+and on Windows hold the process to two cores: `cmd /c start "" /affinity 3 bimcraft.exe --sample --bench bench.txt --bench-out out.json`. A benchmark sends nothing to the network. Every frame is drawn while it
 runs, as if the user kept moving.
 
 Run it where frames are presented: a locked or hidden window gets no frames from its compositor (Wayland withholds them), so
@@ -897,7 +954,7 @@ after placement the existing temporary dimensions remain available. There is no 
 
 The target must share the source wall's level and base elevation. Sill, type, instance values, mark and interior/exterior-relative
 hand/facing settings are retained. A thicker wall reevaluates a family's Wall Thickness. Invalid fit or unsupported hosts show
-why and make no edit. Curved/curtain/grouped hosts are unsupported. Sections/elevations/3D show the action disabled; switch to
+why and make no edit. Curved/slanted/profiled/curtain/grouped hosts are unsupported. Sections/elevations/3D show the action disabled; switch to
 a plan. Existing plan visibility/picking determines which wall can be targeted.
 
 `rehost.rs` keeps the source GUID, active view and model snapshot for the pending pick. Hover validation runs `pick_new_host`

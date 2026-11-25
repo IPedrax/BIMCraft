@@ -18,6 +18,8 @@ files! {
     "architectural/ibc.json",
     "architectural/din.json",
     "architectural/jis.json",
+    "architectural/it-dm-1975.json",
+    "architectural/it-fvg.json",
     "structural/generic.json",
     "structural/nbr-6118.json",
     "structural/eurocode.json",

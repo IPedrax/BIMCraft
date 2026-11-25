@@ -7,11 +7,15 @@ pub mod align;
 #[cfg(test)]
 mod align_tests;
 pub mod alignment;
+pub mod assets;
+#[cfg(test)]
+mod assets_tests;
 pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
 pub mod background_grid;
 pub mod bath;
+pub mod bima;
 pub mod bimc;
 pub mod bounds;
 pub mod bridge;
@@ -21,6 +25,7 @@ pub mod cad;
 mod cad_tests;
 #[cfg(test)]
 mod camera_view_tests;
+mod carrier_fill;
 #[cfg(test)]
 mod circuit_tests;
 pub mod classification;
@@ -34,6 +39,8 @@ pub mod cloud;
 mod cloud_tests;
 pub mod codes;
 mod commands;
+#[cfg(test)]
+mod component_dims_tests;
 mod component_geometry;
 pub mod conduit;
 mod constraints;
@@ -89,6 +96,8 @@ mod family_angle_tests;
 #[cfg(test)]
 mod family_blend_tests;
 #[cfg(test)]
+mod family_clipboard_tests;
+#[cfg(test)]
 mod family_constraint_tests;
 #[cfg(test)]
 mod family_nested_tests;
@@ -101,11 +110,15 @@ mod family_pivot_tests;
 #[cfg(test)]
 mod family_plane_tests;
 #[cfg(test)]
+mod family_purge_tests;
+#[cfg(test)]
 mod family_section_tests;
 #[cfg(test)]
 mod family_sketch_lock_tests;
 #[cfg(test)]
 mod family_sketch_tests;
+#[cfg(test)]
+mod family_transform_tests;
 #[cfg(test)]
 mod family_visibility_tests;
 pub mod favorites;
@@ -121,6 +134,25 @@ mod flip_tests;
 mod font;
 #[cfg(test)]
 mod formula_visibility_tests;
+pub mod framing;
+#[cfg(test)]
+mod framing_floor_hunt_tests;
+#[cfg(test)]
+mod framing_floor_output_tests;
+#[cfg(test)]
+mod framing_floor_tests;
+#[cfg(test)]
+mod framing_output_tests;
+#[cfg(test)]
+mod framing_roof_hunt2_tests;
+#[cfg(test)]
+mod framing_roof_hunt_tests;
+#[cfg(test)]
+mod framing_roof_output_tests;
+#[cfg(test)]
+mod framing_roof_tests;
+#[cfg(test)]
+mod framing_tests;
 pub mod geom;
 #[cfg(test)]
 mod georef_tests;
@@ -148,6 +180,8 @@ mod ifc_generic_tests;
 mod ifc_geometry_tests;
 #[cfg(test)]
 mod ifc_member_tests;
+#[cfg(test)]
+mod image_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;
@@ -156,8 +190,15 @@ pub mod lenient;
 pub mod library;
 pub mod lines;
 pub mod link;
+#[cfg(test)]
+mod link_dims_tests;
+#[cfg(test)]
+mod links_tests;
 pub mod loads;
 pub mod massing;
+#[cfg(test)]
+mod material_tests;
+pub mod materials;
 pub mod memory;
 pub mod mesh_in;
 #[cfg(test)]
@@ -181,6 +222,7 @@ mod parameter_tests;
 pub mod parameters;
 pub mod pat;
 pub mod pdf;
+pub mod pdf_in;
 pub mod pen;
 pub mod phasing;
 pub mod places;
@@ -200,9 +242,14 @@ pub mod quantities;
 mod quantities_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
+pub mod ral;
+pub mod ramps;
 #[cfg(test)]
 mod read_only_tests;
 pub mod rebar;
+pub mod rebar_detail;
+#[cfg(test)]
+mod rebar_detail_tests;
 #[cfg(test)]
 mod rebar_tests;
 pub mod rehost;
@@ -212,6 +259,8 @@ pub mod reinforce;
 #[cfg(test)]
 mod reinforce_tests;
 pub mod render;
+#[cfg(test)]
+mod renovation_tests;
 pub mod reservoir;
 #[cfg(test)]
 mod roof_slopes_tests;
@@ -232,6 +281,9 @@ pub mod rooms;
 mod run_join_tests;
 pub mod runs;
 pub mod sample;
+pub mod scale;
+#[cfg(test)]
+mod scale_tests;
 pub mod schedule;
 #[cfg(test)]
 mod section_box_tests;
@@ -261,8 +313,12 @@ pub mod symbol_set;
 pub mod text;
 pub mod texture;
 mod timber;
+#[cfg(test)]
+mod title_favorites_tests;
 pub mod title_starters;
 pub mod titleblock;
+#[cfg(test)]
+mod titleblock_logos_tests;
 #[cfg(test)]
 mod titleblock_tests;
 pub mod triad;
@@ -276,8 +332,13 @@ mod units_tests;
 #[cfg(test)]
 mod vertical_tools_tests;
 pub mod view3d;
+pub mod view_range;
+#[cfg(test)]
+mod view_range_tests;
 #[cfg(test)]
 mod wall_mitre_tests;
+#[cfg(test)]
+mod wall_shape_tests;
 #[cfg(test)]
 mod wall_top_offset_tests;
 pub mod walls;
@@ -335,3 +396,10 @@ mod text_tests;
 #[cfg(test)]
 mod profile_tests;
 pub mod profiles;
+
+#[cfg(test)]
+mod ods_catalogue_tests;
+mod odt;
+#[cfg(test)]
+mod odt_tests;
+pub mod standard_colors;

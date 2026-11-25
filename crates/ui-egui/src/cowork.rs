@@ -871,7 +871,8 @@ pub(crate) fn paint_plan(
     let marks = marks(others, m, &here, seen);
     let (drawing, at) = d;
     if !marks.lit.is_empty() {
-        for (prim, owner) in drawing.prims.iter().zip(&drawing.owners) {
+        for (i, prim) in drawing.paint_prims() {
+            let owner = drawing.owners.get(i).copied().flatten();
             let Some(c) = owner.and_then(|id| marks.lit.get(&id)).map(|c| colour(*c)) else { continue };
             match prim {
                 Prim::Line { pts, .. } => {
@@ -882,7 +883,7 @@ pub(crate) fn paint_plan(
                         p.add(Shape::closed_line(r.iter().map(|q| at.pos(*q)).collect(), Stroke::new(1.5, c)));
                     }
                 }
-                Prim::Image { .. } => {}
+                Prim::Image { .. } | Prim::Text { .. } => {}
             }
         }
     }

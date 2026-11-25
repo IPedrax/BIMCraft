@@ -3,6 +3,7 @@ import json, math, sys, uuid
 from pathlib import Path
 import ifcopenshell, ifcopenshell.geom, ifcopenshell.validate
 import ifcopenshell.util.shape
+import ifcopenshell.util.element
 folder=Path(sys.argv[1])
 ident=json.loads((folder/'identities.json').read_text())
 def guid(s): return ifcopenshell.guid.compress(uuid.UUID(s).hex)
@@ -23,7 +24,12 @@ for stage in ['before','after']:
         openings=(1.2*1.5+.9*2.1) if (role=='source')==(stage=='before') else 0
         expected=(6*3-openings)*thick
         assert math.isclose(volume,expected,abs_tol=1e-6),(stage,role,volume,expected)
-        volumes[role]=dict(volume_m3=volume,expected_m3=expected)
+        quantities=ifcopenshell.util.element.get_psets(wall, qtos_only=True)['Qto_WallBaseQuantities']
+        net_area=quantities['NetSideArea']
+        assert math.isclose(net_area,18-openings,abs_tol=1e-6),(stage,role,quantities)
+        assert math.isclose(quantities['GrossSideArea'],18,abs_tol=1e-6),(stage,role,quantities)
+        assert math.isclose(net_area,volume/thick,abs_tol=1e-6),(stage,role,net_area,volume)
+        volumes[role]=dict(volume_m3=volume,expected_m3=expected,net_side_area_m2=net_area,openings_area_m2=openings)
     for opening in ident['openings']:
         product=f.by_guid(guid(opening['guid']))
         void=product.FillsVoids[0].RelatingOpeningElement

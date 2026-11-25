@@ -198,7 +198,7 @@ fn a_member_shows_its_quantities_in_properties() {
     let beam = ids(&h, "beam")[0];
     h.state_mut().selection = vec![beam];
     h.run();
-    for label in ["Volume (m³)", "Formwork Area", "Rebar Weight", "Rebar Ratio"] {
+    for label in ["Volume", "Formwork Area", "Rebar Weight", "Rebar Ratio"] {
         assert!(h.query_by_label(label).is_some(), "a beam's Properties has a {label} row");
     }
 }

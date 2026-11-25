@@ -489,3 +489,18 @@ fn a_family_whose_planes_pivot_on_each_other_is_refused_without_solving_it() {
     let (errors, _) = std::thread::Builder::new().stack_size(512 << 10).spawn(move || f.problems(&|_| true)).unwrap().join().unwrap();
     assert!(!errors.is_empty(), "refused");
 }
+
+#[test]
+fn what_a_pivot_turns_isnt_copied() {
+    use crate::family::constraints::{CopyRefused, Copying, Named};
+    let s = session(swing());
+    let f = &s.model.families["Swing"];
+    let leaf = f.lines[0].guid;
+    let e = f.copies(&Copying { lines: vec![leaf], ..Copying::default() }).unwrap_err();
+    assert_eq!(e, CopyRefused::Pivot(Named::Line(leaf)));
+    // The fin, drawn on the leaf, turns with it.
+    let e = f.copies(&Copying { forms: vec![0], ..Copying::default() }).unwrap_err();
+    assert_eq!(e, CopyRefused::Pivot(Named::Form(0)));
+    // The hinge, which turns nothing, is copied.
+    assert!(f.copies(&Copying { planes: vec![f.planes.iter().find(|p| p.name == "Hinge").unwrap().guid], ..Copying::default() }).is_ok());
+}

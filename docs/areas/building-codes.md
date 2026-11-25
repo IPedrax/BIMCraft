@@ -3,7 +3,7 @@
 A project's **building codes** are the rules it is held to by law or by a standard of practice, in five disciplines:
 architectural, structural, electrical, mechanical and plumbing. They range from how high a riser may be, through how many
 units a drain carries, to how thick a beam's cover is. They are apart from the **technical standard** (`standards.rs`,
-Manage > Technical Standards), which is about drafting: line weights, sheets, object styles.
+Manage > Technical Standards), which is about drafting: line weights, sheets, object styles. The technical standards' numbers are the contributor's and unchecked.
 
 **No code values in code.** A number that a standard, a utility, a fire brigade, a maker's table or a common practice gives
 is a rule of a building code. It lives in the code's data with its source, and the project can change it. Rust holds the
@@ -56,8 +56,9 @@ The rules in force are the layers', the last one winning rule by rule (`codes::r
 3. the project's changes.
 
 An amendment's `amends` names the base, or another amendment chosen: a member of a group of utilities over the group's
-standard, over the national standard. Examples: São Paulo's IT 22 over NBR 5626/8160/10844; a city's code over the IBC; a
-utility's standard (Cemig, Copel, Fecoergs…) over NBR 5410. The amendments go in the order the project gives (the dialog's
+standard, over the national standard. Examples: São Paulo's IT 22 over NBR 5626/8160/10844; Friuli Venezia Giulia's
+LR 44/1985 over Italy's DM 5 July 1975; a city's code over the IBC; a utility's standard (Cemig, Copel, Fecoergs…) over
+NBR 5410. The amendments go in the order the project gives (the dialog's
 list, dragged), the last winning rule by rule.
 
 **A change goes into the amendment edited.** With `amend` (in the dialog, the amendment marked "changes go here", the last

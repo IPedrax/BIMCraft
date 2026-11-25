@@ -7,12 +7,14 @@
 //! view and snapping all find a link's elements the way they find the project's own. Each link's level at an elevation this
 //! project has a level at stands on that level; the others come in as levels of their own, named after the link.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
+
+pub mod manage;
 
 use crate::commands::{Motion, transformed};
 use crate::geom::P2;
-use crate::ids::{Id, LINKED};
+use crate::ids::{Guid, Id, LINKED};
 use crate::model::{Element, Model};
 
 /// How close two levels' elevations must be, mm, for a link's level to stand on this project's.
@@ -144,7 +146,8 @@ pub fn link_of(m: &Arc<Model>, id: Id) -> Option<Id> {
 }
 
 /// What link `l` builds, in `to`: turned and moved as the link says, on `to`'s levels where they stand at the same height.
-fn bring(to: &mut Model, l: &crate::model::Link, from: &Model) -> Result<(), String> {
+/// Each element brought in: its id in the link's model, and its id in `to`.
+fn bring(to: &mut Model, l: &crate::model::Link, from: &Model) -> Result<BTreeMap<Id, Id>, String> {
     let mut other = from.clone();
     other.elements.retain(|_, e| matches!(e, Element::Level(_)) || built(e));
     let all: BTreeSet<Id> = other.elements.keys().copied().collect();
@@ -176,9 +179,29 @@ fn bring(to: &mut Model, l: &crate::model::Link, from: &Model) -> Result<(), Str
     }
     let ask: Vec<Id> = all.difference(&matched).copied().collect();
     if ask.is_empty() {
-        return Ok(());
+        return Ok(BTreeMap::new());
     }
-    crate::insert::insert_as(to, &other, &ask, true, &BTreeSet::new()).map(|_| ())
+    crate::insert::insert_as(to, &other, &ask, true, &BTreeSet::new()).map(|inserted| inserted.ids)
+}
+
+/// Element `id` of the views' [`seen`] model as its link holds it: the link (this project's element) and the element's GUID
+/// in the linked file, which never changes and which a dimension measuring to it keeps (`Reference::link`). None for one of
+/// the project's own. A file linked twice brings its elements in twice, the second time as copies with GUIDs of their own,
+/// so the views' GUID alone can't say which.
+pub fn origin_of(m: &Arc<Model>, id: Id) -> Option<(Id, Guid)> {
+    if !is_linked(id) {
+        return None;
+    }
+    let mut out = (**m).clone();
+    for (lid, e) in &m.elements {
+        let Element::Link(l) = e else { continue };
+        let Some(other) = m.loaded.get(&l.path) else { continue };
+        let Ok(ids) = bring(&mut out, l, other) else { continue };
+        if let Some((from, _)) = ids.iter().find(|(_, here)| **here == id) {
+            return Some((*lid, other.elements.guid(*from)?));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -300,11 +323,11 @@ mod tests {
         let own = render::draw(&direct.model, level, view);
         let linked = render::draw(&seen(&s.model), level, view);
         let darkest = |d: &render::Drawing| {
-            d.prims
-                .iter()
+            d.paint_prims()
+                .map(|(_, p)| p)
                 .map(|p| match p {
                     Prim::Fill { color, .. } | Prim::Line { color, .. } => color.0.min(color.1).min(color.2),
-                    Prim::Image { .. } => 255,
+                    Prim::Image { .. } | Prim::Text { .. } => 255,
                 })
                 .min()
         };
