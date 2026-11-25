@@ -121,3 +121,20 @@ the dialog then shows the type as the project now holds it. A field that is no n
 **Not done in this piece.** Materials and Parameters (the generic form carries `material` and `parameter` for now, and Find opens it); a
 layer editor for compound types; a picker for a field that names another type or a material; units in the boxes (millimetres, as the
 type is held); the Type Properties of a family's types.
+
+## Where it stands, and what piece 4 needs
+
+Pieces 1 to 3 are on `IPedrax-Test/Rune-GUI-dialogs` with the Rune UI checks green on Linux, Windows and macOS (run 45652167699 at
+938f8e7ef: fmt, clippy, 130 or so tests, the layout guard, and the two no-card measure jobs). The first run of piece 1 alone (45638982950)
+had 4 failing UI tests: a dialog opens on a spring, so a press at once finds it still opening, and `rt.frame(0.0)` does not move the clock;
+the dialog tests settle the clock before each press (as the kit's own dialog tests do).
+
+**Piece 4, docking and tabs (`SplitView`, `TabStrip`), is not started, on purpose.** `SplitView` is an element that holds the sidebar,
+the middle and the inspector, so using it puts a wrapper around the plan canvas, which is the one thing `rune-ui.md` records as having
+doubled Linux's wheel cost (the wrapper alone, doing nothing, with `Exact` camera). It needs a measurement run on both machines before
+it lands, and it edits the shared window layout in `ui/mod.rs` that the tools and views branches also change. A smaller step that
+carries no such risk is `TabStrip` for the right-hand column (Properties and Levels as tabs), which does not wrap the plan.
+
+**Run the Rune UI checks for this branch** with `gh workflow run rune-ui.yml --ref IPedrax-Test/Rune-GUI-dialogs`: the workflow's push
+trigger names only `main` and `IPedrax-Test/Rune-GUI`, so a push starts the main CI alone. A second dispatch on the same ref cancels
+the first (the concurrency group is per ref).
