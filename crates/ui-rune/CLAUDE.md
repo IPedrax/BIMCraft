@@ -74,3 +74,5 @@ One line per module. A new module adds its line here, not to the root.
   [dialogs](../../docs/areas/rune-ui-dialogs.md).
 - `settings.rs`: the user's `settings.json` (language, theme, profile, window size), the file the egui app keeps: read kindly, the four keys merged into the file as it is and written atomically. `app/settings.rs`: its state and
   handlers (`Prefs`, the Settings dialog, units through the core's `units` command, the window's size kept once still). `ui/settings.rs`: the Settings dialog. Detail: [dialogs](../../docs/areas/rune-ui-dialogs.md).
+- `typeprops.rs`: Type Properties, pure: `Model::types` read as JSON, a category's types and one type's fields (scalars typed, the rest as rows), and `changes`, the `type` command's parameters for just what differs. `app/types.rs`: the dialog's state and handlers
+  (Edit Type on the selection, switching type, Apply through `Session::execute`). `ui/types.rs`: the dialog.
