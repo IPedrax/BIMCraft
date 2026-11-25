@@ -46,6 +46,35 @@ impl PlanMode {
     }
 }
 
+/// How the plan follows the camera. `Exact` asks the core to draw it again for every wheel notch and pan step. `Live` moves the last
+/// drawing through Rune's live offset and scale and draws it exactly once the camera is still. Measured with no graphics card
+/// (docs/areas/rune-ui.md): on Windows' software adapter, over the house, `Live` costs a twenty-fifth of `Exact` on a wheel notch and two
+/// fifths on a pan step, and over the tower the two are level; on Linux's it is mixed (the house's wheel notch twice as dear, its pan step
+/// half, the tower's wheel notch 0.7 and pan step 1.3), and worse on every move on the software Vulkan path. So Windows opens in `Live`,
+/// the rest in `Exact`, and `BIMCRAFT_RUNE_CAMERA=live` or `exact` chooses.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CameraMode {
+    #[default]
+    Exact,
+    Live,
+}
+
+impl CameraMode {
+    pub fn from_env() -> CameraMode {
+        CameraMode::pick(std::env::var("BIMCRAFT_RUNE_CAMERA").ok().as_deref(), cfg!(windows))
+    }
+
+    /// What `BIMCRAFT_RUNE_CAMERA` says, else the platform's default.
+    pub fn pick(asked: Option<&str>, windows: bool) -> CameraMode {
+        match asked {
+            Some("live") => CameraMode::Live,
+            Some("exact") => CameraMode::Exact,
+            _ if windows => CameraMode::Live,
+            _ => CameraMode::Exact,
+        }
+    }
+}
+
 /// A field of the selected element a person may try to change, with the text being typed into it.
 pub struct Field {
     pub name: String,
@@ -61,6 +90,8 @@ pub struct App {
     /// The model's levels, by id and name: what the browser lists.
     pub levels: Vec<(Id, String)>,
     pub mode: PlanMode,
+    /// Whether the camera moves the last drawing or has the core draw it again (`CameraMode`).
+    pub cam: CameraMode,
     /// The plan as an image, in [`PlanMode::Pixels`]: replaced whenever the plan is drawn again, shown without the view re-running.
     pub pixels: Pixels,
     pub level: Option<Id>,
@@ -121,6 +152,7 @@ impl App {
             tab: 0,
             levels: Vec::new(),
             mode: PlanMode::from_env(),
+            cam: CameraMode::from_env(),
             pixels: Pixels::new(),
             level: None,
             level_name: String::new(),
@@ -215,7 +247,6 @@ impl App {
                 self.pixels.set(view.width, view.height, rgba);
             }
         }
-        self.rehover();
     }
 
     fn refresh(&mut self) {
@@ -337,6 +368,9 @@ impl App {
     /// The camera moved (a wheel notch, a pan): the plan on screen follows through the live offset and scale, which costs no drawing, and
     /// is drawn exactly once the camera is still (`settle_if_still`).
     fn glide(&mut self) {
+        if self.cam == CameraMode::Exact {
+            return self.redraw();
+        }
         let (w, h) = self.size;
         let k = self.camera.scale / self.drawn.scale;
         let at = self.camera.view(w, h).px(P2(self.drawn.cx, self.drawn.cy));
@@ -352,6 +386,7 @@ impl App {
     pub fn settle_view(&mut self) {
         if self.live_since.is_some() {
             self.redraw();
+            self.rehover();
         }
     }
 
@@ -360,6 +395,7 @@ impl App {
         let due = self.live_since.is_some_and(|since| self.now - since >= SETTLE);
         if due {
             self.redraw();
+            self.rehover();
         }
         due
     }

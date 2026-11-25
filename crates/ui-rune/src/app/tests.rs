@@ -272,31 +272,50 @@ fn a_box_or_a_click_with_hostile_numbers_selects_nothing_and_leaves_no_band() {
 }
 
 #[test]
-fn a_wheel_zooms_about_the_pointer_and_a_drag_pans_the_plan() {
-    let mut app = App::sample();
-    let before = app.camera;
-    let at = (300.0, 200.0);
-    let held = app.camera.view(app.size.0, app.size.1).mm(at);
-    app.zoom(at.0, at.1, 2.0);
-    assert!((app.camera.scale - before.scale * 2.0).abs() < 1e-9);
-    let back = app.camera.view(app.size.0, app.size.1).px(held);
-    assert!((back.0 - at.0).abs() < 0.01 && (back.1 - at.1).abs() < 0.01, "the point under the wheel stays under it");
-    let revision = app.revision;
-    app.grab();
-    app.drag(10.0, 0.0);
-    app.drag(30.0, 5.0);
-    let moved = app.camera.view(app.size.0, app.size.1).px(held);
-    assert!((moved.0 - (at.0 + 30.0)).abs() < 0.01 && (moved.1 - (at.1 + 5.0)).abs() < 0.01, "followed to the last point: {moved:?}");
-    assert_eq!(app.revision, revision, "the plan on screen moves through the live offset and scale, and is not drawn again");
-    app.tick(SETTLE + 1.0);
-    assert!(app.settle_if_still(), "once the camera has been still it is");
-    assert!(app.revision > revision);
-    assert_eq!((app.live_offset.get(), app.live_scale.get()), ([0.0, 0.0], 1.0), "and the drawing needs no moving");
+fn a_wheel_zooms_about_the_pointer_and_a_drag_pans_the_plan_in_either_camera_mode() {
+    for cam in [CameraMode::Exact, CameraMode::Live] {
+        let mut app = App::sample();
+        app.cam = cam;
+        let before = app.camera;
+        let at = (300.0, 200.0);
+        let held = app.camera.view(app.size.0, app.size.1).mm(at);
+        app.zoom(at.0, at.1, 2.0);
+        assert!((app.camera.scale - before.scale * 2.0).abs() < 1e-9);
+        let back = app.camera.view(app.size.0, app.size.1).px(held);
+        assert!((back.0 - at.0).abs() < 0.01 && (back.1 - at.1).abs() < 0.01, "the point under the wheel stays under it");
+        let revision = app.revision;
+        app.grab();
+        app.drag(10.0, 0.0);
+        app.drag(30.0, 5.0);
+        let moved = app.camera.view(app.size.0, app.size.1).px(held);
+        assert!((moved.0 - (at.0 + 30.0)).abs() < 0.01 && (moved.1 - (at.1 + 5.0)).abs() < 0.01, "followed to the last point: {moved:?}");
+        match cam {
+            CameraMode::Exact => assert_eq!(app.revision, revision + 2, "each step draws again"),
+            CameraMode::Live => {
+                assert_eq!(app.revision, revision, "the plan on screen moves through the live offset and scale, and is not drawn again");
+                app.tick(SETTLE + 1.0);
+                assert!(app.settle_if_still(), "once the camera has been still it is");
+                assert!(app.revision > revision);
+            }
+        }
+        assert_eq!((app.live_offset.get(), app.live_scale.get()), ([0.0, 0.0], 1.0), "{cam:?}: the drawing needs no moving");
+    }
+}
+
+#[test]
+fn the_camera_mode_is_what_the_variable_says_else_the_platforms() {
+    assert_eq!(CameraMode::pick(None, true), CameraMode::Live);
+    assert_eq!(CameraMode::pick(None, false), CameraMode::Exact);
+    assert_eq!(CameraMode::pick(Some("exact"), true), CameraMode::Exact);
+    assert_eq!(CameraMode::pick(Some("live"), false), CameraMode::Live);
+    assert_eq!(CameraMode::pick(Some("fast"), false), CameraMode::Exact, "a word it does not know is no answer");
+    assert_eq!(CameraMode::pick(Some(""), true), CameraMode::Live);
 }
 
 #[test]
 fn the_plan_on_screen_is_the_last_drawing_moved_and_picks_through_the_move() {
     let mut app = App::sample();
+    app.cam = CameraMode::Live;
     let (x, y, id) = pickable(&app).expect("a pickable point");
     let revision = app.revision;
     app.grab();
@@ -325,6 +344,7 @@ fn the_plan_on_screen_is_the_last_drawing_moved_and_picks_through_the_move() {
 fn the_plan_waits_for_the_camera_to_be_still_before_it_is_drawn_exactly() {
     let close = |a: Option<f64>, b: f64| a.is_some_and(|a| (a - b).abs() < 1e-9);
     let mut app = App::sample();
+    app.cam = CameraMode::Live;
     assert_eq!(app.settle_in(), None, "an exact plan waits for nothing");
     app.tick(2.0);
     app.zoom(300.0, 200.0, 1.5);

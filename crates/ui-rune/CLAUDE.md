@@ -45,7 +45,8 @@ One line per module. A new module adds its line here, not to the root.
 - `lib.rs`: the modules, and `run()` (the window). `main.rs`: the `bimcraft-rune` binary. `software.rs`: `--software`, which starts the
   program again with `RUNE_CPU_FIRST=only` so a machine with no card draws on Rune's CPU renderer (it cannot set the variable itself, safely).
 - `app.rs`: the state (`App`) and what its handlers do, the one place that meets the core: `render::draw`, `Drawing::pick`,
-  `Session::execute` for every change. It holds no widget, so it is tested without a window (`app/tests.rs`). The plan on screen is the
+  `Session::execute` for every change. It holds no widget, so it is tested without a window (`app/tests.rs`). In `CameraMode::Live` (the
+  Windows default; `BIMCRAFT_RUNE_CAMERA=live|exact` chooses, and the doc has the measurements behind the default) the plan on screen is the
   last drawing (`drawn`) moved by the camera through `live_offset` and `live_scale`, which the plan binds, and drawn again exactly once the
   camera has been still for `SETTLE` (`settle_if_still`, from `ui::poll`) or something needs the exact drawing (a release, a command).
 - `ui/`: the elements, a function of `App`: `mod.rs` the window (laid out by profile) and its keys, `plan.rs` the canvas (the drawing kept as

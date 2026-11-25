@@ -16,7 +16,7 @@ A window of the sample house that works end to end, small on purpose:
 
 | Module | What it does | Tests |
 |---|---|---|
-| `app.rs`, `app/tests.rs` | the state and what its handlers do; the only place that meets the core (`render::draw`, `Drawing::pick`, `Session::execute` for every change: `delete`, `undo`, `redo`, `modify`, `open`, `save`) | 24, no window |
+| `app.rs`, `app/tests.rs` | the state and what its handlers do; the only place that meets the core (`render::draw`, `Drawing::pick`, `Session::execute` for every change: `delete`, `undo`, `redo`, `modify`, `open`, `save`) | 25, no window |
 | `ui/` | the plan canvas, the top bar (Open and Save through the system's file dialogs, Undo, Redo), the Tools palette or the ribbon, Properties (a `rune_kit::TextInput` for each field the core may take a `modify` of), the browser of levels, the status bar, as functions of `App` | 16, Rune's headless `Runtime` (dialogs answered by the test) |
 | `project.rs`, `profile.rs` | where a project comes from (`--sample`, `--highrise`, a file through `open`), and the two profiles of one app: BIMCraft's palette, Rev's ribbon | 2 |
 | `camera.rs` | pan, zoom and Zoom In Region in the core's `View`, hostile numbers refused | 6 |
@@ -152,6 +152,26 @@ elements; the plan of a level is the dense picture the Rune window shows):
   the one thing they share, the core's `render::draw` of the plan, run once per event on the UI thread. That is a naive loop; egui avoids
   it by moving the last drawing and asking a worker for the exact one. Rune's answer is `live_offset`, `live_scale` and `tx.live_only()`, a
   camera that skips the view, the diff and the layout (its own bench: 13.7 ms a frame down to 2.0 at 6,000 elements); stage 3 does the same.
+- **The live camera, measured (stage 3, slice 3, run 45525844245 at 3dcf6079b; two runs each, the pan now with the middle button as egui's).**
+  `App::glide` moves the last drawing through `live_offset` and `live_scale` and has the core draw it exactly 150 ms after the camera
+  stops. CPU time a wheel notch / a pan step, before (the same code with the core drawing again each time) and after:
+
+  | | wheel, before | wheel, after | pan, before | pan, after |
+  |---|---:|---:|---:|---:|
+  | Windows, WARP, CPU renderer, house | 48 to 61 | 1.8 to 2.6 | 33 | 12.6 to 13.4 |
+  | Windows, CPU renderer, tower | 48 | 52 to 67 | 42.5 | 39 |
+  | Windows, default GPU path, house | 83 to 85 | 87 to 93 | 59 | 80 to 81 |
+  | Linux, lavapipe, CPU renderer, house | 42 | 95 | 22 | 11.8 to 11.9 |
+  | Linux, CPU renderer, tower | 131 | 85 to 97 | 16.4 | 21.8 to 22.1 |
+  | Linux, lavapipe GPU path, house | 72 | 298 to 307 | 25 to 26 | 30.8 |
+  | Linux, lavapipe GPU path, tower | 136 | 283 to 297 | 16.5 | 26 |
+
+  The pointer over the plan (2.8 ms a move on the CPU renderer) and the idle cost did not move. So the live camera is a large win where it
+  was meant for, a Windows machine with no card on the CPU renderer over a plan of the house's size (a wheel notch a twenty-fifth, a
+  pan step two fifths), level over the tower there, and mixed or worse on Linux and on any software-GPU path, where Rune seems to draw
+  a scaled subtree again in full each frame (the cost sits in the live frames, not in the core). I have not profiled why. The window
+  therefore opens in `CameraMode::Live` on Windows and `Exact` elsewhere (`BIMCRAFT_RUNE_CAMERA=live` or `exact` chooses), to be measured
+  again when Rune's Linux CPU renderer is released. A real card, which composites a scaled layer for nothing, was not measured.
 - **Frame cost, by each toolkit's own clock.** egui's `--bench` (frames forced as if the user kept moving, on the real window): a median
   frame of 22 to 29 ms idle and zoomed, 33 ms panned, on two different runners; with the join of PR 628, 48 to 82 ms, because it paces
   on cost (14 to 15 frames a second panned or zoomed against 31 to 32: PR 628 buys its CPU with frame rate). Rune headless on lavapipe
@@ -322,9 +342,9 @@ clears the selection. The middle button pans (`El::pointer_buttons`), as in egui
 in hand (a placeholder until the tools take the button). Slice 2, the zoom commands, is written too: Zoom to Fit, Zoom In and Out about the middle, Zoom In Region (armed from the top bar, one box, drawn as a
 window whichever way it goes, a click leaves it armed, Escape disarms it) and Previous Pan/Zoom (twenty steps of what the commands left, as in egui's
 `zoom.rs`; the wheel and a pan are no steps). Their Revit shortcuts (ZF, ZR, ZO, ZP) wait for the shared registry. Slice 3, the live camera, is the
-answer to the naive wheel and drag of "What costs what": a wheel notch or a pan moves the last drawing through `live_offset` and `live_scale`
-(`App::glide`; hover and picks map the pointer back into the drawing), and the core draws it exactly once the camera has been still for 150 ms
-(`ui::poll`) or a click, a box or a command needs it. Rune's `Live` is a lock-free 128-bit atomic and asserts that the CPU has them, so the
+answer to the naive wheel and drag of "What costs what", and its measurement there is mixed: a wheel notch or a pan moves the last drawing through
+`live_offset` and `live_scale` (`App::glide`; hover and picks map the pointer back into the drawing), and the core draws it exactly once the camera has been
+still for 150 ms (`ui::poll`) or a click, a box or a command needs it. It is the default on Windows only (`CameraMode`). Rune's `Live` is a lock-free 128-bit atomic and asserts that the CPU has them, so the
 crate would stop at start on one that does not (x86_64 before 2007, riscv64); Rune's own platforms have them. Not in the slices: the Filter
 dialog (stage 4), grips, snapping and its guides, temporary dimensions, the Draw and Modify tools, the context menu, sections. The tools and grips lean on the tool state
 machines, which are still inside egui's `canvas.rs` (extraction 4 above), so they wait on that pull request.

@@ -331,6 +331,7 @@ fn the_zoom_buttons_zoom_fit_and_go_back_and_the_region_button_arms_a_box() {
 #[test]
 fn a_wheel_moves_the_plan_without_drawing_it_and_the_poll_draws_it_when_the_camera_is_still() {
     let mut rt = window();
+    rt.state.cam = crate::app::CameraMode::Live;
     rt.poll = Some(super::poll);
     let (ox, oy) = plan_origin(&rt).expect("the plan");
     let revision = rt.state.revision;
