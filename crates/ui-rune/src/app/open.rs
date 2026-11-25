@@ -29,6 +29,7 @@ impl App {
     pub(super) fn follow_view(&mut self) {
         self.ask_section();
         self.ask_paper();
+        self.ask_orbit();
         self.make_grid();
     }
 }

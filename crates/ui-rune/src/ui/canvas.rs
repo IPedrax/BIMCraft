@@ -4,7 +4,7 @@
 use rune::tok::{Theme, type_};
 use rune::{El, col, text};
 
-use super::{plan, schedule, section, sheet};
+use super::{plan, schedule, section, sheet, view3d};
 use crate::app::App;
 use crate::lang::t;
 use crate::views::ViewKind;
@@ -14,6 +14,7 @@ pub fn canvas(s: &App, th: &Theme) -> El {
         ViewKind::Nothing | ViewKind::Plan(_) | ViewKind::Ceiling(_) => plan::plan(s),
         ViewKind::Section(_) => section::view(s),
         ViewKind::Sheet(_) => sheet::view(s),
+        ViewKind::View3D(_) => view3d::view(s),
         ViewKind::Schedule(_) | ViewKind::Table(_) => schedule::view(s, th),
         _ => pending(s, th),
     }

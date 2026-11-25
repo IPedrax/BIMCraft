@@ -79,3 +79,7 @@ One line per module. A new module adds its line here, not to the root.
   made again after a command, `pick_row`, `row_lit`; `ui/schedule.rs`: its canvas, a `rune_kit::Table`. `paper.rs`: a sheet on screen (`Paper`: the camera framing the whole paper, the
   picture its thread painted of the core's `sheet::draw`, picks and boxes through the sheet's drawing), `paper/render.rs`: what that thread makes; `app/paper.rs`: its canvas's handlers;
   `ui/sheet.rs`: the canvas, a picture and the frames of what is lit. Detail: [the views](../../docs/areas/rune-ui-views.md).
+- `orbit.rs`: the 3D view on screen (`Orbit`: the core's `view3d::Camera` orbited, panned and zoomed as Revit's, the software picture its thread made of the model, what a click or box
+  finds in it); `orbit/render.rs`: what that thread makes (the `Scene`, kept and brought up to date by an edit, and its picture); `app/orbit.rs`: the canvas's handlers on `App`;
+  `ui/view3d.rs`: the canvas, one picture moved through the live offset and scale. The card path is not here: what it would need is in the area doc. Detail:
+  [the views](../../docs/areas/rune-ui-views.md).

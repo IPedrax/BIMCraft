@@ -11,6 +11,7 @@ use rune::{Live, Pixels, TextEdit};
 use serde_json::{Value, json};
 
 use crate::camera::Camera;
+use crate::orbit::Orbit;
 use crate::paper::Paper;
 use crate::profile::Profile;
 use crate::project::{self, Start};
@@ -23,6 +24,7 @@ use crate::status;
 use crate::views::{self, ViewKind, Views};
 
 mod open;
+mod orbit;
 mod paper;
 mod schedule;
 mod section;
@@ -111,6 +113,8 @@ pub struct App {
     pub views: Views,
     /// The section or elevation shown, with the thread that makes its picture (`section.rs`).
     pub cut: Cut,
+    /// The 3D view shown, with the thread that makes its picture (`orbit.rs`).
+    pub orbit: Orbit,
     /// The sheet shown, with the thread that paints it (`paper.rs`).
     pub paper: Paper,
     /// The schedule shown, as a grid (`sched.rs`).
@@ -187,6 +191,7 @@ impl App {
             view: ViewKind::default(),
             views: Views::default(),
             cut: Cut::new(),
+            orbit: Orbit::new(),
             paper: Paper::new(),
             grid: Grid::default(),
             level: None,
@@ -489,6 +494,7 @@ impl App {
         match self.view {
             ViewKind::Section(_) => return self.section_fit(),
             ViewKind::Sheet(_) => return self.paper_fit(),
+            ViewKind::View3D(_) => return self.orbit_fit(),
             _ => {}
         }
         self.remember();
@@ -505,6 +511,7 @@ impl App {
         match self.view {
             ViewKind::Section(_) => return self.section_zoom_by(factor),
             ViewKind::Sheet(_) => return self.paper_zoom_by(factor),
+            ViewKind::View3D(_) => return self.orbit_zoom_by(factor),
             _ => {}
         }
         self.remember();

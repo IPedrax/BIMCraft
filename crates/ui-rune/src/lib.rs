@@ -11,6 +11,7 @@
 pub mod app;
 pub mod camera;
 pub mod lang;
+pub mod orbit;
 pub mod paint;
 pub mod paper;
 pub mod profile;

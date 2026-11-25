@@ -20,6 +20,7 @@ mod sheet;
 mod status_bar;
 mod tools;
 mod topbar;
+mod view3d;
 
 /// The Properties panel's width, points.
 pub const PANEL_WIDTH: f32 = 300.0;

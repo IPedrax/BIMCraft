@@ -108,3 +108,39 @@ has no per-element colour. Zoom to Fit, the zoom buttons and Zoom In Region work
 tool state machines), a double click that opens a view (the viewport's view and the 3D tab), the Text tool and Paste on the paper, a note's
 editor, the export region's band, the right-click menu and the Co-Work pointers. The picture is a point to a pixel, so it is soft on a
 screen of high density.
+
+## 4. The 3D view (`orbit.rs`, `orbit/render.rs`, `app/orbit.rs`, `ui/view3d.rs`)
+
+**The processor's picture, on a thread of its own.** The core's `Scene` (every solid of the model found and cut to triangles: the
+heavy step, as `Scene::new` is for a section's `SectionWork`) and its software picture (`Scene::render_in`) are made by `Orbit`'s thread
+(`worker::Latest`, the plan of `Cut` and `Paper` once more): the first request has no camera and the thread fits the model
+(`Scene::fit_in` and `fit_from`) from the default azimuth and elevation; an edit brings the scene it kept up to date
+(`Scene::update_cancellable`, as egui's `orbit.rs` does) instead of making it again; a camera that moves or another selection paints the
+scene it kept again and builds no geometry. The picture is one `Pixels` of the canvas's size, a pixel to a point, shown on the core's paper
+colour; its pixels know which element each shows, so the picture is also what picks.
+
+**Navigation, as egui's header says Revit has it.** The wheel zooms about the point under the pointer (`Camera::zoom`), the middle
+button pans (`Camera::pan` from the camera at the press, so the drag does not drift), Shift with the middle button orbits, 0.4 degrees a
+point, round the point of the surface under the pointer where the drag began (`Image::point`, else the target; `Camera::orbit_about`).
+The primary button picks what the picture shows there (`Image::pick`) or drags out a box (`Image::in_box`: from the left what the picture
+shows only inside it, from the right anything of it). The selected elements are tinted in the picture through the request's tints, so a
+selection is another picture and no new geometry. Zoom to Fit and the zoom buttons work on it as on the other views (a fit keeps the side
+the camera looks from). While the thread paints, a pan or a zoom moves the last picture through the live offset and scale; an orbit changes
+the whole look of the picture, so the last one stays as it was until the new one comes, and the view says nothing in between (egui fades it
+and says what it waits for).
+
+**Not in this piece, from egui's `orbit.rs`:** perspective (`Camera::lens`; the view is parallel), a camera view's own camera
+(the default fit is used for every 3D view), the ViewCube and navigation triad, fly mode, the 3D mouse, the section box and its
+grips, the level and window and wall grips and the tools that work here (they wait for the tool state machines), the hover tint, the
+wireframe and shaded styles beyond what `Look` carries, a picture at the screen's pixel ratio, and what the model's own `{3D}` view stores.
+
+**What a graphics-card path would need.** egui's `gpu.rs` and `gpu.wgsl` draw `view3d::gpu::Mesh` (the core's triangles for the card,
+`Mesh::new(&scene, &look)`, with its own picking, `pick_cut`, and the section box) in a wgpu pass of the window's own device. Rune has
+the seam for it: an app-supplied `Compositor` (`rune::compose`, attached with `App::compositor`) takes over frame encoding, so a pass
+that draws the mesh into the rectangle of an element keyed `view3d` could run beside Rune's own instances, on the same device and
+swap chain. What is missing here is the work, not a hook: the `Compositor` must be handed the mesh and camera from the app's state
+(the state is `S`, which the compositor is generic over), the picking must move from `Image::pick` to `Mesh::pick_cut` (a pixel's
+triangle comes from the card in egui, from the mesh on the CPU), and the CPU renderer (`RUNE_CPU_FIRST=only`, the path a machine with no
+card takes) must still show the processor's picture, as egui's software fallback does, so both stay. The processor's picture here is the
+one a machine with no card shows, and the one the measurements of `rune-ui.md` were made without a card for; the card path is a
+speed-up for a machine that has one, not a need.
