@@ -14,12 +14,14 @@ use crate::camera::Camera;
 use crate::profile::Profile;
 use crate::project::{self, Start};
 use crate::props::{self, Kind, Row};
+use crate::section::Cut;
 use crate::select::{self, How, Rubber};
 use crate::snapping::{Landing, Snapper};
 use crate::status;
 use crate::views::{self, ViewKind, Views};
 
 mod open;
+mod section;
 
 /// How near a click or a hover must be to a line to take it, points.
 const REACH: f32 = 4.0;
@@ -103,6 +105,8 @@ pub struct App {
     pub view: ViewKind,
     /// What the Project Browser lists, and the name of the view shown.
     pub views: Views,
+    /// The section or elevation shown, with the thread that makes its picture (`section.rs`).
+    pub cut: Cut,
     pub level: Option<Id>,
     pub level_name: String,
     pub camera: Camera,
@@ -174,6 +178,7 @@ impl App {
             pixels: Pixels::new(),
             view: ViewKind::default(),
             views: Views::default(),
+            cut: Cut::new(),
             level: None,
             level_name: String::new(),
             camera: Camera { cx: 0.0, cy: 0.0, scale: 0.1, angle: 0.0 },
@@ -288,6 +293,8 @@ impl App {
         self.props = props::rows(&json);
         self.fields =
             props::editable(&json).into_iter().map(|(name, kind, text)| Field { name, kind, edit: TextEdit::new(text) }).collect();
+        // What is selected is tinted in a section's picture, and a command may have changed what it shows.
+        self.ask_section();
     }
 
     /// The canvas has laid out at `w` x `h` points.
@@ -469,6 +476,9 @@ impl App {
 
     /// Zoom to Fit: the level framed again.
     pub fn zoom_fit(&mut self) {
+        if matches!(self.view, ViewKind::Section(_)) {
+            return self.section_fit();
+        }
         self.remember();
         (self.fitted, self.moved) = (false, false);
         self.fit();
@@ -479,6 +489,9 @@ impl App {
     pub fn zoom_by(&mut self, factor: f64) {
         if !factor.is_finite() || factor <= 0.0 {
             return;
+        }
+        if matches!(self.view, ViewKind::Section(_)) {
+            return self.section_zoom_by(factor);
         }
         self.remember();
         self.camera.zoom_about((self.size.0 / 2.0, self.size.1 / 2.0), self.size, factor);

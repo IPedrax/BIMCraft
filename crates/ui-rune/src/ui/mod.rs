@@ -14,6 +14,7 @@ mod canvas;
 mod plan;
 mod properties;
 mod ribbon;
+mod section;
 mod status_bar;
 mod tools;
 mod topbar;
@@ -44,7 +45,12 @@ pub fn poll(s: &mut App, clock: f64, tx: &mut Tx) -> bool {
     if let Some(due) = s.settle_in() {
         tx.wake_after(Duration::from_secs_f64(due));
     }
-    drawn
+    // A view made on a thread of its own (a section): its picture comes in when it is made, and the window comes back for it.
+    let made = s.poll_views();
+    if s.views_busy() {
+        tx.wake_after(Duration::from_millis(16));
+    }
+    drawn || made
 }
 
 /// Delete deletes the selection; Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y do again (Cmd on a Mac); Tab and Shift+Tab step through what

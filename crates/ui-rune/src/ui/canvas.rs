@@ -4,13 +4,17 @@
 use rune::tok::{Theme, type_};
 use rune::{El, col, text};
 
-use super::plan;
+use super::{plan, section};
 use crate::app::App;
 use crate::lang::t;
 use crate::views::ViewKind;
 
 pub fn canvas(s: &App, th: &Theme) -> El {
-    if s.view == ViewKind::Nothing || s.view.is_plan() { plan::plan(s) } else { pending(s, th) }
+    match s.view {
+        ViewKind::Nothing | ViewKind::Plan(_) | ViewKind::Ceiling(_) => plan::plan(s),
+        ViewKind::Section(_) => section::view(s),
+        _ => pending(s, th),
+    }
 }
 
 /// A view this window does not draw yet: named, so a press in the browser is seen to have opened it.

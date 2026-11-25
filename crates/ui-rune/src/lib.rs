@@ -15,6 +15,7 @@ pub mod paint;
 pub mod profile;
 pub mod project;
 pub mod props;
+pub mod section;
 pub mod select;
 pub mod snapping;
 pub mod software;
@@ -22,6 +23,7 @@ pub mod status;
 pub mod tools;
 pub mod ui;
 pub mod views;
+pub mod worker;
 
 use rune::AppSpec;
 
