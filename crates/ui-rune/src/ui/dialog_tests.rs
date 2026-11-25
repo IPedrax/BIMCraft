@@ -15,7 +15,10 @@ fn window() -> Runtime<App> {
     rt
 }
 
+/// A press on an element keyed `key`. A dialog opens on a spring and takes presses once it has come to rest (the kit's own dialog tests
+/// frame 60 times at 1/60 s before they press), and `rt.frame(0.0)` does not move the clock, so the clock is run first.
 fn tap(rt: &mut Runtime<App>, key: &str) {
+    settle(rt);
     let at = rt.find(key).unwrap_or_else(|| panic!("an element keyed {key}"));
     rt.pointer_down(at.0, at.1);
     rt.pointer_up(at.0, at.1);
