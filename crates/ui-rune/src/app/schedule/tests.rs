@@ -14,7 +14,7 @@ fn opening_a_schedule_makes_its_grid_and_leaving_it_lets_it_go() {
     assert!(app.drawing.is_none() && !app.views_busy(), "a schedule needs no drawing and no thread");
     assert!(app.status().starts_with("Schedule: Room Schedule"), "{}", app.status());
     assert!(app.open_view(ViewKind::Plan(level)));
-    assert!(app.grid.shown.rows.is_empty() && app.grid.shown.model.is_none(), "a plan lets the grid go");
+    assert!(app.grid.shown.rows.is_empty() && app.grid.shown.name.is_empty(), "a plan lets the grid go");
 }
 
 #[test]

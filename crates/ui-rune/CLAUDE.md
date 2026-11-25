@@ -55,7 +55,7 @@ One line per module. A new module adds its line here, not to the root.
 - `ui/`: the elements, a function of `App`: `mod.rs` the window (laid out by profile) and its keys, `plan.rs` the canvas (the drawing kept as
   one element while it is the same, the pointer and wheel handlers, the primary button's click and box, the middle button's pan, the hover, selection and box layers), `topbar.rs` (Open and Save through
   the system's file dialogs, Undo, Redo, the zoom buttons), `tools.rs` the BIMCraft profile's palette, `ribbon.rs` Rev's, `properties.rs` (the rows, and a
-  `rune_kit::TextInput` for each field the core may take a `modify` of), `browser.rs` (every view the model has, in groups, one row each), `canvas.rs` (the canvas of the view shown: the plan canvas for plans, a card naming the view for kinds with no canvas yet), `status_bar.rs`.
+  `rune_kit::TextInput` for each field the core may take a `modify` of), `browser.rs` (every view the model has, in groups, one row each), `canvas.rs` (the canvas of the view shown: one for each kind of view, the plan canvas for plans), `status_bar.rs`.
 - `profile.rs`: the two profiles (BIMCraft's palette, Rev's ribbon), one table drawn two ways. `project.rs`: where a project comes from
   (`--sample`, `--highrise`, a file through the core's `open`) and what the arguments ask. `tools.rs`: the table of tools both profiles draw.
 - `select.rs`: what a click or a box does to the selection (`How`: replace, add, take away; `Rubber`, the box being dragged, a window

@@ -62,19 +62,38 @@ fn the_browser_has_a_row_for_every_view_and_a_press_on_a_group_folds_it() {
 }
 
 #[test]
-fn a_view_the_window_does_not_draw_yet_is_named_and_the_plan_comes_back() {
+fn each_kind_of_view_has_the_canvas_of_its_own_and_a_plan_comes_back() {
     let mut rt = window();
-    assert!(rt.find("plan").is_some() && rt.find("view-pending").is_none());
-    let section =
-        rt.state.views.groups.iter().find(|g| g.label == "Sections (Building Section)").and_then(|g| g.entries.first()).map(|e| e.kind);
-    open(&mut rt, section.expect("the sample has a section"));
-    assert!(rt.find("view-pending").is_some() && rt.find("plan").is_none(), "the section has a canvas of its own");
-    assert_eq!(text_of(&rt, "status-line").unwrap_or_default().split("   |   ").next(), Some("Section: Section 1"));
-    assert!(rt.elements().iter().any(|e| e.text.as_deref() == Some("Section: Section 1")), "the canvas names it");
+    assert!(rt.find("plan").is_some() && rt.find("section").is_none());
+    let first = |rt: &Runtime<App>, group: &str| {
+        rt.state
+            .views
+            .groups
+            .iter()
+            .find(|g| g.label == group)
+            .and_then(|g| g.entries.first())
+            .map(|e| e.kind)
+            .expect("a view in the group")
+    };
+    let canvases = ["plan", "section", "sheet", "schedule", "view3d"];
+    for (group, canvas) in [
+        ("Sections (Building Section)", "section"),
+        ("Sheets (all)", "sheet"),
+        ("Schedules/Quantities (all)", "schedule"),
+        ("3D Views", "view3d"),
+    ] {
+        let kind = first(&rt, group);
+        open(&mut rt, kind);
+        for other in canvases {
+            assert_eq!(rt.find(other).is_some(), other == canvas, "{group}: the {other} canvas");
+        }
+    }
+    assert!(rt.find("view-pending").is_none(), "no view is left without a canvas");
+    assert!(text_of(&rt, "status-line").unwrap_or_default().starts_with("3D View: "), "the status bar names the view");
 
     let level = rt.state.levels[0].0;
     open(&mut rt, ViewKind::Ceiling(level));
-    assert!(rt.find("plan").is_some() && rt.find("view-pending").is_none(), "a ceiling plan is the plan canvas's");
+    assert!(rt.find("plan").is_some() && rt.find("view3d").is_none(), "a ceiling plan is the plan canvas's");
     assert!(rt.state.drawing.is_some());
     assert!(text_of(&rt, "status-line").unwrap_or_default().starts_with("Ceiling Plan: "));
 }

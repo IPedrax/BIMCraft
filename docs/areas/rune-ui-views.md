@@ -29,9 +29,9 @@ the changes of the tree, the folds and the title, so the pointer moving over the
 (a level's floor plan, as before), `plan-`, `ceiling-`, `section-`, `view3d-`, `sheet-`, `schedule-<category>` and `table-<id>`.
 The status bar says the view's title: a plan by its name (as before), every other kind by its kind and name (`Section: Section 1`).
 
-**Canvas.** `ui/canvas.rs` picks the canvas of the view shown. Plans (and a project with no level) keep the plan canvas exactly as it
-was (`ui/plan.rs` is untouched); the kinds with no canvas yet show a card naming the view, so a press is seen to have opened it. Each of
-the next pieces replaces its kind there.
+**Canvas.** `ui/canvas.rs` picks the canvas of the view shown, one for each kind. Plans (and a project with no level) keep the plan
+canvas exactly as it was (`ui/plan.rs` is untouched); the others are the sections below. The piece first shipped a card that only named
+the kinds with no canvas yet, and each later piece replaced one: none is left.
 
 **Not done in this piece, from egui's browser:** the tabs (All, Views, Schedules, Sheets, Families), the search with its wildcards,
 the Families and Linked Models groups, the right-click menus (Duplicate, Delete, Show as Underlay, Create Print Set), a Ctrl or Shift
