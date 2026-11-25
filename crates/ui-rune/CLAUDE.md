@@ -67,3 +67,8 @@ One line per module. A new module adds its line here, not to the root.
 - `camera.rs`: pan, zoom and Zoom In Region of the plan, in the core's `View` (the history Previous Pan/Zoom walks back is `App`'s). `paint.rs`: a `Drawing`'s primitives as Rune shapes (dashes split,
   lettering through `text::triangles`, what cannot be drawn counted). `props.rs`: the Properties rows from `element_json`.
   `status.rs`: the status line. `lang.rs`: `t`, `tf`, `tc` over `translations/ui/*.po`, the catalogs egui reads.
+- `forms.rs`: the generic command form, pure: a command's params doc (`Command::params`) read as typed fields (`Form::of`) and what is typed read back as its JSON
+  (`Form::params`), every number and list capped; swept over every command by a test. `finder.rs`: Find (Ctrl+K), pure: the tools, commands and levels that have the words typed.
+  `app/dialogs.rs`: the dialogs' state and handlers (`Dialogs` on `App`: Find, the open form, Run through `Session::execute`; a refusal is kept for the dialog, not the status
+  bar). `ui/dialog.rs` and `ui/find.rs`: the modal dialogs over the kit's `Dialog`, `TextInput` and `Select`, mounted as absolute children of the window's root. Detail:
+  [dialogs](../../docs/areas/rune-ui-dialogs.md).
