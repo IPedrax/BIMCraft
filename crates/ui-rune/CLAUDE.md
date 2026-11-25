@@ -55,7 +55,7 @@ One line per module. A new module adds its line here, not to the root.
 - `ui/`: the elements, a function of `App`: `mod.rs` the window (laid out by profile) and its keys, `plan.rs` the canvas (the drawing kept as
   one element while it is the same, the pointer and wheel handlers, the primary button's click and box, the middle button's pan, the hover, selection and box layers), `topbar.rs` (Open and Save through
   the system's file dialogs, Undo, Redo, the zoom buttons), `tools.rs` the BIMCraft profile's palette, `ribbon.rs` Rev's, `properties.rs` (the rows, and a
-  `rune_kit::TextInput` for each field the core may take a `modify` of), `browser.rs` (the levels), `status_bar.rs`.
+  `rune_kit::TextInput` for each field the core may take a `modify` of), `browser.rs` (every view the model has, in groups, one row each), `canvas.rs` (the canvas of the view shown: the plan canvas for plans, a card naming the view for kinds with no canvas yet), `status_bar.rs`.
 - `profile.rs`: the two profiles (BIMCraft's palette, Rev's ribbon), one table drawn two ways. `project.rs`: where a project comes from
   (`--sample`, `--highrise`, a file through the core's `open`) and what the arguments ask. `tools.rs`: the table of tools both profiles draw.
 - `select.rs`: what a click or a box does to the selection (`How`: replace, add, take away; `Rubber`, the box being dragged, a window
@@ -67,3 +67,7 @@ One line per module. A new module adds its line here, not to the root.
 - `camera.rs`: pan, zoom and Zoom In Region of the plan, in the core's `View` (the history Previous Pan/Zoom walks back is `App`'s). `paint.rs`: a `Drawing`'s primitives as Rune shapes (dashes split,
   lettering through `text::triangles`, what cannot be drawn counted). `props.rs`: the Properties rows from `element_json`.
   `status.rs`: the status line. `lang.rs`: `t`, `tf`, `tc` over `translations/ui/*.po`, the catalogs egui reads.
+- `views.rs`: which view the window shows (`ViewKind`: plan, ceiling plan, section or elevation, 3D view, sheet, schedule) and what the Project Browser lists
+  (`tree`, `Views`): whether the model has a view (`exists`, `keep`), the plan kinds' `draw` and `fit`, a view's `name` and `title`. No toolkit, so it is tested
+  without a window. `app/open.rs`: `App::open_view`, which shows another view and keeps the selection (the model's, not a view's). Detail:
+  [the views](../../docs/areas/rune-ui-views.md).
