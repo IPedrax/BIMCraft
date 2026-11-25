@@ -10,6 +10,8 @@
 
 pub mod app;
 pub mod camera;
+pub mod finder;
+pub mod forms;
 pub mod lang;
 pub mod paint;
 pub mod profile;

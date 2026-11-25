@@ -10,6 +10,8 @@ use crate::app::App;
 use crate::profile::Profile;
 
 mod browser;
+mod dialog;
+mod find;
 mod plan;
 mod properties;
 mod ribbon;
@@ -32,7 +34,21 @@ pub fn view(s: &App, _: &mut Cx<App>) -> El {
         Profile::Bimcraft => None,
         Profile::Rev => Some(ribbon::ribbon(s, &th)),
     };
-    col().key("root").w_full().h_full().fill(th.bg).child(topbar::bar(s, &th)).children(top).child(middle).child(status_bar::bar(s, &th))
+    // A dialog that is open is a scrim and a panel over the whole window: absolute children of the root, so nothing wraps the plan.
+    let mut layer = Vec::new();
+    if s.dialogs.any() {
+        dialog::layers(s, &rune_kit::Kit::neutral(true), &mut layer);
+    }
+    col()
+        .key("root")
+        .w_full()
+        .h_full()
+        .fill(th.bg)
+        .child(topbar::bar(s, &th))
+        .children(top)
+        .child(middle)
+        .child(status_bar::bar(s, &th))
+        .children(layer)
 }
 
 /// Every frame: the plan on screen, which the camera moves through Rune's live offset and scale, is drawn exactly once the camera has
@@ -46,9 +62,17 @@ pub fn poll(s: &mut App, clock: f64, tx: &mut Tx) -> bool {
     drawn
 }
 
-/// Delete deletes the selection; Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y do again (Cmd on a Mac); Tab and Shift+Tab step through what
+/// Ctrl+K opens Find (or closes it). Delete deletes the selection; Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y do again (Cmd on a Mac); Tab and Shift+Tab step through what
 /// lies under the pointer; Escape puts the tool down, then clears the selection. A key none of these takes goes on to the window.
 pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
+    if key.mods.cmd && matches!(key.key, Key::Command('k')) {
+        s.toggle_find();
+        return true;
+    }
+    // With a dialog open the keys are its.
+    if s.dialogs.any() {
+        return false;
+    }
     match (&key.key, key.mods.cmd, key.mods.shift) {
         (Key::Tab, false, back) => return s.step(back),
         (Key::Escape, false, _) => return s.escape(),
@@ -66,5 +90,7 @@ pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
     true
 }
 
+#[cfg(test)]
+mod dialog_tests;
 #[cfg(test)]
 mod tests;
