@@ -17,6 +17,7 @@ use crate::props::{self, Kind, Row};
 use crate::select::{self, How, Rubber};
 use crate::snapping::{Landing, Snapper};
 use crate::status;
+use crate::tooling::Tooling;
 
 /// How near a click or a hover must be to a line to take it, points.
 const REACH: f32 = 4.0;
@@ -137,10 +138,12 @@ pub struct App {
     /// Where a pick at the pointer would land, while a tool is in hand: what the plan has there, and the guides that hold the point.
     pub landing: Option<Landing>,
     /// The points a tool in hand has had picked, in model millimetres: the chain the plan shows, which guides and angle steps run from.
-    /// The tools do not take them yet (stage 3, tools).
+    /// The tool takes each as it is picked (`app/tooling.rs`, which says what it makes and when the points go).
     pub picked: Vec<P2>,
     /// Shift is held as the pointer moves: a pick keeps its step from the last point horizontal or vertical.
     pub square: bool,
+    /// What the Draw panel has set for the tools that take a shape (`tooling.rs`).
+    pub tooling: Tooling,
     pub selection: Vec<Id>,
     /// The pointer over the plan, points from its top left.
     pub cursor: Option<(f32, f32)>,
@@ -149,6 +152,8 @@ pub struct App {
     pub fields: Vec<Field>,
     /// Where an edit goes that has no field (a stale one): never read.
     pub scratch: TextEdit,
+    /// The temporary dimensions of the element selected alone, each with the number being typed into it (`app/tempdim.rs`).
+    pub temp: Vec<tempdim::TempField>,
     /// A command's refusal, as the core says it.
     pub message: Option<String>,
     /// How far the press now dragging has been followed, points.
@@ -189,11 +194,13 @@ impl App {
             landing: None,
             picked: Vec::new(),
             square: false,
+            tooling: Tooling::default(),
             selection: Vec::new(),
             cursor: None,
             props: Vec::new(),
             fields: Vec::new(),
             scratch: TextEdit::new(""),
+            temp: Vec::new(),
             message: None,
             followed: (0.0, 0.0),
         };
@@ -274,6 +281,7 @@ impl App {
         self.props = props::rows(&json);
         self.fields =
             props::editable(&json).into_iter().map(|(name, kind, text)| Field { name, kind, edit: TextEdit::new(text) }).collect();
+        self.refresh_dims();
     }
 
     /// The canvas has laid out at `w` x `h` points.
@@ -551,7 +559,11 @@ impl App {
             }
         } else if (to.0 - from.0).hypot(to.1 - from.1) <= CLICK {
             if self.tool.is_some() {
+                let before = self.picked.len();
                 self.pick_point(to.0, to.1);
+                if self.picked.len() > before {
+                    self.tool_took_point();
+                }
             } else {
                 self.select_at(to.0, to.1, how);
             }
@@ -700,6 +712,11 @@ impl App {
         })
     }
 }
+
+mod grips;
+mod menu;
+mod tempdim;
+mod tooling;
 
 #[cfg(test)]
 mod tests;

@@ -11,6 +11,7 @@ use std::time::Duration;
 use rune::tok::type_;
 use rune::{El, Phase, PointerButton, Shape, Tx, canvas, el, memo, text};
 
+use super::{draw_bar, tempdim};
 use crate::app::{App, CameraMode, PlanMode};
 use crate::paint::{self, Palette};
 use crate::select::How;
@@ -63,6 +64,20 @@ pub fn plan(s: &App) -> El {
         .tool
         .is_some()
         .then(|| layer("plan-snap", paint::over(&s.picked, s.landing.as_ref(), &s.camera.view(size.0, size.1), &pal).shape));
+    // What the next click would make with a shape in hand: there only while there is a shape to show.
+    let shape = s.shape_preview();
+    let ghost = (!shape.is_empty()).then(|| layer("plan-ghost", paint::ghost(&shape, &s.camera.view(size.0, size.1), &pal).shape));
+    // The grips of the element selected alone, and the reading of the end being dragged: there only while there is something to show.
+    let grips = s.grips_shown().map(|g| {
+        let live = g.held.map(|h| usize::from(!h.start));
+        layer("plan-grips", paint::handles(g.ends, live, &s.camera.view(size.0, size.1), &pal).shape)
+    });
+    let grip_tag = s.grip_reading().and_then(|(at, words)| {
+        let (x, y) = s.camera.view(size.0, size.1).px(at);
+        (x.is_finite() && y.is_finite()).then(|| {
+            text(words).key("plan-grip-tag").font(type_::LABEL).color(pal.accent).inert().pin(Some(x + 12.0), Some(y - 24.0), None, None)
+        })
+    });
     let layers =
         [base, lit("plan-selected", &selected, pal.accent, pal.accent_fill), lit("plan-hovered", &hovered, pal.hover, pal.hover_fill)];
     // In `Live` the layers sit in one element the camera moves; in `Exact` they are the canvas's own children, as they were before the
@@ -90,6 +105,7 @@ pub fn plan(s: &App) -> El {
             s.square = tx.mods().shift;
             s.hover(e.x, e.y);
         })
+        .on_secondary_press(|s: &mut App, p, _| s.open_menu(p.x, p.y))
         .on_hover_change(|s: &mut App, over, _| {
             if !over {
                 s.leave();
@@ -111,7 +127,15 @@ pub fn plan(s: &App) -> El {
                     settle_soon(s, tx);
                 }
                 (PointerButton::Middle, Phase::Up) => s.settle_view(),
+                // A press on an end of the element selected alone is the drag of that end, not a click or a box.
+                (PointerButton::Primary, Phase::Down) => {
+                    if !s.grip_down(d.x, d.y) {
+                        s.grab();
+                    }
+                }
                 (_, Phase::Down) => s.grab(),
+                (_, Phase::Move) if s.gripping() => s.grip_move(d.x, d.y, tx.mods().cmd),
+                (_, Phase::Up) if s.gripping() => s.grip_up(d.cancelled()),
                 (_, Phase::Move) => {
                     s.sweep(from, to);
                     settle_soon(s, tx);
@@ -126,5 +150,10 @@ pub fn plan(s: &App) -> El {
         .children(world)
         .child(band)
         .children(snap)
+        .children(ghost)
         .children(tag(s, &pal))
+        .children(grips)
+        .children(grip_tag)
+        .children(tempdim::dimensions(s, &pal))
+        .children(draw_bar::bar(s))
 }
