@@ -366,8 +366,11 @@ fn with_a_tool_in_hand_the_plan_shows_what_the_pointer_lands_on_and_a_click_pick
     tap(&mut rt, at);
     assert_eq!(rt.state.picked.len(), 1, "a click picks the point");
     assert!(rt.state.selection.is_empty());
-    rt.state.escape();
-    rt.state.escape();
+    rt.on_key = Some(super::on_key);
+    rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+    assert!(rt.state.picked.is_empty() && rt.state.tool.is_some(), "the first Escape gives up the point");
+    rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
     rt.frame(0.0);
+    assert!(rt.state.tool.is_none());
     assert!(rt.find("plan-snap").is_none(), "put down, the layer goes again");
 }
