@@ -2,9 +2,9 @@
 
 use super::*;
 
-/// Edit Railing for the project's railing type, open over its Type Properties.
+/// Edit Railing for the project's plain railing type, "Railing - 1000mm", open over its Type Properties.
 fn edit_railing(h: &mut Harness<BimApp>) {
-    let name = h.state().session.model.types.railing.keys().next().cloned().unwrap();
+    let name = "Railing - 1000mm".to_string();
     h.state_mut().open_railing_editor(&name);
     h.set_size(egui::vec2(1400.0, 900.0));
     h.run();
@@ -30,7 +30,7 @@ fn edit_railing_adds_parts_in_three_columns_and_keeps_its_size() {
     assert!(h.query_by_label("Height of its top").is_some(), "a rail's parameters");
     assert_eq!(window(&h), before, "the window does not move or grow as parts are picked");
     press(&mut h, "OK");
-    let t = h.state().session.model.types.railing.values().next().cloned().unwrap();
+    let t = h.state().session.model.types.railing.get("Railing - 1000mm").cloned().unwrap();
     assert_eq!((t.rails.len(), t.posts.len(), t.panel.is_some()), (1, 2, true));
 }
 

@@ -4135,6 +4135,83 @@ impl RailingType {
     }
 }
 
+/// The light grey of the starter railings, RAL 7035.
+const RAILING_GREY: &str = "RAL 7035 Light grey";
+
+/// The starter railings, in light grey steel: a stick railing (a top rail, a rail 150 up and balusters on it, a post every
+/// third tread) and a glass panel railing between the same posts, each 1000 high.
+fn starter_railings(m: &mut Model, language: Language) {
+    let grey = [197, 199, 196];
+    let paint = Material {
+        color: grey,
+        cut: Pattern::Solid,
+        surface: Pattern::Solid,
+        cut_color: Some(grey),
+        surface_color: Some(grey),
+        ..Material::default()
+    };
+    m.materials.entry(RAILING_GREY.into()).or_insert(paint);
+    let rail = |name: &str, size: f64, height: f64, extend: f64| RailPart {
+        name: name.into(),
+        width: size,
+        depth: size,
+        height,
+        extend_start: extend,
+        extend_end: extend,
+        material: RAILING_GREY.into(),
+        ..RailPart::default()
+    };
+    let top = || rail("Top Rail", 50.0, 1000.0, 100.0);
+    let post = || PostPart {
+        name: "Post".into(),
+        kind: PostKind::Post,
+        width: 60.0,
+        depth: 60.0,
+        spacing: 1200.0,
+        steps: 3,
+        top: Some("Top Rail".into()),
+        material: RAILING_GREY.into(),
+        ..PostPart::default()
+    };
+    let baluster = PostPart {
+        name: "Baluster".into(),
+        kind: PostKind::Baluster,
+        width: 20.0,
+        depth: 20.0,
+        spacing: 120.0,
+        bottom_offset: 150.0,
+        top: Some("Top Rail".into()),
+        material: RAILING_GREY.into(),
+        ..PostPart::default()
+    };
+    let stick = RailingType {
+        height: 1000.0,
+        spacing: 120.0,
+        rails: vec![top(), rail("Rail", 40.0, 150.0, 0.0)],
+        posts: vec![baluster, post()],
+        ..RailingType::default()
+    };
+    let panel = PanelPart {
+        thickness: 12.0,
+        bottom: 100.0,
+        top: Some("Top Rail".into()),
+        top_gap: 20.0,
+        side_gap: 20.0,
+        material: language.word("Glass").into(),
+        ..PanelPart::default()
+    };
+    let glass = RailingType {
+        height: 1000.0,
+        spacing: 120.0,
+        rails: vec![top()],
+        posts: vec![post()],
+        panel: Some(panel),
+        ..RailingType::default()
+    };
+    m.types.railing.insert("Stick Railing - 1000mm".into(), stick);
+    m.types.railing.insert("Panel Railing - 1000mm".into(), glass);
+}
+
 impl Default for RailingType {
     fn default() -> RailingType {
         RailingType {
@@ -5392,6 +5469,7 @@ impl Model {
         m.types.ceiling.insert("Generic - 20mm".into(), CeilingType { thickness: 20.0, grid: 0.0, layers: Vec::new() });
         m.types.ceiling.insert("Tile 600 x 600".into(), CeilingType { thickness: 20.0, grid: 600.0, layers: Vec::new() });
         m.types.railing.insert("Railing - 1000mm".into(), RailingType { height: 1000.0, spacing: 120.0, ..RailingType::default() });
+        starter_railings(&mut m, language);
         m.types.room.insert(ROOM_TYPE.into(), RoomType::default());
         m.types.stair = stair_types();
         m.types.ramp = ramp_types();
@@ -5432,12 +5510,17 @@ impl Model {
             .chain(ramp.values_mut().flat_map(|t| t.layers.iter_mut()))
     }
 
-    /// Every material the types' layers name that the library hasn't, put in it: what a project
+    /// Every material the types' layers and railing parts name that the library hasn't, put in it: what a project
     /// from before the library, or a file from elsewhere, comes in with.
     pub fn adopt_materials(&mut self) {
         let mut named: Vec<String> = self.layered_types().flat_map(|(.., l)| l.iter().map(|l| l.material.clone())).collect();
         named.extend(self.families.values().flat_map(|f| f.materials()).map(String::from));
         named.extend(self.types.runs.values().flat_map(|t| t.values().map(|t| t.material.clone())));
+        for t in self.types.railing.values() {
+            named.extend(t.rails.iter().map(|r| r.material.clone()));
+            named.extend(t.posts.iter().map(|p| p.material.clone()));
+            named.extend(t.panel.iter().map(|p| p.material.clone()));
+        }
         named.extend(self.elements.values().flat_map(|e| self.component_materials(e)).map(String::from));
         for n in named.into_iter().filter(|n| !n.is_empty()) {
             self.materials.entry(n).or_default();

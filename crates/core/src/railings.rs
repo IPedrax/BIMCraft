@@ -474,10 +474,13 @@ pub fn build(t: &RailingType, line: Vec<(P2, f64)>, ground: &Ground, flip: bool)
             *c += 1;
         }
         let c = at + u.perp() * p.offset;
-        // On the step, the landing or the floor under it (moved past the stair's side, on the tread the railing's line is
-        // over there); on a rail, that rail's top.
+        // On a rail, that rail's top. Lifted, over the railing's line (a stair's nosing line, a landing, a floor, run on
+        // where it joins two heights) as a rail that high is, so a bottom rail and the balusters over it meet at every
+        // tread. Else on the step, the landing or the floor under it (moved past the stair's side, on the tread the
+        // railing's line is over there).
         let bottom = match (p.kind, rail(&p.bottom)) {
             (PostKind::Baluster, Some(r)) => z + r.height + p.bottom_offset,
+            _ if p.bottom_offset > 0.0 => z + p.bottom_offset,
             _ => ground.at(c).or_else(|| ground.at(at)).unwrap_or(z) + p.bottom_offset,
         };
         let up = match rail(&p.top) {
@@ -1427,6 +1430,7 @@ mod tests {
 
     use super::*;
     use crate::engine::Session;
+    use crate::model::Pattern;
 
     fn run(s: &mut Session, id: &str, p: serde_json::Value) -> serde_json::Value {
         s.execute(id, &p).unwrap_or_else(|e| panic!("{id} {p}: {e}"))
@@ -1774,7 +1778,7 @@ mod tests {
         };
         let upright = |l: &[(P2, f64)]| l.windows(2).any(|w| w[0].0.dist(w[1].0) <= 1.0 + 1e-9 && (w[1].1 - w[0].1) > 100.0);
         assert!(!upright(&line(&s)), "climbing on a slope, by default");
-        let name = s.model.types.railing.keys().next().cloned().unwrap();
+        let name = "Railing - 1000mm";
         run(&mut s, "type", json!({"category": "railing", "name": name, "transition": "gooseneck"}));
         let l = line(&s);
         assert!(upright(&l), "straight up where the next flight starts: {l:?}");
@@ -1869,7 +1873,7 @@ mod tests {
         let stair = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90, "width": 1000, "landings": [{"at": 8, "turn": -90}]}))["id"]
             .as_u64()
             .unwrap();
-        let name = s.model.types.railing.keys().next().cloned().unwrap();
+        let name = "Railing - 1000mm";
         run(&mut s, "type", json!({"category": "railing", "name": name, "transition": "separate"}));
         let id = run(&mut s, "railing", json!({"host": stair, "side": "left"}))["ids"][0].as_u64().unwrap();
         let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
@@ -1887,7 +1891,7 @@ mod tests {
         let stair = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90, "width": 1200, "landings": [{"at": 8, "turn": 0}]}))["id"]
             .as_u64()
             .unwrap();
-        let name = s.model.types.railing.keys().next().cloned().unwrap();
+        let name = "Railing - 1000mm";
         run(&mut s, "type", json!({"category": "railing", "name": name, "transition": transition}));
         let id = run(&mut s, "railing", json!({"host": stair, "side": "left"}))["ids"][0].as_u64().unwrap();
         let l = crate::stairs::layout(&s.model, s.model.elements.get(stair).unwrap()).unwrap();
@@ -1933,11 +1937,13 @@ mod tests {
     }
 
     #[test]
-    fn every_baluster_stands_on_the_tread_under_it_its_bottom_offset_over_that_wherever_across_the_railing_it_is() {
+    fn every_baluster_stands_on_the_tread_under_it_or_lifted_its_bottom_offset_over_the_nosing_line_wherever_across_the_railing_it_is() {
         let mut s = Session::new();
         let stair = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90, "width": 1200}))["id"].as_u64().unwrap();
         let each = 3000.0 / 17.0;
         let tread = |y: f64| (y / 280.0 - 0.5).round() + 1.0;
+        // The nosing line: through each tread's front edge, a riser over the tread at its back.
+        let nosing = |y: f64| (y / 280.0 + 1.0) * each;
         for (offset, lift) in [(0.0, 0.0), (40.0, 0.0), (-40.0, 0.0), (40.0, 30.0), (0.0, -20.0), (80.0, 0.0), (-80.0, 25.0)] {
             run(
                 &mut s,
@@ -1964,10 +1970,115 @@ mod tests {
                     .collect();
                 assert!(over.len() > 20, "{bars:?}");
                 for (c, z) in over {
-                    let want = tread(c.1) * each + lift;
-                    assert!((z - want).abs() < 1e-6, "{side}, offset {offset}, {lift} up: {z} at {c:?}, the tread's {want}");
+                    // Lifted, it is as far over the nosing line as a rail that high, never through it; else on its tread.
+                    let want = if lift > 0.0 { nosing(c.1) + lift } else { tread(c.1) * each + lift };
+                    assert!((z - want).abs() < 1e-6, "{side}, offset {offset}, {lift} up: {z} at {c:?}, wanted {want}");
                 }
                 run(&mut s, "delete", json!({"ids": [id]}));
+            }
+        }
+    }
+
+    #[test]
+    fn balusters_lifted_as_high_as_a_bottom_rail_stand_on_it_along_flights_landings_and_corners_never_through_it() {
+        // The stair of a user's project: three flights turning on two landings, a stick railing each side with a rail
+        // 150 high and balusters 150 off the stair.
+        let mut s = Session::new();
+        let stair = run(
+            &mut s,
+            "stair",
+            json!({"start": [-4780, 1340], "path": [{"to": [-3610, 1340]}, {"to": [-3610, 2830]}, {"to": [-3610, 3420]}, {"to": [2440, 3420]}],
+                "width": 1000, "riser": 180, "tread": 280}),
+        )["id"]
+            .as_u64()
+            .unwrap();
+        run(
+            &mut s,
+            "type",
+            json!({"category": "railing", "name": "Stick", "height": 1000, "spacing": 120,
+                "rails": [{"name": "Top Rail", "width": 50, "depth": 50, "height": 1000}, {"name": "Rail", "width": 40, "depth": 40, "height": 150}],
+                "posts": [{"name": "Baluster", "kind": "baluster", "width": 20, "depth": 20, "spacing": 120, "bottom_offset": 150, "top": "Top Rail"},
+                    {"name": "Post", "kind": "post", "width": 60, "depth": 60, "spacing": 1200, "steps": 3, "top": "Top Rail"}]}),
+        );
+        for side in ["left", "right"] {
+            let id = run(&mut s, "railing", json!({"host": stair, "side": side, "type": "Stick"}))["ids"][0].as_u64().unwrap();
+            let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
+            let all = parts(&s.model, rl);
+            let rail: Vec<P3> = all
+                .iter()
+                .filter(|p| p.at.kind == RailingPartKind::Rail && p.at.name == "Rail")
+                .flat_map(|p| match &p.piece {
+                    Piece::Sweep { path, .. } => path.clone(),
+                    _ => Vec::new(),
+                })
+                .collect();
+            // The rail's middle over plan point `c`: on the nearest piece of its centre line.
+            let middle = |c: P2| -> f64 {
+                let mut best = (f64::INFINITY, f64::NAN);
+                for w in rail.windows(2) {
+                    let (a, b) = (P2(w[0][0], w[0][1]), P2(w[1][0], w[1][1]));
+                    let ab = b - a;
+                    let t = if ab.dot(ab) > 1e-9 { ((c - a).dot(ab) / ab.dot(ab)).clamp(0.0, 1.0) } else { 0.0 };
+                    let d = (a + ab * t).dist(c);
+                    if d < best.0 {
+                        best = (d, w[0][2] + (w[1][2] - w[0][2]) * t);
+                    }
+                }
+                best.1
+            };
+            let bars: Vec<(P2, f64)> = all
+                .iter()
+                .filter(|p| p.at.kind == RailingPartKind::Baluster)
+                .map(|p| {
+                    let (ring, bottom, _) = p.piece.prisms()[0].clone();
+                    (geom::centroid(&ring), bottom.z)
+                })
+                .collect();
+            assert!(bars.len() > 30, "{side}: {bars:?}");
+            for (c, z) in &bars {
+                let m = middle(*c);
+                assert!(*z >= m, "{side}: a baluster at {c:?} starts at {z}, below the bottom rail's middle {m}");
+            }
+            run(&mut s, "delete", json!({"ids": [id]}));
+        }
+    }
+
+    #[test]
+    fn a_new_project_has_a_stick_railing_and_a_glass_panel_railing_in_light_grey() {
+        let mut s = Session::new();
+        let grey = s.model.materials.get("RAL 7035 Light grey").cloned().expect("the grey");
+        assert_eq!((grey.color, grey.cut, grey.surface), ([197, 199, 196], Pattern::Solid, Pattern::Solid));
+        assert_eq!((grey.cut_color, grey.surface_color), (Some([197, 199, 196]), Some([197, 199, 196])));
+        let stick = s.model.types.railing.get("Stick Railing - 1000mm").cloned().expect("the stick railing");
+        let names = |t: &RailingType| -> Vec<(String, f64, String)> {
+            t.rails.iter().map(|r| (r.name.clone(), r.height, r.material.clone())).collect()
+        };
+        assert_eq!(
+            names(&stick),
+            [("Top Rail".into(), 1000.0, "RAL 7035 Light grey".into()), ("Rail".into(), 150.0, "RAL 7035 Light grey".into())]
+        );
+        let bar = stick.posts.iter().find(|p| p.kind == PostKind::Baluster).expect("balusters");
+        assert_eq!((bar.width, bar.spacing, bar.bottom_offset, bar.top.as_deref()), (20.0, 120.0, 150.0, Some("Top Rail")));
+        let post = stick.posts.iter().find(|p| p.kind == PostKind::Post).expect("posts");
+        assert_eq!((post.width, post.spacing, post.steps), (60.0, 1200.0, 3));
+        let glass = s.model.types.railing.get("Panel Railing - 1000mm").cloned().expect("the panel railing");
+        let panel = glass.panel.clone().expect("a panel");
+        assert_eq!(
+            (panel.thickness, panel.bottom, panel.material.as_str(), panel.top.as_deref()),
+            (12.0, 100.0, "Glass", Some("Top Rail"))
+        );
+        assert!(glass.posts.iter().all(|p| p.kind == PostKind::Post));
+        // Each stands along a stair with every part it has.
+        let stair = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90}))["id"].as_u64().unwrap();
+        for (name, kinds) in [
+            ("Stick Railing - 1000mm", vec![RailingPartKind::Rail, RailingPartKind::Post, RailingPartKind::Baluster]),
+            ("Panel Railing - 1000mm", vec![RailingPartKind::Rail, RailingPartKind::Post, RailingPartKind::Panel]),
+        ] {
+            let id = run(&mut s, "railing", json!({"host": stair, "side": "left", "type": name}))["ids"][0].as_u64().unwrap();
+            let Some(Element::Railing(rl)) = s.model.elements.get(id) else { panic!() };
+            let all = parts(&s.model, rl);
+            for k in kinds {
+                assert!(all.iter().any(|p| p.at.kind == k && !p.material.is_empty()), "{name}: no {k:?} {all:?}");
             }
         }
     }

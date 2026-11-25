@@ -199,6 +199,17 @@ From the user's comments on round 6:
   undid the model behind the sketch; both are now the sketch's while one is open.
 - Merged `main` (ramps, view range): another level's railing a plan sees from above is drawn as its type's plan below says.
 
+## Round 8 (2026-11-25)
+
+From the user's project (a stair turning twice, a stick railing with a rail 150 up and balusters 150 off the stair):
+
+- **Balusters through the bottom rail.** Round 7 stood every baluster on its tread plus its bottom offset, but the rail is
+  150 over the railing's line (the nosing line), a riser higher at the back of each tread, so each baluster went through
+  it. A post or baluster lifted by a bottom offset now stands that far over the railing's line, as a rail that high does;
+  with none it stands on its tread as before.
+- **Starter types.** The project's two types, Stick Railing - 1000mm and Panel Railing - 1000mm, and their material
+  RAL 7035 Light grey, are in every new project beside Railing - 1000mm, which stays the default.
+
 ## What the research suggested for BIMCraft
 
 Proposals, to settle before building:

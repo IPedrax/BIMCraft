@@ -341,7 +341,8 @@ running beside the other) a joining slope steeper than the lower line meets it i
 `extension`; `separate` ends each rail there. Past a stair's flights, landings and winders the stair is no host; over a
 floor, a roof or a toposolid it is their top as the 3D view has it (`view3d::top_solids`: slopes, shape points and survey
 points). Posts and balusters on the host stand on the tread, landing or surface under them (`railings::Ground`), or one
-moved past a stair's side on the tread the railing's line is over there. A post
+moved past a stair's side on the tread the railing's line is over there; lifted by a `bottom_offset`, they stand that far
+over the railing's line, as a rail that high does, so a bottom rail and the balusters on it meet at every tread. A post
 stands at the railing's start and end (unless `skip_ends`), at corners of 30 degrees or more (less is a curve drawn in
 pieces), where each landing starts, turns and ends (unless `skip_landings`; one only on a landing too short for both, at
 its corner), on each flight's first and last step with `flight_ends`, and with `steps` on every so many steps, the count
@@ -355,7 +356,9 @@ and the level above (the stair's ways). Each rail is solved, then swept (`railin
 turns or changes slope (within 0.5 mm), lowers each sloped stretch so the section's top stays at its height, and rounds
 each bend by an arc tangent to both stretches, `corner` in plan and `bend` in slope (0: sharp); the sweeper makes each
 stretch a straight prism of the section, level across (unturned up an upright stretch), cut on the plane halving each bend
-(`path::stretches`), so a bend that turns in plan and in slope at once is a clean mitre, each side closed on it. A railing type stacks its parts (`railings.rs`, the desktop's Edit Railing):
+(`path::stretches`), so a bend that turns in plan and in slope at once is a clean mitre, each side closed on it. A new project has three railing types (`model::starter_railings`): Railing - 1000mm, the plain one a railing takes
+when none is named; Stick Railing - 1000mm, a top rail, a rail 150 up with balusters standing on it and a post every third
+tread; and Panel Railing - 1000mm, glass between the same posts; both of RAL 7035 Light grey, a material of their own. A railing type stacks its parts (`railings.rs`, the desktop's Edit Railing):
 named rails, each a rectangle or a circle, its top `height` over the line and `offset` to its left; posts on the host at the
 ends, the corners and at most `spacing` apart; balusters between the posts, from the host or a rail's top up to a rail's
 underside or the railing's top; and a panel in each bay. A rail runs on, level, `extend_start` and `extend_end` past the
