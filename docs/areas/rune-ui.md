@@ -10,7 +10,7 @@ crate: [crates/ui-rune/CLAUDE.md](../../crates/ui-rune/CLAUDE.md).
 Why: egui is immediate mode and repaints the whole interface when the pointer moves, which pins a CPU on a machine with no graphics
 card (PR 628 measured 1.78 of 2 cores on a Windows VM on WARP). Rune keeps a retained tree and redraws what changed.
 
-## What is built (stages 0 and 1, the first slice of 2, and the first four of 3)
+## What is built (stages 0 and 1, the first slices of 2, 3 and 4)
 
 A window of the sample house that works end to end, small on purpose:
 
@@ -24,6 +24,10 @@ A window of the sample house that works end to end, small on purpose:
 | `paint.rs`, `paint/snap.rs` | a `Drawing` as Rune shapes: strokes, polygons, dashes split, lettering through `text::triangles`, colours in linear light, the box being dragged; and what a pick shows: the points picked, the guides, the glyph of the snap | 7, 6 |
 | `snapping.rs` | where a point picked at the pointer lands: the core's `snap::snap` and `AlignmentGuideService` with the pixel reach (10 and 6), the guide held a little longer (12 px to leave, 8 to enter), the name of what it is on (stage 3, slice 4) | 6 |
 | `tools.rs` | the table of tools both profiles draw (the seed of the shared registry below) | 2 |
+| `tooling.rs`, `app/tooling.rs`, `ui/draw_bar.rs`, `paint/preview.rs` | the plan tools as data: the points picked become a command through `Session::execute` (the Draw shapes through the core's `draw.rs`, the Place tools, Move, Copy, Rotate, Mirror, Split, Trim to Corner, Align, Offset), Enter, Backspace, a preview of the next click ([plan tools](rune-ui-tools.md)) | in the area doc |
+| `context.rs`, `grips.rs`, `tempdim.rs` and their `app/` and `ui/` parts | the right-click menu, grips on a selected wall, run or grid, and temporary dimensions: **copies of egui's logic**, to be folded into the core when egui adopts them | in the area doc |
+| `forms.rs`, `finder.rs`, `typeprops.rs`, `settings.rs`, `app/dialogs.rs`, `ui/dialog.rs` and kin | the generic command form from every command's params doc (all 282), Find (Ctrl+K), Type Properties, `settings.json` shared with egui and the Settings dialog ([dialogs](rune-ui-dialogs.md)) | in the area doc |
+| `props/`, `app/properties.rs`, `ui/properties/` | the Properties palette: egui's rows table as data, groups that fold, units, a type selector, several elements at once, the plan's own view ([properties](rune-ui-properties.md)) | in the area doc |
 | `props.rs`, `status.rs` | the Properties rows and editable fields from `element_json`, what a typed value becomes; the status line | 3, 3 |
 | `lang.rs` | `t`, `tf`, `tc` over the catalogs egui reads (`translations/ui/*.po`), English fallback | 3 |
 | `software.rs` | `--software`: starts again with `RUNE_CPU_FIRST=only` (see "Choosing the CPU renderer") | 1 |
@@ -368,6 +372,18 @@ glyph's refined look, the badge, and Manage > Snaps (the switches are `Snapper::
 at the next move. Not measured: what a snap costs per pointer move on the tower, with or without a card (the core's `Scene::of` runs for each).
 Not in the slices: the Filter dialog (stage 4), grips, temporary dimensions, the Draw and Modify tools, the context menu, sections. The tools and grips
 lean on the tool state machines, which are still inside egui's `canvas.rs` (extraction 4 above), so they wait on that pull request.
+
+**The first merge of parallel work (2026-11-25).** Four sessions worked from the same tip on branches of their own, one area each, and CI ran only
+on finished pieces. The plan tools, the dialogs and the properties palette are merged here (the views branch, `IPedrax-Test/Rune-GUI-views`, was still
+in CI). The merge was three small conflicts: the module lists, the window's layers (the right-click menu is wrapped by `rune_kit::root` only while it
+is open; a dialog's scrim and panel are absolute children of the root, so nothing wraps the plan), and the palette (the properties file replaced the
+dialogs session's own Edit Type button, and `App::edit_type` now opens the dialogs' Type Properties). What each area leaves out is in its own
+document: the tools lack Array, Scale, the Options Bar and the Fillet, Pick Lines, Pick Faces and Tangent End Arc shapes; the dialogs lack docking and
+tabs (a `SplitView` would wrap the plan, which doubled Linux's wheel cost, so it needs a measurement first), the Materials and Parameters dialogs and
+the window's maximized state; the palette lacks egui's extra panels (layer picture, stair and ramp flights, parameters, electrical, title block,
+phasing, camera, underlay), and its buttons for View Range, View Template, Visibility/Graphics and Background Grids say the dialog is not in this
+window yet (`App::seam`). A field commits on Enter only: the kit gives no focus loss. Assistant, Co-Work and the updater are not started: they need
+`ureq`, and the root rule on the network says which crates may.
 
 Before Rune becomes the default, one run on a machine with no graphics card must show it cheaper than egui on that machine with PR 628's
 join, on a big project (the tower sample), not only the sample house, and a person must have used it for a day of real work. Until
