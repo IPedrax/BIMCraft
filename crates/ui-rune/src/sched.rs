@@ -51,7 +51,7 @@ pub struct Grid {
 
 impl Default for Grid {
     fn default() -> Grid {
-        Grid { shown: Shown::default(), table: TableState::new().key("schedule") }
+        Grid { shown: Shown::default(), table: TableState::new().key("schedule-table") }
     }
 }
 
@@ -62,7 +62,7 @@ impl Grid {
             return;
         }
         if self.shown.kind != kind {
-            self.table = TableState::new().key("schedule");
+            self.table = TableState::new().key("schedule-table");
         }
         self.shown = make(model, kind);
     }
