@@ -143,10 +143,11 @@ impl Panel {
         let categories: Vec<(&'static str, usize)> = if counts.len() > 1 { counts.into_iter().collect() } else { Vec::new() };
         let kinds: BTreeSet<&'static str> = alive.iter().filter(|(id, _)| ids.contains(id)).map(|(_, c)| *c).collect();
         let n = ids.len();
-        let (subject, title) = match (ids.as_slice(), kinds.first()) {
+        let first = kinds.first().copied();
+        let (subject, title) = match (ids.as_slice(), first) {
             ([], _) | (_, None) => return Panel::plan(m, level),
             ([id], Some(c)) => (Subject::Element(*id), format!("{} (1)", category_name(c, true))),
-            (_, Some(c)) if kinds.len() == 1 => (Subject::Elements(*c), format!("{} ({n})", category_name(c, true))),
+            (_, Some(c)) if kinds.len() == 1 => (Subject::Elements(c), format!("{} ({n})", category_name(c, true))),
             _ => (Subject::Mixed(n), tf("Multiple Categories ({})", &[&n.to_string()])),
         };
         let mut panel = Panel { subject, title, ids: ids.clone(), categories, ..Panel::empty() };
@@ -156,11 +157,11 @@ impl Panel {
         }
         let camera =
             matches!(panel.subject, Subject::Element(id) if matches!(m.elements.get(id), Some(Element::View3D(v)) if v.camera.is_some()));
-        let defs: &'static [Def] = match kinds.first() {
+        let defs: &'static [Def] = match first {
             Some(c) if !camera && matches!(panel.subject, Subject::Element(_) | Subject::Elements(_)) => rows(c),
             _ => &[],
         };
-        let category = kinds.first().copied().filter(|_| matches!(panel.subject, Subject::Element(_) | Subject::Elements(_)));
+        let category = first.filter(|_| matches!(panel.subject, Subject::Element(_) | Subject::Elements(_)));
         panel.fill(m, defs, category);
         panel
     }
