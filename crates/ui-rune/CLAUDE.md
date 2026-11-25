@@ -83,3 +83,5 @@ One line per module. A new module adds its line here, not to the root.
   finds in it); `orbit/render.rs`: what that thread makes (the `Scene`, kept and brought up to date by an edit, and its picture); `app/orbit.rs`: the canvas's handlers on `App`;
   `ui/view3d.rs`: the canvas, one picture moved through the live offset and scale. The card path is not here: what it would need is in the area doc. Detail:
   [the views](../../docs/areas/rune-ui-views.md).
+- `app/export.rs`: `App::export_view`, the view shown written through the core's `export` command (and `export_target`, `export_file_name`); `ui/export.rs`: the top bar's PDF and PNG
+  buttons, which ask the system's dialog for the file. The form for the command's other parameters is the dialogs' generic command form. Detail: [the views](../../docs/areas/rune-ui-views.md).

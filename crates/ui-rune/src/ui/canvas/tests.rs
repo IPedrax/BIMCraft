@@ -92,3 +92,26 @@ fn a_press_on_a_plan_view_row_opens_it_and_the_selection_stays() {
     assert_eq!(rt.state.view, ViewKind::Plan(other));
     assert_eq!(rt.state.selection, vec![id], "the selection is the model's: the browser's press leaves it");
 }
+
+#[test]
+fn the_export_buttons_ask_the_dialog_and_write_the_view_shown() {
+    let dir = std::env::temp_dir().join(format!("bimcraft-rune-ui-export-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a folder");
+    let mut rt = window();
+    assert!(rt.find("export-pdf").is_some() && rt.find("export-png").is_some());
+    let png = rt.find("export-png").expect("the PNG button");
+    tap(&mut rt, png);
+    assert_eq!(rt.file_dialog().map(|(kind, _)| kind), Some(rune::FileDialogKind::Save), "it asks where");
+    let file = dir.join("plan.png");
+    rt.resolve_file_dialog(Some(file.clone())).expect("the dialog answers");
+    rt.frame(0.0);
+    assert!(file.exists(), "written through the engine: {:?}", rt.state.message);
+    assert!(text_of(&rt, "status-line").unwrap_or_default().starts_with("Written to "));
+
+    let pdf = rt.find("export-pdf").expect("the PDF button");
+    tap(&mut rt, pdf);
+    rt.resolve_file_dialog(None).expect("a cancelled dialog");
+    rt.frame(0.0);
+    assert!(rt.state.message.as_deref().is_some_and(|m| m.starts_with("Written to ")), "cancelling says nothing new");
+    std::fs::remove_dir_all(&dir).ok();
+}

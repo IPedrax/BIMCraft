@@ -11,6 +11,7 @@ use crate::profile::Profile;
 
 mod browser;
 mod canvas;
+mod export;
 mod plan;
 mod properties;
 mod ribbon;

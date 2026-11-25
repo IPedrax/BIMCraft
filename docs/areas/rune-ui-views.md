@@ -144,3 +144,23 @@ triangle comes from the card in egui, from the mesh on the CPU), and the CPU ren
 card takes) must still show the processor's picture, as egui's software fallback does, so both stay. The processor's picture here is the
 one a machine with no card shows, and the one the measurements of `rune-ui.md` were made without a card for; the card path is a
 speed-up for a machine that has one, not a need.
+
+## 5. Export and print (`app/export.rs`, `ui/export.rs`)
+
+**Through the existing command.** `export` is the core's export engine (`export_formats`: PDF, SVG, PNG, IFC, glb, CSV, XLSX and the rest, a
+file or a folder of them, the page set up by its `page` and `pdf` parameters; [export](export.md)). The window runs it as every front end
+does, `Session::execute("export", ...)`, and never writes a file itself. PDF of a sheet (`pdf.rs`) is `export {format: "pdf", view: <sheet>}`.
+Print is that PDF: the window has no printer dialog of its own, as egui's File > Print also writes a PDF, and a print set is
+`export {print_set: ...}`.
+
+**The minimal path, for now.** Two buttons on the top bar, PDF and PNG, ask the system's dialog for a file (named after the view, with
+what a file name cannot hold made `_` and the braces of `{3D}` left out: `A101 - Ground Floor.pdf`) and run the command for the view
+shown with the file's path (`App::export_view`). `App::export_target` names the view as `export` takes it: the id of a plan, a section,
+a sheet, a table or a named 3D view; the name of a schedule every project has and of the default 3D view; none for a ceiling plan (its
+id is the level's, which the command would take for the floor plan) and for no view. A refusal (a format the view has none in, a
+failure the command reports under `failed`) is said in the status bar and writes nothing, and so is a success (`Written to <path>`).
+The form for the command's other parameters (page size, scale, colour, a region, PDF/A, several views to one file, a print set) is the
+generic command form of `rune-dialogs`, which this branch's base does not have: **when it lands, the buttons become that form's
+`export`**, and `export_target` and `export_file_name` are what the form fills `view` and `name` with. Not here: the Publisher and the
+Print Sets window (their own dialogs), the page preview, an export on a thread of its own with a Cancel (egui's `export/` writes on one:
+a sheet of the tower is long, and this one blocks the window while it writes), and Export Region's band on a plan or a sheet.
