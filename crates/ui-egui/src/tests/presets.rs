@@ -567,17 +567,17 @@ fn a_panel_the_scale_leaves_out_is_listed_unticked_and_cannot_be_ticked() {
 
 #[test]
 fn the_menu_opens_on_a_folded_panel_and_in_the_tools_palette() {
-    // Rev, narrow: the last panels fold to one button, and its right click opens the same menu.
-    // A family's Create tab at 1280: its Dimension panel folds, as tests/ribbon_fit.rs has it.
-    use bimcraft_core::family::Category;
-    let mut h = app("");
-    h.set_size(vec2(1280.0, 900.0));
-    h.state_mut().new_family(Category::Furniture);
+    // Rev, narrow: a tab of two panels folds both to buttons, which still fit the room and stay on screen.
+    let mut h = app(BOX);
+    h.set_size(vec2(220.0, 800.0));
     h.run();
-    let folded = h.get_by_label("Dimension ▾").rect();
+    h.get_by_label("Plumbing").scroll_to_me();
+    h.run();
+    press(&mut h, "Plumbing");
+    let folded = h.get_by_label("Plumbing & Piping ▾").rect();
     assert!(folded.height() > 40.0, "the panel folded to its button");
-    right_click(&mut h, Role::Button, "Dimension ▾");
-    h.get_by_role_and_label(Role::CheckBox, "Dimension");
+    right_click(&mut h, Role::Button, "Plumbing & Piping ▾");
+    h.get_by_role_and_label(Role::CheckBox, "Plumbing & Piping");
     // BIMCraft: the panel's name in the Tools palette takes the right click too.
     let mut h = bimcraft(BOX);
     press(&mut h, "View");
@@ -597,10 +597,10 @@ fn the_menu_leaves_the_edit_tools_box_alone() {
     assert!(!h.state().panels_hidden.contains("tab:Architecture/Build"));
     // A panel of another tab, from the menu: the same queue and the same keys as Edit Tools' boxes.
     press(&mut h, "Other Tabs ⏵");
-    press(&mut h, "View ⏵");
+    press(&mut h, "Manage ⏵");
     h.get_by_role_and_label(Role::CheckBox, "Phasing").click();
     h.run();
-    assert!(h.state().panels_hidden.contains("tab:View/Phasing"));
+    assert!(h.state().panels_hidden.contains("tab:Manage/Phasing"));
 }
 
 #[test]
