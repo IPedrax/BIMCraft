@@ -68,7 +68,8 @@ fn a_tap_selects_and_the_panel_lists_its_properties_and_delete_goes_through_the_
     let at = over_something(&rt).expect("something is drawn");
     tap(&mut rt, at);
     let id = *rt.state.selection.first().expect("a tap on a drawn element selects it");
-    assert!(!rt.state.props.is_empty());
+    assert_eq!(rt.state.palette.panel.ids, vec![id], "the palette is about what was tapped");
+    assert!(rt.state.palette.panel.title.contains("(1)"), "and says what it is: {}", rt.state.palette.panel.title);
     assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("rows")), "the panel draws the rows");
 
     let button = rt.find("delete").expect("the Delete button");
@@ -189,7 +190,8 @@ fn the_properties_of_a_selected_level_have_fields_that_edit_through_the_engine()
     for _ in 0..2 {
         rt.frame(0.0);
     }
-    assert!(!rt.state.fields.is_empty());
+    assert_eq!(rt.state.palette.panel.subject, crate::props::panel::Subject::Element(level), "a level, not the plan's own view");
+    assert!(rt.state.palette.fields.iter().any(|f| f.key == "elevation"), "a level has an elevation to type");
     assert!(rt.elements().iter().any(|e| e.role == "textbox"), "a field is a text box to a screen reader");
 }
 

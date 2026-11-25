@@ -247,7 +247,10 @@ fn edit_type_opens_type_properties_on_the_selected_walls_type_and_apply_changes_
 #[test]
 fn edit_type_with_nothing_selected_says_so_in_the_status_bar() {
     let mut rt = window();
-    tap(&mut rt, "edit-type");
+    assert!(rt.find("edit-type").is_none(), "the palette has no type to edit with nothing selected");
+    rt.update(|s, _| {
+        s.open_type_of_selection();
+    });
     assert!(rt.state.dialogs.types.is_none());
     assert!(rt.state.message.is_some());
 }

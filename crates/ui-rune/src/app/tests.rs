@@ -1,6 +1,9 @@
 //! The app's state and handlers, tested with no window: `App` driven by its methods, as the elements drive it.
 
+use rune::TextEdit;
+
 use super::*;
+use crate::props::panel::Subject;
 
 /// A point of the canvas that picks an element, found by looking over the plan.
 fn pickable(app: &App) -> Option<(f32, f32, Id)> {
@@ -42,11 +45,12 @@ fn a_click_selects_what_it_hits_and_shows_its_properties() {
     let (x, y, id) = pickable(&app).expect("a pickable point");
     app.release((x - 1.0, y - 1.0), (x, y), How::Replace);
     assert_eq!(app.selection, vec![id]);
-    assert!(app.props.iter().any(|r| r.name == "id" && r.value == id.to_string()), "{:?}", app.props);
+    assert_eq!(app.palette.panel.subject, Subject::Element(id), "the palette is about what was picked");
+    assert_eq!(app.palette.panel.ids, vec![id]);
     app.release((x - 40.0, y), (x, y), How::Replace);
     assert_eq!(app.selection, vec![id], "a drag that drew no box is not a click");
     app.select_at(-1000.0, -1000.0, How::Replace);
-    assert!(app.selection.is_empty() && app.props.is_empty());
+    assert!(app.selection.is_empty() && matches!(app.palette.panel.subject, Subject::Plan(_)), "nothing selected: the plan's own view");
 }
 
 /// A point of the canvas and the element it picks.
@@ -400,9 +404,8 @@ fn a_field_typed_into_goes_to_the_engine_as_a_modify_and_a_bad_number_never_does
     let level = app.level.expect("a level");
     app.selection = vec![level];
     app.refresh();
-    let name = app.fields.iter().position(|f| f.name == "name").expect("a level has a name to edit");
-    assert_eq!(app.fields[name].kind, Kind::Text);
-    app.fields[name].edit = TextEdit::new("Ground");
+    let name = app.palette.fields.iter().position(|f| f.key == "name").expect("a level has a name to edit");
+    app.palette.fields[name].edit = TextEdit::new("Ground");
     assert!(app.commit_field(name), "refused: {:?}", app.message);
     assert_eq!(app.level_name, "Ground", "the engine renamed the level and the window follows");
     assert!(app.undo(), "one undo step: {:?}", app.message);
@@ -410,11 +413,11 @@ fn a_field_typed_into_goes_to_the_engine_as_a_modify_and_a_bad_number_never_does
 
     app.selection = vec![level];
     app.refresh();
-    let number = app.fields.iter().position(|f| f.kind == Kind::Number).expect("a number to edit");
-    app.fields[number].edit = TextEdit::new("lots");
+    let number = app.palette.fields.iter().position(|f| f.key == "elevation").expect("a level has an elevation to edit");
+    app.palette.fields[number].edit = TextEdit::new("lots");
     let before = app.revision;
     assert!(!app.commit_field(number));
-    assert!(app.message.as_deref().is_some_and(|m| m.contains("not a number")), "{:?}", app.message);
+    assert!(app.message.as_deref().is_some_and(|m| m.contains("not a length")), "{:?}", app.message);
     assert_eq!(app.revision, before, "nothing was asked of the engine");
     assert!(!app.commit_field(999), "a field that is not there asks nothing");
 }
@@ -577,4 +580,43 @@ fn shift_keeps_the_step_from_the_last_point_horizontal_or_vertical() {
     app.hover(x, y);
     let l = app.landing.as_ref().expect("a landing");
     assert!(l.at.dist(P2(-25000.0, -30000.0)) < 20.0, "straight east of the last point: {:?}", l.at);
+}
+
+#[test]
+fn escape_closes_the_palettes_open_list_before_it_clears_the_selection() {
+    let mut app = App::sample();
+    let (_, _, id) = pickable(&app).expect("a pickable point");
+    app.select(vec![id]);
+    app.open_list("level");
+    assert_eq!(app.palette.open, Some("level"));
+    app.open_list("level");
+    assert_eq!(app.palette.open, None, "the same list again closes it");
+    app.open_list("level");
+    assert!(app.escape());
+    assert_eq!(app.palette.open, None);
+    assert_eq!(app.selection, vec![id], "the selection stays");
+    assert!(app.escape());
+    assert!(app.selection.is_empty());
+}
+
+#[test]
+fn a_group_folds_by_its_name_and_edit_type_opens_the_type_of_the_element_it_is_given() {
+    let mut app = App::sample();
+    app.fold("Constraints");
+    assert!(app.palette.folded.contains("Constraints"));
+    app.fold("Constraints");
+    assert!(app.palette.folded.is_empty());
+    let typed = app
+        .session
+        .model
+        .elements
+        .iter()
+        .map(|(id, _)| *id)
+        .find(|id| crate::typeprops::of_element(&app.session.model, *id).is_some())
+        .expect("an element with a type");
+    app.edit_type(typed);
+    assert!(app.dialogs.types.is_some(), "its Type Properties open");
+    let mut other = App::sample();
+    other.edit_type(1);
+    assert!(other.dialogs.types.is_none() && other.message.is_some(), "an id that is no element says so in the status bar");
 }

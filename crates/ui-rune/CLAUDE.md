@@ -54,8 +54,8 @@ One line per module. A new module adds its line here, not to the root.
   camera has been still for `SETTLE` (`settle_if_still`, from `ui::poll`) or something needs the exact drawing (a release, a command).
 - `ui/`: the elements, a function of `App`: `mod.rs` the window (laid out by profile) and its keys, `plan.rs` the canvas (the drawing kept as
   one element while it is the same, the pointer and wheel handlers, the primary button's click and box, the middle button's pan, the hover, selection and box layers), `topbar.rs` (Open and Save through
-  the system's file dialogs, Undo, Redo, the zoom buttons), `tools.rs` the BIMCraft profile's palette, `ribbon.rs` Rev's, `properties.rs` (the rows, and a
-  `rune_kit::TextInput` for each field the core may take a `modify` of), `browser.rs` (the levels), `status_bar.rs`.
+  the system's file dialogs, Undo, Redo, the zoom buttons), `tools.rs` the BIMCraft profile's palette, `ribbon.rs` Rev's, `properties.rs` (the palette: the panel's groups, each folded by its header;
+  `properties/editors.rs` a row's editor: text, a field, a check box, a list opened in place, a link; `properties/selector.rs` the Type Selector and Edit Type), `browser.rs` (the levels), `status_bar.rs`.
 - `profile.rs`: the two profiles (BIMCraft's palette, Rev's ribbon), one table drawn two ways. `project.rs`: where a project comes from
   (`--sample`, `--highrise`, a file through the core's `open`) and what the arguments ask. `tools.rs`: the table of tools both profiles draw.
 - `select.rs`: what a click or a box does to the selection (`How`: replace, add, take away; `Rubber`, the box being dragged, a window
@@ -75,7 +75,10 @@ One line per module. A new module adds its line here, not to the root.
 - `tempdim.rs`: the temporary dimensions of the element selected alone as data (`dims`: a wall's length and clearances, an opening's stretches, a standing element's four) and `apply`, the command a typed
   length makes; `app/tempdim.rs`: the dimensions and the numbers typed into them (`App::temp`, `commit_dim`); `paint/dims.rs`: where each stands and its strokes; `ui/tempdim.rs`: the layer and a `TextInput` at each line's middle.
 - `camera.rs`: pan, zoom and Zoom In Region of the plan, in the core's `View` (the history Previous Pan/Zoom walks back is `App`'s). `paint.rs`: a `Drawing`'s primitives as Rune shapes (dashes split,
-  lettering through `text::triangles`, what cannot be drawn counted). `props.rs`: the Properties rows from `element_json`.
+  lettering through `text::triangles`, what cannot be drawn counted). `props.rs` and `props/`: the Properties palette's logic with no window ([the palette](../../docs/areas/rune-ui-properties.md)): `kind.rs` the editor
+  kinds, shown and typed in the project's units; `table.rs` the rows of each category as data; `names.rs` the categories' names; `panel.rs` `Panel::of`, the groups,
+  rows and editors a selection has (values shared or blank); `apply.rs` what an edit becomes (`modify`, or `crop`); `types.rs` the Type Selector's list; `view.rs` the plan's own Graphics rows.
+  `app/properties.rs`: the palette's slice of `App` (the panel, the text typed, what is folded or open, the handlers a row calls, the seams for dialogs).
   `status.rs`: the status line. `lang.rs`: `t`, `tf`, `tc` over `translations/ui/*.po`, the catalogs egui reads.
 - `forms.rs`: the generic command form, pure: a command's params doc (`Command::params`) read as typed fields (`Form::of`) and what is typed read back as its JSON
   (`Form::params`), every number and list capped; swept over every command by a test. `finder.rs`: Find (Ctrl+K), pure: the tools, commands and levels that have the words typed.
