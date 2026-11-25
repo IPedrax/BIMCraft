@@ -33,9 +33,12 @@ pub fn view(s: &App, _: &mut Cx<App>) -> El {
     col().key("root").w_full().h_full().fill(th.bg).child(topbar::bar(s, &th)).children(top).child(middle).child(status_bar::bar(s, &th))
 }
 
-/// Delete deletes the selection; Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y do again (Cmd on a Mac).
+/// Delete deletes the selection; Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y do again (Cmd on a Mac); Tab and Shift+Tab step through what
+/// lies under the pointer; Escape puts the tool down, then clears the selection. A key none of these takes goes on to the window.
 pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
     match (&key.key, key.mods.cmd, key.mods.shift) {
+        (Key::Tab, false, back) => return s.step(back),
+        (Key::Escape, false, _) => return s.escape(),
         (Key::Delete, false, _) => {
             s.delete_selection();
         }

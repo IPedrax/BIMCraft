@@ -12,6 +12,7 @@ use crate::camera::Camera;
 use crate::profile::Profile;
 use crate::project::{self, Start};
 use crate::props::{self, Kind, Row};
+use crate::select::{self, How, Rubber};
 use crate::status;
 
 /// How near a click or a hover must be to a line to take it, points.
@@ -69,6 +70,12 @@ pub struct App {
     /// Counts the drawings made: what the canvas's kept shapes are keyed by.
     pub revision: u64,
     pub hovered: Option<Id>,
+    /// Everything drawn under the pointer in the order `Drawing::pick_all` prefers it, and which of them Tab has reached: the one
+    /// that is hovered, and that a click takes.
+    pub under: Vec<Id>,
+    cycle: usize,
+    /// The box being dragged out over the plan, while the press that makes it is held.
+    pub rubber: Option<Rubber>,
     /// The tool picked in the Tools palette, by its id in `tools::TOOLS`.
     pub tool: Option<&'static str>,
     pub selection: Vec<Id>,
@@ -103,6 +110,9 @@ impl App {
             drawing: None,
             revision: 0,
             hovered: None,
+            under: Vec::new(),
+            cycle: 0,
+            rubber: None,
             tool: None,
             selection: Vec::new(),
             cursor: None,
@@ -147,6 +157,8 @@ impl App {
         self.levels = levels.iter().map(|(id, l)| (*id, l.name.clone())).collect();
         self.selection.retain(|id| self.session.model.elements.get(*id).is_some());
         self.hovered = self.hovered.filter(|id| self.session.model.elements.get(*id).is_some());
+        self.under.retain(|id| self.session.model.elements.get(*id).is_some());
+        self.cycle = self.cycle.min(self.under.len().saturating_sub(1));
         self.refresh();
         self.fit();
         self.redraw();
@@ -205,11 +217,40 @@ impl App {
     /// The pointer is at `x`, `y` over the plan.
     pub fn hover(&mut self, x: f32, y: f32) {
         self.cursor = (x.is_finite() && y.is_finite()).then_some((x, y));
-        self.hovered = self.cursor.and_then(|(x, y)| self.pick(x, y));
+        self.under = match (self.cursor, &self.drawing) {
+            (Some(at), Some(d)) => d.pick_all(at, REACH),
+            _ => Vec::new(),
+        };
+        self.cycle = 0;
+        self.hovered = self.under.first().copied();
     }
 
     pub fn leave(&mut self) {
-        (self.cursor, self.hovered) = (None, None);
+        (self.cursor, self.hovered, self.cycle) = (None, None, 0);
+        self.under.clear();
+    }
+
+    /// Tab (`back` for Shift+Tab): on to the next element under the pointer, which a click then takes. False when fewer than two lie
+    /// there, so the key is free for something else.
+    pub fn step(&mut self, back: bool) -> bool {
+        let n = self.under.len();
+        if n < 2 {
+            return false;
+        }
+        self.cycle = if back { (self.cycle + n - 1) % n } else { (self.cycle + 1) % n };
+        self.hovered = self.under.get(self.cycle).copied();
+        true
+    }
+
+    /// Escape: puts down the tool in hand, else clears the selection. False when there was nothing to do.
+    pub fn escape(&mut self) -> bool {
+        if self.tool.take().is_some() {
+            return true;
+        }
+        let some = !self.selection.is_empty();
+        self.selection.clear();
+        self.refresh();
+        some
     }
 
     /// The pointer's place on the plan in model millimetres.
@@ -241,10 +282,39 @@ impl App {
         self.redraw();
     }
 
-    /// The press ended at `x`, `y` after travelling `dx`, `dy`: a click if it hardly moved, which picks.
-    pub fn release(&mut self, x: f32, y: f32, dx: f32, dy: f32) {
-        if dx.hypot(dy) <= CLICK {
-            self.select_at(x, y);
+    /// The primary button is dragging, from `from` to `to`: with nothing in hand it drags out a box over the plan; with a tool in
+    /// hand the plan follows, as the tools do not take the button yet.
+    pub fn sweep(&mut self, from: (f32, f32), to: (f32, f32)) {
+        if ![from.0, from.1, to.0, to.1].iter().all(|v| v.is_finite()) {
+            return;
+        }
+        if self.tool.is_some() {
+            // ponytail: shortcut: a tool in hand pans on the primary button, the middle one's job, until the tools take it (slice 3.3).
+            self.drag(to.0 - from.0, to.1 - from.1);
+        } else if (to.0 - from.0).hypot(to.1 - from.1) > CLICK {
+            self.rubber = Some(Rubber { from, to });
+        }
+    }
+
+    /// The press that was dragging a box is given up (Escape, or the pointer taken away): nothing is selected.
+    pub fn cancel_press(&mut self) {
+        self.rubber = None;
+    }
+
+    /// The press that began at `from` ended at `to`: a click if it hardly moved, which picks; else the box it dragged out takes what
+    /// it holds, or what it touches when it went right to left. `how` says what is done with what was taken.
+    pub fn release(&mut self, from: (f32, f32), to: (f32, f32), how: How) {
+        let band = self.rubber.take();
+        if ![from.0, from.1, to.0, to.1].iter().all(|v| v.is_finite()) {
+            return;
+        }
+        if (to.0 - from.0).hypot(to.1 - from.1) <= CLICK {
+            self.select_at(to.0, to.1, how);
+        } else if band.is_some() {
+            let r = Rubber { from, to };
+            let found = self.drawing.as_ref().map(|d| d.in_box(r.from, r.to, r.crossing())).unwrap_or_default();
+            select::apply(&mut self.selection, found, how);
+            self.refresh();
         }
     }
 
@@ -254,9 +324,12 @@ impl App {
         self.refresh();
     }
 
-    /// Selects what is at the point, or nothing.
-    pub fn select_at(&mut self, x: f32, y: f32) {
-        self.selection = self.pick(x, y).into_iter().collect();
+    /// Takes what is at the point into the selection, or nothing. Where the pointer has been hovering the element Tab reached is the
+    /// one a click takes, not merely the nearest.
+    pub fn select_at(&mut self, x: f32, y: f32, how: How) {
+        let hovering = self.cursor.is_some_and(|(cx, cy)| (cx - x).abs() < 0.5 && (cy - y).abs() < 0.5);
+        let found = if hovering { self.hovered } else { self.pick(x, y) };
+        select::apply(&mut self.selection, found.into_iter().collect(), how);
         self.refresh();
     }
 
@@ -282,7 +355,8 @@ impl App {
         }
         (self.fitted, self.moved) = (false, false);
         self.selection.clear();
-        self.hovered = None;
+        (self.hovered, self.rubber, self.cycle) = (None, None, 0);
+        self.under.clear();
         self.level = Some(id);
         self.settle();
     }
@@ -406,13 +480,160 @@ mod tests {
     fn a_click_selects_what_it_hits_and_shows_its_properties() {
         let mut app = App::sample();
         let (x, y, id) = pickable(&app).expect("a pickable point");
-        app.release(x, y, 1.0, 1.0);
+        app.release((x - 1.0, y - 1.0), (x, y), How::Replace);
         assert_eq!(app.selection, vec![id]);
         assert!(app.props.iter().any(|r| r.name == "id" && r.value == id.to_string()), "{:?}", app.props);
-        app.release(x, y, 40.0, 0.0);
-        assert_eq!(app.selection, vec![id], "a drag is not a click");
-        app.select_at(-1000.0, -1000.0);
+        app.release((x - 40.0, y), (x, y), How::Replace);
+        assert_eq!(app.selection, vec![id], "a drag that drew no box is not a click");
+        app.select_at(-1000.0, -1000.0, How::Replace);
         assert!(app.selection.is_empty() && app.props.is_empty());
+    }
+
+    /// Two points of the canvas that pick different elements.
+    fn two_distinct(app: &App) -> Option<((f32, f32, Id), (f32, f32, Id))> {
+        let (w, h) = app.size;
+        let mut first: Option<(f32, f32, Id)> = None;
+        for y in (0..(h as u32)).step_by(6) {
+            for x in (0..(w as u32)).step_by(6) {
+                let (x, y) = (x as f32, y as f32);
+                let Some(id) = app.pick(x, y) else { continue };
+                match first {
+                    None => first = Some((x, y, id)),
+                    Some(a) if a.2 != id => return Some((a, (x, y, id))),
+                    Some(_) => {}
+                }
+            }
+        }
+        None
+    }
+
+    /// A point with more than one element under it, as a door in a wall is.
+    fn stacked(app: &App) -> Option<(f32, f32)> {
+        let (w, h) = app.size;
+        let d = app.drawing.as_ref()?;
+        (0..(h as u32))
+            .step_by(3)
+            .flat_map(|y| (0..(w as u32)).step_by(3).map(move |x| (x as f32, y as f32)))
+            .find(|&p| d.pick_all(p, REACH).len() >= 2)
+    }
+
+    #[test]
+    fn ctrl_adds_shift_takes_away_and_a_plain_click_replaces() {
+        let mut app = App::sample();
+        let ((ax, ay, a), (bx, by, b)) = two_distinct(&app).expect("two things to pick");
+        app.select_at(ax, ay, How::Replace);
+        app.select_at(bx, by, How::Add);
+        assert_eq!(app.selection, vec![a, b]);
+        app.select_at(ax, ay, How::Add);
+        assert_eq!(app.selection, vec![a, b], "adding what is there adds nothing");
+        app.select_at(ax, ay, How::Remove);
+        assert_eq!(app.selection, vec![b]);
+        app.select_at(-1000.0, -1000.0, How::Add);
+        app.select_at(-1000.0, -1000.0, How::Remove);
+        assert_eq!(app.selection, vec![b], "nothing under the pointer changes nothing");
+        app.select_at(ax, ay, How::Replace);
+        assert_eq!(app.selection, vec![a]);
+    }
+
+    #[test]
+    fn a_box_left_to_right_takes_what_it_holds_and_right_to_left_what_it_touches() {
+        let mut app = App::sample();
+        let (w, h) = app.size;
+        let half = (w / 2.0, h);
+        app.sweep((0.0, 0.0), half);
+        assert_eq!(app.rubber, Some(Rubber { from: (0.0, 0.0), to: half }), "the box shows while the press is held");
+        app.release((0.0, 0.0), half, How::Replace);
+        assert!(app.rubber.is_none(), "the box is gone once the press ends");
+        let window = app.selection.clone();
+        app.sweep(half, (0.0, 0.0));
+        app.release(half, (0.0, 0.0), How::Replace);
+        let crossing = app.selection.clone();
+        assert!(!window.is_empty(), "the left half of the plan holds something whole");
+        assert!(window.iter().all(|id| crossing.contains(id)), "what a window holds, a crossing box touches");
+        assert!(crossing.len() > window.len(), "and what lies across the middle only a crossing box takes: {window:?} v {crossing:?}");
+    }
+
+    #[test]
+    fn a_box_adds_and_takes_away_like_a_click() {
+        let mut app = App::sample();
+        let ((ax, ay, a), _) = two_distinct(&app).expect("two things to pick");
+        let (w, h) = app.size;
+        let held = app.drawing.as_ref().map(|d| d.in_box((0.0, 0.0), (w, h), false)).unwrap_or_default();
+        assert!(held.len() > 1, "a box over the whole canvas holds something");
+        app.select_at(ax, ay, How::Replace);
+        app.sweep((0.0, 0.0), (w, h));
+        app.release((0.0, 0.0), (w, h), How::Add);
+        assert_eq!(app.selection.first(), Some(&a), "what was selected stays first");
+        assert!(held.iter().all(|id| app.selection.contains(id)), "and the box added what it held");
+        app.sweep((0.0, 0.0), (w, h));
+        app.release((0.0, 0.0), (w, h), How::Remove);
+        assert!(app.selection.iter().all(|id| !held.contains(id)), "the same box with Shift takes all of it away again");
+    }
+
+    #[test]
+    fn with_a_tool_in_hand_the_primary_drag_pans_and_draws_no_box() {
+        let mut app = App::sample();
+        app.set_tool("wall");
+        let before = app.camera;
+        app.grab();
+        app.sweep((100.0, 100.0), (130.0, 110.0));
+        assert!(app.rubber.is_none());
+        assert_ne!(app.camera, before, "the plan followed the pointer");
+    }
+
+    #[test]
+    fn tab_steps_through_what_lies_under_the_pointer_and_a_click_takes_the_one_it_reached() {
+        let mut app = App::sample();
+        let (x, y) = stacked(&app).expect("elements lie over one another in the house");
+        app.hover(x, y);
+        let under = app.under.clone();
+        assert_eq!(app.hovered, under.first().copied(), "the nearest first");
+        assert!(app.step(false));
+        assert_eq!(app.hovered, Some(under[1]));
+        app.select_at(x, y, How::Replace);
+        assert_eq!(app.selection, vec![under[1]], "a click takes what Tab reached");
+        for _ in 1..under.len() {
+            app.step(false);
+        }
+        assert_eq!(app.hovered, under.first().copied(), "past the last it comes round");
+        assert!(app.step(true));
+        assert_eq!(app.hovered, under.last().copied(), "Shift+Tab goes back, round the other end");
+        app.hover(x + 0.1, y);
+        assert_eq!(app.hovered, app.under.first().copied(), "a move starts over from the nearest");
+        app.leave();
+        assert!(app.under.is_empty() && !app.step(false), "with the pointer gone there is nothing to step through");
+    }
+
+    #[test]
+    fn escape_puts_down_the_tool_then_clears_the_selection() {
+        let mut app = App::sample();
+        let (x, y, _) = pickable(&app).expect("a pickable point");
+        app.select_at(x, y, How::Replace);
+        app.set_tool("wall");
+        assert!(app.escape());
+        assert!(app.tool.is_none() && !app.selection.is_empty(), "the tool goes first");
+        assert!(app.escape());
+        assert!(app.selection.is_empty());
+        assert!(!app.escape(), "with nothing in hand and nothing selected the key is free");
+    }
+
+    #[test]
+    fn a_box_or_a_click_with_hostile_numbers_selects_nothing_and_leaves_no_band() {
+        let mut app = App::sample();
+        let (x, y, id) = pickable(&app).expect("a pickable point");
+        app.select_at(x, y, How::Replace);
+        app.sweep((f32::NAN, 0.0), (10.0, 10.0));
+        app.sweep((0.0, 0.0), (f32::INFINITY, 10.0));
+        assert!(app.rubber.is_none());
+        app.sweep((0.0, 0.0), (200.0, 200.0));
+        assert!(app.rubber.is_some());
+        app.release((0.0, 0.0), (f32::NAN, 1.0), How::Replace);
+        assert!(app.rubber.is_none());
+        assert_eq!(app.selection, vec![id], "nothing was taken");
+        app.sweep((0.0, 0.0), (200.0, 200.0));
+        app.cancel_press();
+        assert!(app.rubber.is_none());
+        assert_eq!(app.selection, vec![id], "a cancelled press selects nothing");
     }
 
     #[test]
@@ -438,7 +659,7 @@ mod tests {
     fn deleting_goes_through_the_engine_and_undo_brings_the_element_back() {
         let mut app = App::sample();
         let (x, y, id) = pickable(&app).expect("a pickable point");
-        app.select_at(x, y);
+        app.select_at(x, y, How::Replace);
         assert!(app.session.model.elements.get(id).is_some());
         assert!(app.delete_selection(), "refused: {:?}", app.message);
         assert!(app.session.model.elements.get(id).is_none(), "the engine deleted it");

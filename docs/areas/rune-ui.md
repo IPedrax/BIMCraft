@@ -10,17 +10,18 @@ crate: [crates/ui-rune/CLAUDE.md](../../crates/ui-rune/CLAUDE.md).
 Why: egui is immediate mode and repaints the whole interface when the pointer moves, which pins a CPU on a machine with no graphics
 card (PR 628 measured 1.78 of 2 cores on a Windows VM on WARP). Rune keeps a retained tree and redraws what changed.
 
-## What is built (stages 0 and 1, and the first slice of 2)
+## What is built (stages 0 and 1, the first slice of 2, and the first of 3)
 
 A window of the sample house that works end to end, small on purpose:
 
 | Module | What it does | Tests |
 |---|---|---|
-| `app.rs` | the state and what its handlers do; the only place that meets the core (`render::draw`, `Drawing::pick`, `Session::execute` for every change: `delete`, `undo`, `redo`, `modify`, `open`, `save`) | 11, no window |
-| `ui/` | the plan canvas, the top bar (Open and Save through the system's file dialogs, Undo, Redo), the Tools palette or the ribbon, Properties (a `rune_kit::TextInput` for each field the core may take a `modify` of), the browser of levels, the status bar, as functions of `App` | 10, Rune's headless `Runtime` (dialogs answered by the test) |
+| `app.rs` | the state and what its handlers do; the only place that meets the core (`render::draw`, `Drawing::pick`, `Session::execute` for every change: `delete`, `undo`, `redo`, `modify`, `open`, `save`) | 18, no window |
+| `ui/` | the plan canvas, the top bar (Open and Save through the system's file dialogs, Undo, Redo), the Tools palette or the ribbon, Properties (a `rune_kit::TextInput` for each field the core may take a `modify` of), the browser of levels, the status bar, as functions of `App` | 14, Rune's headless `Runtime` (dialogs answered by the test) |
 | `project.rs`, `profile.rs` | where a project comes from (`--sample`, `--highrise`, a file through `open`), and the two profiles of one app: BIMCraft's palette, Rev's ribbon | 2 |
 | `camera.rs` | pan and zoom in the core's `View`, hostile numbers refused | 4 |
-| `paint.rs` | a `Drawing` as Rune shapes: strokes, polygons, dashes split, lettering through `text::triangles`, colours in linear light | 6 |
+| `select.rs` | what a click or a box does to the selection: Ctrl adds, Shift takes away, a plain pick replaces; a box left to right takes what it holds, right to left what it touches (stage 3, slice 1) | 3 |
+| `paint.rs` | a `Drawing` as Rune shapes: strokes, polygons, dashes split, lettering through `text::triangles`, colours in linear light, the box being dragged | 7 |
 | `tools.rs` | the table of tools both profiles draw (the seed of the shared registry below) | 2 |
 | `props.rs`, `status.rs` | the Properties rows and editable fields from `element_json`, what a typed value becomes; the status line | 3, 3 |
 | `lang.rs` | `t`, `tf`, `tc` over the catalogs egui reads (`translations/ui/*.po`), English fallback | 3 |
@@ -312,6 +313,16 @@ copy keeps merging until then):
 | 4 | the dialogs and managers, most used first: Type Properties, Settings, Materials, Parameters, Visibility/Graphics, Phasing | each from a form schema |
 | 5 | the 3D view, sheets and schedules on screen, export and print | the sample house exports and prints from Rune |
 | 6 | the Family Editor, the MEP and structure tabs, Co-Work, the Assistant, PyAddins, Plugins, Building Codes | parity: the registry test passes with no entry missing |
+
+**Stage 3 so far.** Slice 1, selection, is written and waits for CI (`select.rs`, `App::sweep`, `release`, `step`, `escape`, the box layer in
+`ui/plan.rs`): a click replaces the selection, Ctrl adds and Shift takes away (read as `tx.mods()`); a drag with nothing in hand draws a
+box, solid and blue left to right (what it holds), dashed and green right to left (what it touches), through the core's `Drawing::in_box`;
+Tab and Shift+Tab step through `Drawing::pick_all` at the pointer and a click takes the one Tab reached; Escape puts the tool down, then
+clears the selection. The middle button pans (`El::pointer_buttons`), as in egui, so the primary drag no longer does, except while a tool is
+in hand (a placeholder until the tools take the button). Not in the slice: the Filter dialog (stage 4), grips, snapping and its guides,
+temporary dimensions, the Draw and Modify tools, the context menu, sections and zoom regions, and the live camera (`live_offset`,
+`live_scale`) that the wheel and the pan need to stop drawing the plan again on every event. The tools and grips lean on the tool state
+machines, which are still inside egui's `canvas.rs` (extraction 4 above), so they wait on that pull request.
 
 Before Rune becomes the default, one run on a machine with no graphics card must show it cheaper than egui on that machine with PR 628's
 join, on a big project (the tower sample), not only the sample house, and a person must have used it for a day of real work. Until

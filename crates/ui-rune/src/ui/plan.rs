@@ -1,14 +1,15 @@
 //! The plan canvas. The drawing's shapes are one element kept while the drawing is the same (`memo`, keyed by the drawing's
 //! revision and the canvas's size), so a pointer that only moves over it re-runs nothing but the small layer that lights what is
 //! under it. The canvas itself is the element that hears the pointer, the wheel and the drag; the layers are inert, so the
-//! events reach it through them.
+//! events reach it through them. The primary button picks (a click) or drags out a box; the middle button pans.
 
 use std::collections::HashSet;
 
-use rune::{El, Phase, Shape, canvas, el, memo};
+use rune::{El, Phase, PointerButton, Shape, canvas, el, memo};
 
 use crate::app::{App, PlanMode};
 use crate::paint::{self, Palette};
+use crate::select::How;
 
 fn layer(key: &'static str, shape: Shape) -> El {
     canvas(shape).key(key).inert().pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
@@ -30,6 +31,10 @@ pub fn plan(s: &App) -> El {
         Some(d) => layer(key, paint::lit(d, size, owners, color, fill).shape),
         None => layer(key, Shape::new()),
     };
+    let band = match &s.rubber {
+        Some(r) => layer("plan-rubber", paint::rubber(r, &pal).shape),
+        None => layer("plan-rubber", Shape::new()),
+    };
     el().key("plan")
         .grow(1.0)
         .min_w(0.0)
@@ -47,12 +52,23 @@ pub fn plan(s: &App) -> El {
             s.zoom(e.x, e.y, (e.dy * 0.002).exp());
             true
         })
-        .on_drag(|s: &mut App, d, _| match d.phase {
-            Phase::Down => s.grab(),
-            Phase::Move => s.drag(d.dx, d.dy),
-            Phase::Up => s.release(d.x, d.y, d.dx, d.dy),
+        .pointer_buttons([PointerButton::Middle])
+        .on_drag(|s: &mut App, d, tx| {
+            let (from, to) = ((d.start_x, d.start_y), (d.x, d.y));
+            match (tx.button(), d.phase) {
+                (PointerButton::Middle, Phase::Move) => s.drag(d.dx, d.dy),
+                (PointerButton::Middle, Phase::Up) => {}
+                (_, Phase::Down) => s.grab(),
+                (_, Phase::Move) => s.sweep(from, to),
+                (_, Phase::Up) if d.cancelled() => s.cancel_press(),
+                (_, Phase::Up) => {
+                    let m = tx.mods();
+                    s.release(from, to, How::of(m.shift, m.cmd));
+                }
+            }
         })
         .child(base)
         .child(lit("plan-selected", &selected, pal.accent, pal.accent_fill))
         .child(lit("plan-hovered", &hovered, pal.hover, pal.hover_fill))
+        .child(band)
 }

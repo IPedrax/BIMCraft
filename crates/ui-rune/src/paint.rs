@@ -9,6 +9,8 @@ use bimcraft_core::ids::Id;
 use bimcraft_core::render::{Drawing, Part, Prim, Rgb};
 use rune::{Color, LineCap, Shape};
 
+use crate::select::Rubber;
+
 /// The most strokes one dashed line may split into: a hostile pattern (a dash of a millionth of a point) draws a line, not a hang.
 const MAX_DASHES: usize = 20_000;
 /// The thinnest a stroke is drawn, points: a hairline that would fall between pixels still shows.
@@ -22,6 +24,11 @@ pub struct Palette {
     pub accent_fill: Color,
     pub hover: Color,
     pub hover_fill: Color,
+    /// The box dragged left to right (a window) and right to left (crossing), as Revit tints them: blue and green.
+    pub window: Color,
+    pub window_fill: Color,
+    pub crossing: Color,
+    pub crossing_fill: Color,
 }
 
 impl Palette {
@@ -32,6 +39,10 @@ impl Palette {
             accent_fill: rgba8(255, 170, 40, 90),
             hover: rgb8(120, 200, 255),
             hover_fill: rgba8(120, 200, 255, 60),
+            window: rgb8(90, 150, 255),
+            window_fill: rgba8(90, 150, 255, 45),
+            crossing: rgb8(90, 210, 120),
+            crossing_fill: rgba8(90, 210, 120, 45),
         }
     }
 }
@@ -151,6 +162,30 @@ pub fn lit(d: &Drawing, size: (f32, f32), owners: &HashSet<Id>, color: Color, fi
     paint(d, size, |owner, _| owner.is_some_and(|o| owners.contains(&o)), |_, filled| if filled { fill } else { color }, HAIRLINE * 2.5)
 }
 
+/// The box being dragged out over the plan: a tinted rectangle with a solid edge for a window and a dashed one for a crossing box.
+/// A box with a corner that is no number paints nothing.
+pub fn rubber(r: &Rubber, pal: &Palette) -> Painted {
+    // Checked before the min and max, which would hide a NaN behind the other corner.
+    if ![r.from.0, r.from.1, r.to.0, r.to.1].iter().all(|v| v.is_finite()) {
+        return Painted { shape: Shape::new(), pieces: 0, skipped: 0 };
+    }
+    let ([x0, y0], [x1, y1]) = ([r.from.0.min(r.to.0), r.from.1.min(r.to.1)], [r.from.0.max(r.to.0), r.from.1.max(r.to.1)]);
+    let ring = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)];
+    let (edge, fill) = if r.crossing() { (pal.crossing, pal.crossing_fill) } else { (pal.window, pal.window_fill) };
+    let mut shape = Shape::new().fill(points(&ring), fill);
+    let mut pieces = 1;
+    if r.crossing() {
+        for run in dashes(&ring, true, &[6.0, 4.0]) {
+            shape = shape.stroke_with(points(&run), false, 1.0, LineCap::Butt, edge);
+            pieces += 1;
+        }
+    } else {
+        shape = shape.stroke_with(points(&ring), true, 1.0, LineCap::Butt, edge);
+        pieces += 1;
+    }
+    Painted { shape, pieces, skipped: 0 }
+}
+
 fn paint(
     d: &Drawing,
     size: (f32, f32),
@@ -256,6 +291,19 @@ mod tests {
         assert!(!reaches(&[(200.0, 10.0), (300.0, 20.0)], size, 1.0));
         assert!(!reaches(&[(f32::NAN, 0.0), (1.0, 1.0)], size, 1.0));
         assert!(!reaches(&[], size, 1.0));
+    }
+
+    #[test]
+    fn a_window_box_has_a_solid_edge_a_crossing_box_a_dashed_one_and_a_bad_box_nothing() {
+        let pal = Palette::dark();
+        let window = rubber(&Rubber { from: (10.0, 10.0), to: (210.0, 110.0) }, &pal);
+        assert_eq!(window.pieces, 2, "its tint and its edge");
+        let crossing = rubber(&Rubber { from: (210.0, 10.0), to: (10.0, 110.0) }, &pal);
+        assert!(crossing.pieces > 2, "its tint and an edge cut into dashes: {}", crossing.pieces);
+        for bad in [(f32::NAN, 0.0), (0.0, f32::INFINITY)] {
+            assert_eq!(rubber(&Rubber { from: bad, to: (5.0, 5.0) }, &pal).pieces, 0);
+        }
+        assert_eq!(rubber(&Rubber { from: (5.0, 5.0), to: (5.0, 5.0) }, &pal).pieces, 2, "a box with no size still draws, as a point");
     }
 
     #[test]

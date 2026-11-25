@@ -1,7 +1,7 @@
 //! The window driven as a person drives it, headless: Rune's own `Runtime` on the app's real state and view, with a pointer, a
 //! wheel and presses at window points, and the elements read back (`Runtime::elements`).
 
-use rune::{Env, Runtime, WheelEvent};
+use rune::{Env, Key, KeyEvent, Mods, PhysicalInput, PointerButton, Runtime, WheelEvent};
 
 use super::view;
 use crate::app::App;
@@ -190,4 +190,103 @@ fn the_properties_of_a_selected_level_have_fields_that_edit_through_the_engine()
     }
     assert!(!rt.state.fields.is_empty());
     assert!(rt.elements().iter().any(|e| e.role == "textbox"), "a field is a text box to a screen reader");
+}
+
+/// Holds the modifier keys down (or lets them go, with `Mods::default()`) for the pointer events that follow.
+fn hold(rt: &mut Runtime<App>, mods: Mods) {
+    rt.physical_input(PhysicalInput::Modifiers(mods));
+}
+
+/// Two points of the window over different elements, with what each picks.
+fn two_over(rt: &Runtime<App>) -> Option<(((f32, f32), u64), ((f32, f32), u64))> {
+    let (ox, oy) = plan_origin(rt)?;
+    let (w, h) = rt.state.size;
+    let mut first: Option<((f32, f32), u64)> = None;
+    for y in (0..(h as u32)).step_by(6) {
+        for x in (0..(w as u32)).step_by(6) {
+            let Some(id) = rt.state.pick(x as f32, y as f32) else { continue };
+            let at = (ox + x as f32, oy + y as f32);
+            match first {
+                None => first = Some((at, id)),
+                Some(a) if a.1 != id => return Some((a, (at, id))),
+                Some(_) => {}
+            }
+        }
+    }
+    None
+}
+
+#[test]
+fn a_drag_over_the_plan_draws_a_box_and_the_release_selects_what_it_holds_and_pans_nothing() {
+    let mut rt = window();
+    let (ox, oy) = plan_origin(&rt).expect("the plan");
+    let (w, h) = rt.state.size;
+    let camera = rt.state.camera;
+    rt.pointer_down(ox + 4.0, oy + 4.0);
+    rt.pointer_move(ox + w - 4.0, oy + h - 4.0);
+    rt.frame(0.0);
+    assert!(rt.state.rubber.is_some(), "the box shows while the button is held");
+    rt.pointer_up(ox + w - 4.0, oy + h - 4.0);
+    rt.frame(0.0);
+    assert!(rt.state.rubber.is_none(), "and goes when it is let go");
+    assert!(rt.state.selection.len() > 1, "a box over the whole plan takes what it holds: {:?}", rt.state.selection);
+    assert_eq!(rt.state.camera, camera, "a drag with nothing in hand no longer pans");
+}
+
+#[test]
+fn a_ctrl_click_adds_and_a_shift_click_takes_away() {
+    let mut rt = window();
+    let ((pa, a), (pb, b)) = two_over(&rt).expect("two things to click");
+    tap(&mut rt, pa);
+    assert_eq!(rt.state.selection, vec![a]);
+    hold(&mut rt, Mods { cmd: true, ctrl: true, ..Mods::default() });
+    tap(&mut rt, pb);
+    assert_eq!(rt.state.selection, vec![a, b], "Ctrl adds");
+    hold(&mut rt, Mods { shift: true, ..Mods::default() });
+    tap(&mut rt, pa);
+    assert_eq!(rt.state.selection, vec![b], "Shift takes away");
+    hold(&mut rt, Mods::default());
+    tap(&mut rt, pa);
+    assert_eq!(rt.state.selection, vec![a], "a plain click replaces");
+}
+
+#[test]
+fn the_middle_button_pans_the_plan() {
+    let mut rt = window();
+    let (ox, oy) = plan_origin(&rt).expect("the plan");
+    let (x, y) = (ox + 300.0, oy + 200.0);
+    let before = rt.state.camera;
+    rt.button_down(x, y, PointerButton::Middle);
+    rt.pointer_move(x + 40.0, y + 10.0);
+    rt.button_up(x + 40.0, y + 10.0, PointerButton::Middle);
+    rt.frame(0.0);
+    let after = rt.state.camera;
+    assert_eq!(after.scale, before.scale);
+    assert!(after.cx != before.cx && after.cy != before.cy, "the plan followed the pointer: {before:?} -> {after:?}");
+    assert!(rt.state.rubber.is_none() && rt.state.selection.is_empty(), "a middle drag picks and boxes nothing");
+}
+
+#[test]
+fn tab_steps_through_what_is_under_the_pointer_and_escape_clears() {
+    let mut rt = window();
+    rt.on_key = Some(super::on_key);
+    let (ox, oy) = plan_origin(&rt).expect("the plan");
+    let (w, h) = rt.state.size;
+    let d = rt.state.drawing.as_ref().expect("a drawing");
+    let (x, y) = (0..(h as u32))
+        .step_by(3)
+        .flat_map(|y| (0..(w as u32)).step_by(3).map(move |x| (x as f32, y as f32)))
+        .find(|&p| d.pick_all(p, 4.0).len() >= 2)
+        .expect("elements lie over one another in the house");
+    rt.pointer_move(ox + x, oy + y);
+    rt.frame(0.0);
+    let second = *rt.state.under.get(1).expect("two or more under the pointer");
+    rt.key(KeyEvent { key: Key::Tab, mods: Mods::default() });
+    rt.frame(0.0);
+    assert_eq!(rt.state.hovered, Some(second), "Tab goes on to the next");
+    tap(&mut rt, (ox + x, oy + y));
+    assert_eq!(rt.state.selection, vec![second], "and a click takes that one");
+    rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+    rt.frame(0.0);
+    assert!(rt.state.selection.is_empty(), "Escape clears the selection");
 }
