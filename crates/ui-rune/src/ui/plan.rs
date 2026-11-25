@@ -8,11 +8,18 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use rune::{El, Phase, PointerButton, Shape, canvas, el, memo};
+use rune::{El, Phase, PointerButton, Shape, Tx, canvas, el, memo};
 
-use crate::app::{App, PlanMode, SETTLE};
+use crate::app::{App, CameraMode, PlanMode};
 use crate::paint::{self, Palette};
 use crate::select::How;
+
+/// Asks for a frame when the plan, moved through the live offset and scale, is due to be drawn exactly (nothing in `Exact`).
+fn settle_soon(s: &App, tx: &mut Tx) {
+    if let Some(due) = s.settle_in() {
+        tx.wake_after(Duration::from_secs_f64(due));
+    }
+}
 
 fn layer(key: &'static str, shape: Shape) -> El {
     canvas(shape).key(key).inert().pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
@@ -38,15 +45,22 @@ pub fn plan(s: &App) -> El {
         Some(r) => layer("plan-rubber", paint::rubber(r, &pal).shape),
         None => layer("plan-rubber", Shape::new()),
     };
-    let world = el()
-        .key("plan-world")
-        .inert()
-        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-        .live_offset(&s.live_offset)
-        .live_scale(&s.live_scale)
-        .child(base)
-        .child(lit("plan-selected", &selected, pal.accent, pal.accent_fill))
-        .child(lit("plan-hovered", &hovered, pal.hover, pal.hover_fill));
+    let layers =
+        [base, lit("plan-selected", &selected, pal.accent, pal.accent_fill), lit("plan-hovered", &hovered, pal.hover, pal.hover_fill)];
+    // In `Live` the layers sit in one element the camera moves; in `Exact` they are the canvas's own children, as they were before the
+    // live camera: with the wrapper bound at rest, a wheel notch over the house cost about twice as much on Linux's CPU renderer
+    // (docs/areas/rune-ui.md, run 45532642548 against e282db8d6).
+    let world = match s.cam {
+        CameraMode::Live => vec![
+            el().key("plan-world")
+                .inert()
+                .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+                .live_offset(&s.live_offset)
+                .live_scale(&s.live_scale)
+                .children(layers),
+        ],
+        CameraMode::Exact => layers.into(),
+    };
     el().key("plan")
         .grow(1.0)
         .min_w(0.0)
@@ -63,7 +77,7 @@ pub fn plan(s: &App) -> El {
         .on_wheel(|s: &mut App, e, tx| {
             s.tick(tx.clock());
             s.zoom(e.x, e.y, (e.dy * 0.002).exp());
-            tx.wake_after(Duration::from_secs_f64(SETTLE));
+            settle_soon(s, tx);
             true
         })
         .pointer_buttons([PointerButton::Middle])
@@ -73,13 +87,13 @@ pub fn plan(s: &App) -> El {
             match (tx.button(), d.phase) {
                 (PointerButton::Middle, Phase::Move) => {
                     s.drag(d.dx, d.dy);
-                    tx.wake_after(Duration::from_secs_f64(SETTLE));
+                    settle_soon(s, tx);
                 }
                 (PointerButton::Middle, Phase::Up) => s.settle_view(),
                 (_, Phase::Down) => s.grab(),
                 (_, Phase::Move) => {
                     s.sweep(from, to);
-                    tx.wake_after(Duration::from_secs_f64(SETTLE));
+                    settle_soon(s, tx);
                 }
                 (_, Phase::Up) if d.cancelled() => s.cancel_press(),
                 (_, Phase::Up) => {
@@ -88,6 +102,6 @@ pub fn plan(s: &App) -> El {
                 }
             }
         })
-        .child(world)
+        .children(world)
         .child(band)
 }
