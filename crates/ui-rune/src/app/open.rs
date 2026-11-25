@@ -24,6 +24,22 @@ impl App {
         true
     }
 
+    /// Opens the first view of a kind by its short name (`section`, `elevation`, `sheet`, `schedule`, `ceiling`, `3d`): what the
+    /// measurement starts a window on (`BIMCRAFT_RUNE_VIEW`). False for another name, or a project with none of that kind.
+    pub fn open_named(&mut self, name: &str) -> bool {
+        let first = |group: &str| self.views.groups.iter().find(|g| g.label == group).and_then(|g| g.entries.first()).map(|e| e.kind);
+        let kind = match name {
+            "3d" => Some(ViewKind::View3D(None)),
+            "section" => first("Sections (Building Section)"),
+            "elevation" => first("Elevations (Building Elevation)"),
+            "sheet" => first("Sheets (all)"),
+            "schedule" => first("Schedules/Quantities (all)"),
+            "ceiling" => first("Ceiling Plans"),
+            _ => None,
+        };
+        kind.is_some_and(|k| self.open_view(k))
+    }
+
     /// After the model, the selection or the view may have changed: what the view shown is made of is made again (the section's
     /// picture is asked for, the schedule's grid is built), and what another kind of view held is let go.
     pub(super) fn follow_view(&mut self) {

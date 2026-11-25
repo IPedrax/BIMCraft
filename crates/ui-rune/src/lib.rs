@@ -37,7 +37,12 @@ pub const SIZE: (f32, f32) = (1280.0, 800.0);
 /// The state the window opens with: the arguments Rune did not take, read as `project::parse` reads them.
 fn start() -> app::App {
     let args: Vec<std::ffi::OsString> = rune::extra_args().iter().map(std::ffi::OsString::from).collect();
-    app::App::start(&project::parse(&args))
+    let mut app = app::App::start(&project::parse(&args));
+    // The measurement opens a window on a view other than the plan: BIMCRAFT_RUNE_VIEW=section, sheet, schedule, ceiling or 3d.
+    if let Ok(name) = std::env::var("BIMCRAFT_RUNE_VIEW") {
+        app.open_named(&name);
+    }
+    app
 }
 
 /// Opens the window on the sample house, in the system's language. With `--software` it starts again on Rune's CPU renderer first.

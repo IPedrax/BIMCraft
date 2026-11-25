@@ -106,3 +106,22 @@ fn a_ceiling_plan_zooms_and_frames_as_a_plan_does() {
     app.zoom_fit();
     assert!((app.camera.scale - framed.scale).abs() < 1e-9, "Zoom to Fit frames the ceiling plan again");
 }
+
+#[test]
+fn a_view_is_opened_by_its_short_name_and_a_name_that_is_none_opens_nothing() {
+    let mut app = App::sample();
+    for (name, is) in [
+        ("section", (|k: ViewKind| matches!(k, ViewKind::Section(_))) as fn(ViewKind) -> bool),
+        ("elevation", |k| matches!(k, ViewKind::Section(_))),
+        ("sheet", |k| matches!(k, ViewKind::Sheet(_))),
+        ("schedule", |k| matches!(k, ViewKind::Schedule(_))),
+        ("ceiling", |k| matches!(k, ViewKind::Ceiling(_))),
+        ("3d", |k| matches!(k, ViewKind::View3D(_))),
+    ] {
+        assert!(app.open_named(name), "{name}");
+        assert!(is(app.view), "{name} opened {:?}", app.view);
+    }
+    let shown = app.view;
+    assert!(!app.open_named("nonsense") && !app.open_named("") && app.view == shown);
+    assert!(!app.open_named("3d"), "it is the view already shown");
+}

@@ -164,3 +164,13 @@ generic command form of `rune-dialogs`, which this branch's base does not have: 
 `export`**, and `export_target` and `export_file_name` are what the form fills `view` and `name` with. Not here: the Publisher and the
 Print Sets window (their own dialogs), the page preview, an export on a thread of its own with a Cancel (egui's `export/` writes on one:
 a sheet of the tower is long, and this one blocks the window while it writes), and Export Region's band on a plan or a sheet.
+
+## Measuring the views
+
+`ci/measure-all.sh` has a scenario for each view other than a plan on the sample house, twice over as the others are, on the CPU renderer
+with no graphics card: `rune-cpu-view-section`, `-sheet`, `-schedule` and `-3d`. The window is started on the view
+(`BIMCRAFT_RUNE_VIEW=section|elevation|sheet|schedule|ceiling|3d`, read by `lib.rs`'s `start`, `App::open_named`), and then the script
+does what it does to a plan: idle, the pointer moving over it, a wheel notch, a pan step. The process's CPU time counts every thread, so the
+figures include what the view's own thread makes of each notch: the picture of the section, the sheet's paint, the 3D view's render; the
+interface's thread costs a state update and a live offset. Linux only: the Windows script (`measure-ui.ps1`) has none, so the views have not
+been measured on WARP. The numbers go in `rune-ui.md`'s table when a run has them.
