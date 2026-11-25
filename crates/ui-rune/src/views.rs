@@ -276,7 +276,7 @@ fn sheets(m: &Model) -> Vec<Entry> {
 /// when the project has something in them.
 pub fn tree(m: &Model) -> Vec<Group> {
     let mut schedules: Vec<Entry> =
-        schedule::VIEWS.iter().map(|(cat, english)| Entry::new(standard_name(m, cat, english), ViewKind::Schedule(*cat))).collect();
+        schedule::VIEWS.iter().map(|(cat, english)| Entry::new(standard_name(m, cat, english), ViewKind::Schedule(cat))).collect();
     schedules.extend(tables(m, "schedule"));
     let always = [
         (msg!("Floor Plans"), plans(m, false)),
