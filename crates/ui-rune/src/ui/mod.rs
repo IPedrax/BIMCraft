@@ -10,21 +10,25 @@ use crate::app::App;
 use crate::profile::Profile;
 
 mod browser;
+mod dialog;
 mod draw_bar;
+mod find;
 mod menu;
 mod plan;
 mod properties;
 mod ribbon;
+mod settings;
 mod status_bar;
 mod tempdim;
 mod tools;
 mod topbar;
+mod types;
 
 /// The Properties panel's width, points.
 pub const PANEL_WIDTH: f32 = 300.0;
 
 pub fn view(s: &App, _: &mut Cx<App>) -> El {
-    let th = tok::theme(true);
+    let th = tok::theme(s.dark());
     // The right-hand column both profiles share: the selected element's properties over the project's levels.
     let side = col().w(PANEL_WIDTH).h_full().child(properties::panel(s, &th)).child(browser::panel(s, &th));
     // The plan's right-click menu, when it is open, puts its elements in `layer`, which go over the whole window.
@@ -38,15 +42,22 @@ pub fn view(s: &App, _: &mut Cx<App>) -> El {
         Profile::Bimcraft => None,
         Profile::Rev => Some(ribbon::ribbon(s, &th)),
     };
+    // A dialog that is open is a scrim and a panel over the whole window: absolute children of the root, so nothing wraps the plan.
+    let mut dialogs = Vec::new();
+    if s.dialogs.any() {
+        dialog::layers(s, &rune_kit::Kit::neutral(s.dark()), &mut dialogs);
+    }
     let body = col()
         .key("root")
         .w_full()
         .h_full()
         .fill(th.bg)
+        .on_layout(|s: &mut App, r| s.window_seen(r[2], r[3]))
         .child(topbar::bar(s, &th))
         .children(top)
         .child(middle)
-        .child(status_bar::bar(s, &th));
+        .child(status_bar::bar(s, &th))
+        .children(dialogs);
     if layer.is_empty() { body } else { rune_kit::root(body, layer) }
 }
 
@@ -58,13 +69,31 @@ pub fn poll(s: &mut App, clock: f64, tx: &mut Tx) -> bool {
     if let Some(due) = s.settle_in() {
         tx.wake_after(Duration::from_secs_f64(due));
     }
+    // The window's size is kept in the settings once it has held still: nothing the view reads changes, so no frame is asked for.
+    s.save_window_if_still();
+    if let Some(due) = s.window_due() {
+        tx.wake_after(Duration::from_secs_f64(due));
+    }
     drawn
 }
 
-/// Delete deletes the selection; Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y do again (Cmd on a Mac); Tab and Shift+Tab step through what
-/// lies under the pointer; Escape puts the tool down, then clears the selection; with a tool in hand Enter finishes what it has
-/// picked and Backspace gives the last point back. A key none of these takes goes on to the window.
+/// Ctrl+K opens Find (or closes it) and Ctrl+, the settings. Delete deletes the selection; Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y do again
+/// (Cmd on a Mac); Tab and Shift+Tab step through what lies under the pointer; Escape puts the tool down, then clears the selection; with a
+/// tool in hand Enter finishes what it has picked and Backspace gives the last point back. With a dialog open the keys are its. A key none
+/// of these takes goes on to the window.
 pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
+    if key.mods.cmd && matches!(key.key, Key::Command('k')) {
+        s.toggle_find();
+        return true;
+    }
+    if key.mods.cmd && matches!(key.key, Key::Command(',')) {
+        s.toggle_settings();
+        return true;
+    }
+    // With a dialog open the keys are its.
+    if s.dialogs.any() {
+        return false;
+    }
     match (&key.key, key.mods.cmd, key.mods.shift) {
         (Key::Tab, false, back) => return s.step(back),
         (Key::Escape, false, _) => return s.escape(),
@@ -84,6 +113,8 @@ pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
     true
 }
 
+#[cfg(test)]
+mod dialog_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

@@ -12,6 +12,8 @@
 pub mod app;
 pub mod camera;
 pub mod context;
+pub mod finder;
+pub mod forms;
 pub mod grips;
 pub mod lang;
 pub mod paint;
@@ -19,12 +21,14 @@ pub mod profile;
 pub mod project;
 pub mod props;
 pub mod select;
+pub mod settings;
 pub mod snapping;
 pub mod software;
 pub mod status;
 pub mod tempdim;
 pub mod tooling;
 pub mod tools;
+pub mod typeprops;
 pub mod ui;
 
 use rune::AppSpec;
@@ -36,7 +40,18 @@ pub const SIZE: (f32, f32) = (1280.0, 800.0);
 /// The state the window opens with: the arguments Rune did not take, read as `project::parse` reads them.
 fn start() -> app::App {
     let args: Vec<std::ffi::OsString> = rune::extra_args().iter().map(std::ffi::OsString::from).collect();
-    app::App::start(&project::parse(&args))
+    let mut app = app::App::start(&project::parse(&args));
+    // The user's settings: the language, the theme and the profile (unless the arguments asked for one), and the window's size.
+    if let Some(path) = settings::default_path() {
+        let asked = args.iter().any(|a| a == "--rev" || a == "--bimcraft");
+        app.use_settings(path, asked);
+    }
+    app
+}
+
+/// The window's size: the one the settings kept, else [`SIZE`].
+fn size() -> (f32, f32) {
+    settings::default_path().and_then(|path| settings::load(&path).window.size).map_or(SIZE, |[w, h]| (w, h))
 }
 
 /// Opens the window on the sample house, in the system's language. With `--software` it starts again on Rune's CPU renderer first.
@@ -50,5 +65,5 @@ pub fn run() {
     }
     lang::set(lang::from_system());
     rune::set_app_id("com.ipedrax.bimcraft");
-    rune::run(AppSpec { on_key: Some(ui::on_key), poll: Some(ui::poll), ..AppSpec::new(TITLE, SIZE, start, ui::view) });
+    rune::run(AppSpec { on_key: Some(ui::on_key), poll: Some(ui::poll), ..AppSpec::new(TITLE, size(), start, ui::view) });
 }

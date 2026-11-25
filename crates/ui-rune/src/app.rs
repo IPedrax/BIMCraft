@@ -19,6 +19,10 @@ use crate::snapping::{Landing, Snapper};
 use crate::status;
 use crate::tooling::Tooling;
 
+pub mod dialogs;
+pub mod settings;
+pub mod types;
+
 /// How near a click or a hover must be to a line to take it, points.
 const REACH: f32 = 4.0;
 /// How far a press may travel and still be a click, points.
@@ -156,6 +160,10 @@ pub struct App {
     pub temp: Vec<tempdim::TempField>,
     /// A command's refusal, as the core says it.
     pub message: Option<String>,
+    /// Find and the generic command form, the modal dialogs (`app/dialogs.rs`).
+    pub dialogs: dialogs::Dialogs,
+    /// The user's `settings.json`: what it holds of ours and where it is (`app/settings.rs`).
+    pub prefs: settings::Prefs,
     /// How far the press now dragging has been followed, points.
     followed: (f32, f32),
 }
@@ -202,6 +210,8 @@ impl App {
             scratch: TextEdit::new(""),
             temp: Vec::new(),
             message: None,
+            dialogs: dialogs::Dialogs::default(),
+            prefs: settings::Prefs::default(),
             followed: (0.0, 0.0),
         };
         app.settle();
