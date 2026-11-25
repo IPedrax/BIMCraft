@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 
 use super::kind::{Kind, Kind::*, MAX_VALUE, cut, field_of, relevant, shown, text};
 use super::names::category as category_name;
-use super::table::{Def, PLAN, PLAN_DEPENDENT, PLAN_VIEW, rows};
+use super::table::{Def, PLAN, rows};
 use super::types::Selector;
 use super::view;
 use crate::lang::{t, tf};
@@ -22,6 +22,8 @@ use crate::lang::{t, tf};
 pub const MAX_IDS: usize = 1000;
 /// The most options a list offers (a project may have a thousand levels or line styles).
 const MAX_OPTIONS: usize = 500;
+/// The most corners of an outline a field takes: past it the outline is shown and not typed.
+const MAX_CORNERS: usize = 64;
 
 /// What the palette is about.
 #[derive(Clone, Debug, PartialEq)]
@@ -166,21 +168,14 @@ impl Panel {
         panel
     }
 
-    /// The plan of `level`, as its own properties: a level's plan, or a plan view, or a dependent one.
+    /// The plan of `level`, as its own properties (a level's own plan: this window has no plan views of a level besides it yet).
     fn plan(m: &Model, level: Option<Id>) -> Panel {
         let nothing = Panel::empty();
         let Some((id, name)) = level.and_then(|l| m.level(l).map(|x| (l, x.name.clone()))) else { return nothing };
-        let defs = match m.plan_view(id) {
-            Some(v) if v.parent.is_some() => PLAN_DEPENDENT,
-            Some(_) => PLAN_VIEW,
-            None => PLAN,
-        };
         let mut panel = Panel { subject: Subject::Plan(id), title: tf("Floor Plan: {}", &[&name]), ids: vec![id], ..nothing };
-        panel.fill(m, defs, None);
+        panel.fill(m, PLAN, None);
         // The view's own graphics: its scale, detail level and north, and the buttons of what a dialog sets.
-        if m.plan_view(id).is_none() {
-            panel.groups.push(Group { key: view::GROUP, name: t(view::GROUP).to_string(), rows: view::rows(m, id) });
-        }
+        panel.groups.push(Group { key: view::GROUP, name: t(view::GROUP).to_string(), rows: view::rows(m, id) });
         panel
     }
 
@@ -355,6 +350,8 @@ impl Ctx<'_> {
             LengthShown | AreaShown | Mm2Shown | VolumeShown | MetresShown | Values => read(shown(kind, val, units)),
             LevelName => read(self.level_name(val)),
             ViewName => read(cut(self.id_of(val).and_then(|v| self.m.view_name(v)).unwrap_or_default().to_string(), MAX_VALUE)),
+            // More corners than a field shows would lose the rest when typed over: shown, and not typed.
+            Outline if val.as_array().is_some_and(|a| a.len() > MAX_CORNERS) => read(cut(shown(kind, val, units), MAX_VALUE)),
             Range => (t("Edit…").to_string(), Editor::Seam("View Range")),
             Crop => {
                 let on = !val.is_null();

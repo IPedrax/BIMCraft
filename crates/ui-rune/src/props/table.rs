@@ -416,7 +416,7 @@ pub fn rows(category: &str) -> &'static [Def] {
 }
 
 /// A 3D view's rows when it has a camera: the azimuth and elevation mean nothing to a camera (it looks from its eye at its
-/// target), so a viewport on a sheet shows just the view's name.
+/// target), so a viewport on a sheet shows just the view's name. (For the 3D view of a viewport, which this window does not show yet.)
 pub const VIEW3D_CAMERA: &[Def] = &[("Identity Data", "name", "View Name", Text)];
 
 /// A floor plan's parameters, read from and written to its level.
@@ -429,7 +429,8 @@ pub const PLAN: &[Def] = &[
     ("Extents", "view_range", msg!("View Range"), Range),
 ];
 
-/// A plan view's parameters, read from and written to the plan view itself.
+/// A plan view's parameters, read from and written to the plan view itself (for plan views besides a level's own, which this window
+/// does not have yet).
 pub const PLAN_VIEW: &[Def] = &[
     ("Identity Data", "name", "View Name", Text),
     ("Extents", "level", "Associated Level", LevelName),
