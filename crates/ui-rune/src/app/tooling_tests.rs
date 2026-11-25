@@ -155,6 +155,12 @@ fn make_wall(app: &mut App, a: P2, b: P2) -> u64 {
     app.session.model.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).max().expect("a wall")
 }
 
+/// The plan looking at `p` at a tenth of a pixel to the millimetre, so what the test made there is drawn, and picked under the pointer.
+fn look_at(app: &mut App, p: P2) {
+    app.camera = crate::camera::Camera { cx: p.0, cy: p.1, scale: 0.1, angle: 0.0 };
+    app.redraw();
+}
+
 fn near(p: P2, x: f64, y: f64) -> bool {
     p.dist(P2(x, y)) < 30.0
 }
@@ -231,6 +237,7 @@ fn split_cuts_the_element_under_the_pointer_and_stays_in_hand() {
     let mut app = App::sample();
     let id = make_wall(&mut app, A, B);
     let before = walls(&app);
+    look_at(&mut app, P2(-28000.0, -29000.0));
     app.set_tool("split");
     click(&mut app, P2(-28000.0, -30000.0));
     assert_eq!(walls(&app), before + 1, "{:?}", app.message);
@@ -245,6 +252,7 @@ fn trim_to_corner_takes_two_picks_and_extends_both_to_where_they_meet() {
     let mut app = App::sample();
     let first = make_wall(&mut app, A, P2(-28500.0, -30000.0));
     let second = make_wall(&mut app, P2(-28000.0, -29000.0), P2(-28000.0, -27000.0));
+    look_at(&mut app, P2(-28500.0, -28500.0));
     app.set_tool("trim");
     click(&mut app, P2(-29000.0, -30000.0));
     assert_eq!(app.picked.len(), 1, "the first pick is held with its point");
@@ -260,6 +268,7 @@ fn align_moves_the_second_wall_onto_the_first_ones_line_and_offset_copies_across
     let mut app = App::sample();
     make_wall(&mut app, A, B);
     let second = make_wall(&mut app, P2(-29000.0, -25000.0), P2(-27000.0, -25000.0));
+    look_at(&mut app, P2(-28000.0, -27500.0));
     app.set_tool("align");
     click(&mut app, P2(-28000.0, -30000.0));
     assert!(app.tooling.held != crate::tooling::Held::Nothing, "the reference line is held");

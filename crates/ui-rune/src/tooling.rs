@@ -146,12 +146,17 @@ pub enum Held {
     Line(Line),
 }
 
-/// What the Draw panel has set, which the tools that take a shape read, and what a Modify tool holds from its first pick.
+/// What the Draw panel has set, which the tools that take a shape read, what a Modify tool holds from its first pick, and where the
+/// plan's right-click menu is open.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Tooling {
     pub shape: Shape,
     pub options: Options,
     pub held: Held,
+    /// Where the right-click menu is open over the plan, in window points.
+    pub menu: Option<(f32, f32)>,
+    /// The end of the selected element being dragged by its grip (`grips.rs`).
+    pub grip: Option<crate::grips::Grip>,
 }
 
 /// What the machine reads of the window and the model besides the points.

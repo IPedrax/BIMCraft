@@ -79,7 +79,8 @@ fn the_wall_tool_has_a_shape_bar_that_picks_a_shape_and_shows_what_the_next_clic
     let mut rt = window();
     assert!(rt.find("draw-bar").is_none() && rt.find("plan-ghost").is_none(), "with no tool there is no bar");
     rt.update(|s, _| s.set_tool("wall"));
-    frames(&mut rt);
+    // An element that mounts later fades in, and a press ignores it until it has: the frames let the bar settle.
+    settle(&mut rt);
     assert!(rt.find("draw-bar").is_some(), "the Wall tool takes a shape");
     let buttons: Vec<_> = rt.elements().into_iter().filter(|e| e.role == "button").filter_map(|e| e.key).collect();
     for key in ["shape-line", "shape-rectangle", "shape-circle", "shape-centrearc"] {
@@ -87,7 +88,8 @@ fn the_wall_tool_has_a_shape_bar_that_picks_a_shape_and_shows_what_the_next_clic
     }
     let rectangle = rt.find("shape-rectangle").expect("the Rectangle button");
     tap(&mut rt, rectangle);
-    assert_eq!(rt.state.tooling.shape, Shape::Rectangle);
+    let picked = rt.element_at(rectangle.0, rectangle.1).map(|p| format!("{p:?}"));
+    assert_eq!(rt.state.tooling.shape, Shape::Rectangle, "a press at {rectangle:?} on {picked:?}: {:?}", rt.presented("shape-rectangle"));
     let before = walls(&rt);
     tap_plan(&mut rt, 150.0, 560.0);
     let at = spot(&rt, 450.0, 640.0);
@@ -124,4 +126,74 @@ fn a_modify_tool_of_the_ribbon_moves_the_selection_with_two_taps_on_the_plan() {
     tap_plan(&mut rt, 300.0, 500.0);
     assert!(start(&rt).dist(before) > 1000.0, "the wall moved by what two taps are apart: {:?} -> {:?}", before, start(&rt));
     assert!(rt.state.tool.is_none(), "and Move is done with: {:?}", rt.state.message);
+}
+
+/// Frames enough for a menu to open and its animation to settle.
+fn settle(rt: &mut Runtime<App>) {
+    rt.frame(0.0);
+    for _ in 0..60 {
+        rt.frame(1.0 / 60.0);
+    }
+}
+
+#[test]
+fn a_right_click_on_the_plan_opens_the_menu_at_the_pointer_and_an_item_does_its_work_and_closes_it() {
+    let mut rt = window();
+    let (x, y) = spot(&rt, 300.0, 400.0);
+    assert!(rt.find("plan-menu-menu").is_none(), "closed, nothing is built");
+    rt.secondary_down(x, y);
+    rt.secondary_up(x, y);
+    settle(&mut rt);
+    assert!(rt.state.tooling.menu.is_some(), "the right click opened it");
+    let menu = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("plan-menu-menu")).expect("the menu is drawn");
+    assert!(menu.rect[0] >= x - 1.0 && menu.rect[1] >= y - 1.0, "it opens at the pointer: {:?} for ({x}, {y})", menu.rect);
+    // Nothing selected, no tool: Cancel, a separator, then Zoom to Fit, Zoom In and Zoom Out.
+    let zoom_in = rt.find("plan-menu-item3").expect("Zoom In");
+    let before = rt.state.camera.scale;
+    tap(&mut rt, zoom_in);
+    settle(&mut rt);
+    assert!(rt.state.camera.scale > before, "Zoom In zoomed");
+    assert!(rt.state.tooling.menu.is_none() && rt.find("plan-menu-menu").is_none(), "and the menu closed");
+}
+
+#[test]
+fn escape_closes_the_menu_without_doing_anything() {
+    let mut rt = window();
+    rt.on_key = Some(super::on_key);
+    let (x, y) = spot(&rt, 300.0, 400.0);
+    rt.secondary_down(x, y);
+    rt.secondary_up(x, y);
+    settle(&mut rt);
+    assert!(rt.state.tooling.menu.is_some());
+    let before = rt.state.camera;
+    rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+    settle(&mut rt);
+    assert!(rt.state.tooling.menu.is_none(), "Escape closes it");
+    assert_eq!(rt.state.camera, before);
+}
+
+#[test]
+fn dragging_an_end_grip_of_the_selected_wall_moves_that_end_through_the_window() {
+    let mut rt = window();
+    let wall = rt.state.session.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).expect("a wall");
+    rt.update(|s, _| s.select(vec![wall]));
+    settle(&mut rt);
+    assert!(rt.find("plan-grips").is_some(), "the wall selected alone has its grips");
+    let ends = |rt: &Runtime<App>| crate::grips::ends(&rt.state.session.model, wall).expect("a wall's ends");
+    let (start, end) = ends(&rt);
+    let (w, h) = rt.state.size;
+    let (x, y) = rt.state.camera.view(w, h).px(end);
+    let at = spot(&rt, x, y);
+    rt.pointer_down(at.0, at.1);
+    let to = (at.0 + 60.0, at.1 + 40.0);
+    rt.pointer_move(to.0, to.1);
+    frames(&mut rt);
+    assert!(rt.state.gripping(), "the press on the end took the grip");
+    assert!(rt.find("plan-grip-tag").is_some(), "and its reading shows");
+    assert!(rt.state.selection == vec![wall] && rt.state.rubber.is_none(), "it was no click and no box");
+    rt.pointer_up(to.0, to.1);
+    frames(&mut rt);
+    assert!(!rt.state.gripping());
+    let (after_start, after_end) = ends(&rt);
+    assert!(after_end.dist(end) > 500.0 && after_start.dist(start) < 1.0, "only the dragged end moved: {after_end:?} from {end:?}");
 }
