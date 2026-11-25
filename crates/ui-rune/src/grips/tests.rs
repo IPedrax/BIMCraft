@@ -29,7 +29,7 @@ fn an_element_selected_alone_with_no_tool_in_hand_has_grips_at_its_ends() {
 fn a_press_takes_the_nearer_end_within_reach_and_nothing_further() {
     let (a, b) = (P2(0.0, 0.0), P2(4000.0, 0.0));
     assert_eq!(end_at((a, b), P2(30.0, 40.0), 100.0), Some(true));
-    assert_eq!(end_at((a, b), P2(3900.0, 20.0), 100.0), Some(false));
+    assert_eq!(end_at((a, b), P2(3950.0, 20.0), 100.0), Some(false));
     assert_eq!(end_at((a, b), P2(2000.0, 0.0), 100.0), None, "the middle is no grip");
     assert_eq!(end_at((a, b), P2(f64::NAN, 0.0), 100.0), None, "a point that is no number takes nothing");
 }
@@ -47,7 +47,11 @@ fn a_drag_lands_where_the_pointer_did_and_with_ctrl_keeps_the_length_about_the_f
 
 #[test]
 fn a_drag_ends_in_a_move_of_that_end_and_a_drag_that_goes_nowhere_in_none() {
-    let (mut app, wall) = house();
+    // A wall of its own: the first of the house is held by a dimension, and the core refuses to move its end.
+    let (mut app, _) = house();
+    let level = app.level;
+    app.session.execute("wall", &json!({"points": [[-30000, -30000], [-26000, -30000]], "level": level})).expect("a wall");
+    let wall = app.session.model.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).max().expect("a wall");
     let (a, b) = ends(&app.session.model, wall).expect("ends");
     let to = b + P2(250.0, 125.0);
     let (name, params) = command(&app.session.model, Grip { id: wall, start: false, to }).expect("a move");

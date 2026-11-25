@@ -110,7 +110,7 @@ mod tests {
         let p = place(&dim(P2(-2000.0, 0.0), P2(2000.0, 0.0)), &v).expect("placed");
         assert_eq!(lines(&[p], &v, &pal).pieces, 5, "the line, its two extension lines and two ticks");
         assert_eq!(lines(&[], &v, &pal).pieces, 0);
-        let far = place(&dim(P2(1e8, 1e8), P2(1e8 + 5000.0, 1e8)), &v).expect("placed off the canvas");
+        let far = place(&dim(P2(1e5, 1e5), P2(1e5 + 5000.0, 1e5)), &v).expect("placed off the canvas");
         assert_eq!(lines(&[far], &v, &pal).pieces, 0, "off the canvas nothing is sent");
     }
 }

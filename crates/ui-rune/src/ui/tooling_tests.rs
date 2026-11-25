@@ -50,6 +50,22 @@ fn key(rt: &mut Runtime<App>, key: Key) {
     frames(rt);
 }
 
+/// A wall of its own in the free canvas, between two canvas points, made through the core: its id. The walls of the house may be held
+/// by dimensions, which refuse to move, so a test that moves one makes its own.
+fn lone_wall(rt: &mut Runtime<App>, a: (f32, f32), b: (f32, f32)) -> u64 {
+    let (w, h) = rt.state.size;
+    let view = rt.state.camera.view(w, h);
+    let (p, q) = (view.mm(a), view.mm(b));
+    let round = |v: f64| (v / 10.0).round() * 10.0;
+    let points = serde_json::json!([[round(p.0), round(p.1)], [round(q.0), round(q.1)]]);
+    rt.update(move |s, _| {
+        let level = s.level;
+        drop(s.session.execute("wall", &serde_json::json!({"points": points, "level": level})));
+        s.redraw();
+    });
+    rt.state.session.model.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).max().expect("a wall")
+}
+
 fn walls(rt: &Runtime<App>) -> usize {
     rt.state.session.model.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(_))).count()
 }
@@ -114,17 +130,24 @@ fn a_modify_tool_of_the_ribbon_moves_the_selection_with_two_taps_on_the_plan() {
         rt.frame(0.0);
     }
     rt.update(|s, _| s.zoom_by(0.25));
-    let wall = rt.state.session.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).expect("a wall");
+    let wall = lone_wall(&mut rt, (100.0, 400.0), (250.0, 400.0));
     let start = |rt: &Runtime<App>| rt.state.session.model.wall(wall).map(|w| w.start).expect("a wall");
     let before = start(&rt);
-    rt.update(|s, _| s.select(vec![wall]));
+    rt.update(move |s, _| s.select(vec![wall]));
     frames(&mut rt);
     let tool = rt.find("tool-move").expect("Move in the ribbon");
     tap(&mut rt, tool);
     assert_eq!(rt.state.tool, Some("move"));
     tap_plan(&mut rt, 100.0, 500.0);
     tap_plan(&mut rt, 300.0, 500.0);
-    assert!(start(&rt).dist(before) > 1000.0, "the wall moved by what two taps are apart: {:?} -> {:?}", before, start(&rt));
+    assert!(
+        start(&rt).dist(before) > 1000.0,
+        "the wall moved by what two taps are apart: {:?} -> {:?}; {:?}, picked {:?}",
+        before,
+        start(&rt),
+        rt.state.message,
+        rt.state.picked
+    );
     assert!(rt.state.tool.is_none(), "and Move is done with: {:?}", rt.state.message);
 }
 
@@ -175,8 +198,8 @@ fn escape_closes_the_menu_without_doing_anything() {
 #[test]
 fn dragging_an_end_grip_of_the_selected_wall_moves_that_end_through_the_window() {
     let mut rt = window();
-    let wall = rt.state.session.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).expect("a wall");
-    rt.update(|s, _| s.select(vec![wall]));
+    let wall = lone_wall(&mut rt, (150.0, 560.0), (350.0, 560.0));
+    rt.update(move |s, _| s.select(vec![wall]));
     settle(&mut rt);
     assert!(rt.find("plan-grips").is_some(), "the wall selected alone has its grips");
     let ends = |rt: &Runtime<App>| crate::grips::ends(&rt.state.session.model, wall).expect("a wall's ends");
@@ -188,7 +211,16 @@ fn dragging_an_end_grip_of_the_selected_wall_moves_that_end_through_the_window()
     let to = (at.0 + 60.0, at.1 + 40.0);
     rt.pointer_move(to.0, to.1);
     frames(&mut rt);
-    assert!(rt.state.gripping(), "the press on the end took the grip");
+    assert!(
+        rt.state.gripping(),
+        "the press on the end took the grip: at {at:?} for the end {end:?}, selection {:?}, shown {}, tool {:?}, cursor {:?}, picked {:?}, message {:?}",
+        rt.state.selection,
+        rt.state.grips_shown().is_some(),
+        rt.state.tool,
+        rt.state.cursor,
+        rt.state.picked,
+        rt.state.message
+    );
     assert!(rt.find("plan-grip-tag").is_some(), "and its reading shows");
     assert!(rt.state.selection == vec![wall] && rt.state.rubber.is_none(), "it was no click and no box");
     rt.pointer_up(to.0, to.1);

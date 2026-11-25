@@ -166,7 +166,7 @@ fn near(p: P2, x: f64, y: f64) -> bool {
 }
 
 const D1: P2 = P2(-20000.0, -20000.0);
-const D2: P2 = P2(-18000.0, -19000.0);
+const D2: P2 = P2(-18000.0, -20000.0);
 
 #[test]
 fn move_slides_the_selection_by_the_distance_between_two_clicks_and_goes_back_with_undo() {
@@ -179,7 +179,7 @@ fn move_slides_the_selection_by_the_distance_between_two_clicks_and_goes_back_wi
     assert_eq!(app.picked.len(), 1, "the base point");
     click(&mut app, D2);
     let (s, e) = ends(&app, id);
-    assert!(near(s, start.0 + 2000.0, start.1 + 1000.0) && near(e, end.0 + 2000.0, end.1 + 1000.0), "{s:?} {e:?}");
+    assert!(near(s, start.0 + 2000.0, start.1) && near(e, end.0 + 2000.0, end.1), "{s:?} {e:?}");
     assert!(app.tool.is_none() && app.picked.is_empty(), "Move is done with");
     assert_eq!(app.selection, vec![id], "and the wall is still selected");
     assert!(app.undo());

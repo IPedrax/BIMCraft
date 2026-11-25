@@ -28,9 +28,19 @@ fn the_dimensions_follow_the_selection_and_go_with_a_tool_in_hand_or_a_grip_bein
     assert!(app.temp.is_empty(), "two selected, none");
 }
 
+/// A wall of its own, far from the house and selected: the first wall of the house is held by a dimension, which refuses a new length.
+fn lone_wall_selected() -> (App, u64) {
+    let mut app = App::sample();
+    let level = app.level;
+    assert!(app.run("wall", &serde_json::json!({"points": [[-30000, -30000], [-26000, -30000]], "level": level})), "{:?}", app.message);
+    let id = app.session.model.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).max().expect("a wall");
+    app.select(vec![id]);
+    (app, id)
+}
+
 #[test]
 fn a_length_typed_into_the_wall_dimension_changes_the_wall_and_a_bad_one_says_so() {
-    let (mut app, id) = wall_selected();
+    let (mut app, id) = lone_wall_selected();
     let w = app.session.model.wall(id).expect("a wall");
     let before = w.start.dist(w.end);
     app.temp[0].edit.text = "abc".into();

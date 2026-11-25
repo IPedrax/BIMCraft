@@ -338,10 +338,8 @@ fn align_holds_the_first_line_and_offset_copies_a_wall_across_to_the_point() {
     let align = of("align");
     let Step::Hold(Held::Line(reference)) = advance(align, &on(Some(id), Held::Nothing, 100.0), &[start]) else { panic!("a line is held") };
     assert!(reference.0.dist(reference.1) > 1000.0, "the wall's own edge or axis: {reference:?}");
-    assert!(
-        matches!(advance(align, &on(Some(id), Held::Nothing, 0.0), &[start + P2(0.0, 5000.0)]), Step::Refuse(_)),
-        "too far from any line"
-    );
+    let across = (end - start).unit().perp() * 5000.0;
+    assert!(matches!(advance(align, &on(Some(id), Held::Nothing, 0.0), &[start + across]), Step::Refuse(_)), "too far from any line");
     assert!(matches!(advance(align, &on(None, Held::Nothing, 100.0), &[start]), Step::Refuse(_)));
     let (cmds, _) = run_of(advance(align, &on(Some(id), Held::Line(reference), 100.0), &[start, end]));
     assert_eq!((cmds[0].0, &cmds[0].1["id"]), ("align", &json!(id)));
