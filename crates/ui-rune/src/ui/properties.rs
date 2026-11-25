@@ -1,39 +1,39 @@
-//! The Properties panel: the selected element's rows (`App::props`) and the buttons that run commands on it.
+//! The Properties palette: what the selected elements (or, with none, the plan) have, group by group, as `App::palette` says
+//! (`props::panel`), and the buttons that run commands on the selection. A group folds; a row is drawn by `editors`.
 
 use rune::tok::{Theme, type_};
-use rune::{El, ScrollSpec, Tx, col, el, row, text};
-use rune_kit::{Kit, TextInput};
+use rune::{El, ScrollSpec, col, row, text};
+use rune_kit::{Collapsible, Kit};
 
 use crate::app::App;
-use crate::lang::t;
+use crate::lang::{t, tf};
+use crate::props::names::category;
+use crate::props::panel::{Group, Subject};
+
+mod editors;
+mod selector;
+#[cfg(test)]
+mod tests;
 
 pub fn panel(s: &App, th: &Theme) -> El {
+    let p = &s.palette;
+    let kit = Kit::neutral(true);
     let title = text(t("Properties")).font(type_::TITLE).color(th.text);
-    let buttons = row().gap(8.0).child(button("delete", t("Delete"), th, |s: &mut App| {
+    let buttons = row().gap(8.0).child(editors::button("delete", t("Delete"), th, |s: &mut App| {
         s.delete_selection();
     }));
-    let body = if s.props.is_empty() {
-        col().child(text(t("Nothing selected")).font(type_::BODY).color(th.text_secondary))
-    } else {
-        let kit = Kit::neutral(true);
-        col().key("rows").gap(4.0).children(s.props.iter().map(|r| {
-            let value = match s.fields.iter().position(|f| f.name == r.name) {
-                Some(i) => TextInput::new(&s.fields[i].edit)
-                    .label(r.name.clone())
-                    .width(None)
-                    .on_edit(move |s: &mut App| s.fields.get_mut(i).map_or(&mut s.scratch, |f| &mut f.edit))
-                    .on_submit(move |s: &mut App, _: &mut Tx| {
-                        s.commit_field(i);
-                    })
-                    .build(&kit),
-                None => text(r.value.clone()).font(type_::BODY).color(th.text).truncate(),
+    let body = if p.panel.groups.is_empty() {
+        let said = p.panel.notes.first().cloned().unwrap_or_else(|| {
+            let hint = if matches!(p.panel.subject, Subject::Mixed(_)) {
+                t("Pick one category above to see its parameters")
+            } else {
+                t("Nothing selected")
             };
-            row()
-                .gap(8.0)
-                .center_y()
-                .child(text(r.name.clone()).font(type_::LABEL).color(th.text_secondary).w(100.0))
-                .child(value.grow(1.0))
-        }))
+            hint.to_string()
+        });
+        col().key("rows").child(text(said).font(type_::BODY).color(th.text_secondary).wrap())
+    } else {
+        col().key("rows").gap(6.0).children(p.panel.groups.iter().map(|g| group(s, g, th, &kit)))
     };
     col()
         .key("properties")
@@ -45,19 +45,44 @@ pub fn panel(s: &App, th: &Theme) -> El {
         .gap(10.0)
         .child(title)
         .child(buttons)
+        .children(selector::selector(s, th))
+        .child(subject(s, th))
+        .children(p.refusal.as_ref().map(|why| text(why.clone()).key("refusal").font(type_::LABEL).color(th.text).wrap()))
         .child(body.scroll(ScrollSpec::default()).grow(1.0).min_h(0.0))
 }
 
-fn button(key: &'static str, label: &str, th: &Theme, on_press: impl Fn(&mut App) + 'static) -> El {
-    el().key(key)
-        .role("button")
-        .label(label.to_string())
-        .focusable(true)
-        .px(10.0)
-        .h(26.0)
-        .center()
-        .radius(6.0)
-        .fill(th.control_track)
-        .child(text(label.to_string()).font(type_::LABEL).color(th.text))
-        .on_press(on_press)
+/// What the palette is about: its title, and with several categories selected a button for each, which narrows what it shows.
+fn subject(s: &App, th: &Theme) -> El {
+    let p = &s.palette;
+    let mut c = col().key("subject").gap(4.0);
+    if !p.panel.title.is_empty() {
+        c = c.child(text(p.panel.title.clone()).key("title").font(type_::LABEL).color(th.text));
+    }
+    if p.panel.categories.len() > 1 {
+        let now = p.filter.as_ref().map(|(category, _)| *category);
+        let all = tf("Multiple Categories ({})", &[&s.selection.len().to_string()]);
+        c = c.child(filter_button("filter-all".to_string(), all, now.is_none(), None, th));
+        for &(key, n) in &p.panel.categories {
+            let name = format!("{} ({n})", category(key, true));
+            c = c.child(filter_button(format!("filter-{key}"), name, now == Some(key), Some(key), th));
+        }
+    }
+    c
+}
+
+/// A button of the filter: `which` is the category it narrows to, none for all of them.
+fn filter_button(key: String, label: String, on: bool, which: Option<&'static str>, th: &Theme) -> El {
+    let b = editors::button(key, &label, th, move |s: &mut App| s.set_filter(which));
+    if on { b.fill(th.control_off) } else { b }
+}
+
+/// A group of rows under a header that folds it.
+fn group(s: &App, g: &Group, th: &Theme, kit: &Kit) -> El {
+    let key = g.key;
+    let open = !s.palette.folded.contains(key);
+    let mut c = Collapsible::new(g.name.clone(), open).on_toggle(move |s: &mut App| s.fold(key));
+    if open {
+        c = c.child(col().w_full().gap(4.0).children(g.rows.iter().map(|r| editors::row_of(s, r, th, kit))));
+    }
+    c.build(kit)
 }
