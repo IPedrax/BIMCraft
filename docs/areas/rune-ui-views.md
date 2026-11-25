@@ -76,3 +76,35 @@ level grips, the vertical drawing tools (`section/tools.rs`: Dimension, Detail L
 `rune-tools`' tool state machines), the underlay and the background grid, Co-Work's pointers, Previous Pan/Zoom, and a picture at the screen's
 pixel ratio (the picture is a pixel to a point, so it is soft on a high-density screen; the core's picture takes a `ppp`, which a later
 change can pass). The status bar shows no coordinates over a section.
+
+## 3. Schedules and sheets (`sched.rs`, `app/schedule.rs`, `ui/schedule.rs`, `paper.rs`, `paper/render.rs`, `app/paper.rs`, `ui/sheet.rs`)
+
+**Schedules.** `sched::make` turns the core's `schedule::Table` (`table_kept`, which the core keeps for the state of the model's elements)
+into what a grid shows: each cell as text in the project's units and language (`schedule::shown_to`, headings through `schedule::heading`,
+a yes or no through `t`), the elements each row lists (`Table::ids`), the totals, and a note instead of a grid when the core refuses
+the schedule, it has no rows (`No rows yet: the room schedule is empty.`) or the view is a panel schedule or a reinforcement detail,
+which keep the card that names them until their own slice. It is cut at 50,000 rows and says so. `App::grid` holds it with the
+`rune_kit::TableState` (the keyboard cursor, the focus), made again after every command (`follow_view`, from `refresh`) only when the
+model is another, and let go when another kind of view is shown. The canvas is `rune_kit::Table`: only the rows on screen are built,
+a sticky header, the numeric columns right-aligned and monospaced, zebra rows, the totals in a line under it. **Rows and the
+selection:** a row is lit while what it lists is selected (`App::row_lit`, in the table's row hook), and a click on it picks that
+(`App::pick_row`, with `How::of(shift, cmd)`: Ctrl adds, Shift takes away), through the model's selection, so the plan and the
+section have it selected too. Not in this piece, from egui's schedule: the right-click menu on a cell, sorting by a column header,
+grouped rows with frozen headings (the table is as the core grouped it), and editing a schedule (the Schedule Properties dialog is
+`rune-dialogs`').
+
+**Sheets.** `sheet::draw` is the core's drawing of the paper (the title block, each view at its scale, schedules, notes), which costs what
+the views on it cost, so a sheet has a thread of its own as a section does (`paper::Paper`, the same plan as `section::Cut`:
+`worker::Latest`, the old picture moved through the live offset and scale while the thread paints the next). The thread keeps the
+drawing for the model and paints a raster of it for the camera (`render::raster`, tiny-skia on the CPU: the whole drawing scaled by
+`view.scale / DENSITY`) as one image of the part of the paper the canvas shows, shown as one `Pixels` on the desk, so lettering and line
+weights keep to the paper at every zoom and a wheel notch costs the thread a paint of the drawing and no geometry. The camera frames the
+whole paper 24 points clear of the edges, as egui's (`paper::framed`). **Picking** is `Drawing::pick` and `in_box` on the sheet's
+drawing, which a viewport owns for its view, so a click on a view of the sheet selects that viewport; the selected and the hovered ones
+are lit by a frame round their box on the paper (`paper::owner_box`, taken to the canvas through the picture's view), since the raster
+has no per-element colour. Zoom to Fit, the zoom buttons and Zoom In Region work on the sheet as on a section.
+
+**Not in this piece, from egui's `paper.rs`:** dragging a view or a note to move it (the `move` command is there, the drag waits for the
+tool state machines), a double click that opens a view (the viewport's view and the 3D tab), the Text tool and Paste on the paper, a note's
+editor, the export region's band, the right-click menu and the Co-Work pointers. The picture is a point to a pixel, so it is soft on a
+screen of high density.

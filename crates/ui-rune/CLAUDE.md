@@ -75,3 +75,7 @@ One line per module. A new module adds its line here, not to the root.
   error), polled by the window each frame. `section.rs`: the section or elevation on screen (`Cut`: its camera, the picture and drawing the thread made, what a click or box
   finds); `section/render.rs`: what the thread makes (egui's `section_worker.rs`, for one picture a pixel to a point). `app/section.rs`: the section canvas's handlers on `App`.
   `ui/section.rs`: its canvas (the picture and the drawing as one moved layer). Detail: [the views](../../docs/areas/rune-ui-views.md#2-sections-and-elevations-sectionrs-sectionrenderrs-workerrs-appsectionrs-uisectionrs).
+- `sched.rs`: a schedule on screen (`Grid`, `make`): the core's table as text cells in the project's units and language, the elements each row lists, the totals; `app/schedule.rs`: the grid
+  made again after a command, `pick_row`, `row_lit`; `ui/schedule.rs`: its canvas, a `rune_kit::Table`. `paper.rs`: a sheet on screen (`Paper`: the camera framing the whole paper, the
+  picture its thread painted of the core's `sheet::draw`, picks and boxes through the sheet's drawing), `paper/render.rs`: what that thread makes; `app/paper.rs`: its canvas's handlers;
+  `ui/sheet.rs`: the canvas, a picture and the frames of what is lit. Detail: [the views](../../docs/areas/rune-ui-views.md).

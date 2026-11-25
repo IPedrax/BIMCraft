@@ -16,6 +16,7 @@ mod properties;
 mod ribbon;
 mod schedule;
 mod section;
+mod sheet;
 mod status_bar;
 mod tools;
 mod topbar;

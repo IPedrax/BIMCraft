@@ -11,6 +11,7 @@ use rune::{Live, Pixels, TextEdit};
 use serde_json::{Value, json};
 
 use crate::camera::Camera;
+use crate::paper::Paper;
 use crate::profile::Profile;
 use crate::project::{self, Start};
 use crate::props::{self, Kind, Row};
@@ -22,6 +23,7 @@ use crate::status;
 use crate::views::{self, ViewKind, Views};
 
 mod open;
+mod paper;
 mod schedule;
 mod section;
 
@@ -109,6 +111,8 @@ pub struct App {
     pub views: Views,
     /// The section or elevation shown, with the thread that makes its picture (`section.rs`).
     pub cut: Cut,
+    /// The sheet shown, with the thread that paints it (`paper.rs`).
+    pub paper: Paper,
     /// The schedule shown, as a grid (`sched.rs`).
     pub grid: Grid,
     pub level: Option<Id>,
@@ -183,6 +187,7 @@ impl App {
             view: ViewKind::default(),
             views: Views::default(),
             cut: Cut::new(),
+            paper: Paper::new(),
             grid: Grid::default(),
             level: None,
             level_name: String::new(),
@@ -481,8 +486,10 @@ impl App {
 
     /// Zoom to Fit: the level framed again.
     pub fn zoom_fit(&mut self) {
-        if matches!(self.view, ViewKind::Section(_)) {
-            return self.section_fit();
+        match self.view {
+            ViewKind::Section(_) => return self.section_fit(),
+            ViewKind::Sheet(_) => return self.paper_fit(),
+            _ => {}
         }
         self.remember();
         (self.fitted, self.moved) = (false, false);
@@ -495,8 +502,10 @@ impl App {
         if !factor.is_finite() || factor <= 0.0 {
             return;
         }
-        if matches!(self.view, ViewKind::Section(_)) {
-            return self.section_zoom_by(factor);
+        match self.view {
+            ViewKind::Section(_) => return self.section_zoom_by(factor),
+            ViewKind::Sheet(_) => return self.paper_zoom_by(factor),
+            _ => {}
         }
         self.remember();
         self.camera.zoom_about((self.size.0 / 2.0, self.size.1 / 2.0), self.size, factor);

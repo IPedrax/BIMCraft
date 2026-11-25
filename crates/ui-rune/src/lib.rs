@@ -12,6 +12,7 @@ pub mod app;
 pub mod camera;
 pub mod lang;
 pub mod paint;
+pub mod paper;
 pub mod profile;
 pub mod project;
 pub mod props;

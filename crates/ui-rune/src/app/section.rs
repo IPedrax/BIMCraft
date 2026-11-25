@@ -107,12 +107,13 @@ impl App {
 
     /// Every frame: takes in the picture the section's thread has made. True when what is on screen changed.
     pub fn poll_views(&mut self) -> bool {
-        self.cut.poll()
+        // Both are polled: `|`, not `||`.
+        self.cut.poll() | self.paper.poll()
     }
 
     /// Whether a view's thread is at work, so the window must come back for its picture.
     pub fn views_busy(&self) -> bool {
-        self.cut.busy()
+        self.cut.busy() || self.paper.busy()
     }
 }
 

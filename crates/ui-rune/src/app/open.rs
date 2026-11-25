@@ -28,6 +28,7 @@ impl App {
     /// picture is asked for, the schedule's grid is built), and what another kind of view held is let go.
     pub(super) fn follow_view(&mut self) {
         self.ask_section();
+        self.ask_paper();
         self.make_grid();
     }
 }
