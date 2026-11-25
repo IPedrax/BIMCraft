@@ -120,7 +120,7 @@ fn list(s: &App, r: &Row, current: Option<usize>, options: &[Pick], th: &Theme) 
             .radius(4.0)
             .child(text(o.label.clone()).font(type_::BODY).color(th.text).truncate())
             .on_press(move |s: &mut App| {
-                s.choose(key, i);
+                s.choose_row(key, i);
             });
         if current == Some(i) { item.fill(th.control_off) } else { item }
     });

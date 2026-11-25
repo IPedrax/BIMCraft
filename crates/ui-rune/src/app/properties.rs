@@ -129,7 +129,7 @@ impl App {
     }
 
     /// Option `i` of the list of row `key` was picked: its list closes.
-    pub fn choose(&mut self, key: &'static str, i: usize) -> bool {
+    pub fn choose_row(&mut self, key: &'static str, i: usize) -> bool {
         self.palette.open = None;
         self.edit_row(key, Edit::Choice(i))
     }

@@ -41,7 +41,7 @@ pub fn bar(s: &App) -> Option<El> {
     if !takes_shape(s) {
         return None;
     }
-    let th = tok::theme(true);
+    let th = tok::theme(s.dark());
     let now = s.tooling.shape;
     let buttons: Vec<El> = SHAPES.iter().map(|&shape| button(shape, shape == now, &th)).collect();
     Some(row().key("draw-bar").gap(4.0).padding(4.0).radius(8.0).fill(th.card).pin(Some(8.0), Some(8.0), None, None).children(buttons))

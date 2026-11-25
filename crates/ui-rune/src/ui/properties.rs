@@ -17,7 +17,7 @@ mod tests;
 
 pub fn panel(s: &App, th: &Theme) -> El {
     let p = &s.palette;
-    let kit = Kit::neutral(true);
+    let kit = Kit::neutral(s.dark());
     let title = text(t("Properties")).font(type_::TITLE).color(th.text);
     let buttons = row().gap(8.0).child(editors::button("delete", t("Delete"), th, |s: &mut App| {
         s.delete_selection();

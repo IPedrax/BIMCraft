@@ -101,6 +101,7 @@ impl App {
         // The field starts focused, so what is typed goes to it.
         let mut edit = TextEdit::new("");
         edit.focused = true;
+        self.close_menu();
         self.dialogs.clear();
         self.dialogs.find = Some(FindState { edit, at: 0 });
     }
@@ -161,6 +162,7 @@ impl App {
         if let Some(i) = form.fields.iter().position(|f| !f.kind.chosen()) {
             entries[i].edit.focused = true;
         }
+        self.close_menu();
         self.dialogs.clear();
         self.dialogs.form = Some(FormState { form, entries, rest: TextEdit::new(""), open: None, error: None, reply: None });
         true

@@ -77,6 +77,7 @@ impl App {
         if self.dialogs.settings.take().is_some() {
             return;
         }
+        self.close_menu();
         self.dialogs.clear();
         self.dialogs.settings = Some(SettingsDialog::default());
     }

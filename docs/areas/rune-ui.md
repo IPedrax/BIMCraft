@@ -28,7 +28,7 @@ A window of the sample house that works end to end, small on purpose:
 | `context.rs`, `grips.rs`, `tempdim.rs` and their `app/` and `ui/` parts | the right-click menu, grips on a selected wall, run or grid, and temporary dimensions: **copies of egui's logic**, to be folded into the core when egui adopts them | in the area doc |
 | `forms.rs`, `finder.rs`, `typeprops.rs`, `settings.rs`, `app/dialogs.rs`, `ui/dialog.rs` and kin | the generic command form from every command's params doc (all 282), Find (Ctrl+K), Type Properties, `settings.json` shared with egui and the Settings dialog ([dialogs](rune-ui-dialogs.md)) | in the area doc |
 | `props/`, `app/properties.rs`, `ui/properties/` | the Properties palette: egui's rows table as data, groups that fold, units, a type selector, several elements at once, the plan's own view ([properties](rune-ui-properties.md)) | in the area doc |
-| `props.rs`, `status.rs` | the Properties rows and editable fields from `element_json`, what a typed value becomes; the status line | 3, 3 |
+| `props/plain.rs`, `status.rs` | the first plain rows and editable fields from `element_json` and what a typed value becomes (Type Properties and the generic form still read them); the status line | 3, 3 |
 | `lang.rs` | `t`, `tf`, `tc` over the catalogs egui reads (`translations/ui/*.po`), English fallback | 3 |
 | `software.rs` | `--software`: starts again with `RUNE_CPU_FIRST=only` (see "Choosing the CPU renderer") | 1 |
 | `tests/layout.rs` | no source file passes 1,200 lines | 1 |

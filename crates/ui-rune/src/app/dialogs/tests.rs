@@ -149,3 +149,18 @@ fn the_arrow_keys_stay_inside_the_list_and_ctrl_k_again_closes() {
     app.pick_found(0);
     assert!(app.tool.is_none(), "nothing is picked with Find closed");
 }
+
+#[test]
+fn a_dialog_that_opens_takes_the_right_click_menu_away() {
+    let mut app = App::sample();
+    for open in [0, 1, 2] {
+        app.tooling.menu = Some((10.0, 10.0));
+        match open {
+            0 => app.toggle_find(),
+            1 => app.toggle_settings(),
+            _ => assert!(app.open_command("wall")),
+        }
+        assert!(app.tooling.menu.is_none(), "dialog {open} opened over an open menu");
+        app.close_dialogs();
+    }
+}

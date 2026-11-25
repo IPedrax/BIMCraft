@@ -44,6 +44,7 @@ impl App {
         let Some(f) = typeprops::fields(&self.session.model, &key) else { return false };
         let names = typeprops::names(&self.session.model, &key.category);
         let fields = f.editable.into_iter().map(|(name, kind, text)| TypeField { name, kind, edit: TextEdit::new(text) }).collect();
+        self.close_menu();
         self.dialogs.clear();
         self.dialogs.types = Some(TypeDialog { key, names, json: f.json, fields, rows: f.rows, open: false, error: None, done: false });
         true

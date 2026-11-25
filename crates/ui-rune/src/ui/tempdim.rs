@@ -19,7 +19,7 @@ pub fn dimensions(s: &App, pal: &Palette) -> Vec<El> {
         return Vec::new();
     }
     let view = s.camera.view(s.size.0, s.size.1);
-    let kit = Kit::neutral(true);
+    let kit = Kit::neutral(s.dark());
     let (mut placed, mut fields) = (Vec::new(), Vec::new());
     for (i, f) in shown.iter().enumerate() {
         let Some(p) = paint::place_dimension(&f.dim, &view) else { continue };
@@ -27,7 +27,7 @@ pub fn dimensions(s: &App, pal: &Palette) -> Vec<El> {
         let input = TextInput::new(&f.edit)
             .label(t("Temporary dimension"))
             .width(Some(FIELD.0))
-            .on_edit(move |s: &mut App| s.temp.get_mut(i).map_or(&mut s.scratch, |f| &mut f.edit))
+            .on_edit(move |s: &mut App| s.temp.get_mut(i).map_or(&mut s.palette.scratch, |f| &mut f.edit))
             .on_submit(move |s: &mut App, _: &mut Tx| {
                 s.commit_dim(i);
             })

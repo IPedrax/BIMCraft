@@ -6,6 +6,11 @@
 //! - `panel.rs`: `Panel::of`, the groups and rows a selection has, each with its text and its editor, values shared or blank. `apply.rs`:
 //!   what an edit of a row becomes, a `modify` of the shown elements (or a `crop`, or a view's own command), or why it is none.
 //! - `types.rs`: the Type Selector's list and the type the elements have. `view.rs`: the plan's own Graphics rows (scale, detail level, north).
+//! - `plain.rs`: the first, plain rows of an element's JSON and its editable fields (`Row`, `Kind`, `editable`, `parse`, `rows`), which Type
+//!   Properties and the generic command form still read. They are re-exported here; the palette's own editor kinds are `kind::Kind`.
+
+mod plain;
+pub use plain::{Kind, Row, editable, parse, rows};
 
 pub mod apply;
 pub mod kind;
