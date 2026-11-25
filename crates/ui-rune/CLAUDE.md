@@ -64,6 +64,11 @@ One line per module. A new module adds its line here, not to the root.
   the held guide; `Landing::tag`, the words). `paint/snap.rs`: what a pick shows, in one shape (the points picked, the guides, the snap's glyph). The state is
   `App::landing`, `picked` and `snapper`; it is made only with a tool in hand (`App::reland`, from `rehover` and after a command), and the plan's snap layer is
   only there then. What egui's canvas has and this does not is listed in the doc's slice 4.
+- `tooling.rs`: the plan tools as data (`SPECS`, one `Spec` for each drawing tool of `tools::TOOLS`: the core command it ends in and a `Kind`) and
+  `advance` and `finish`, the pure state machine from the points picked to a `Step` (more, ignore, done, run, refuse). `app/tooling.rs`: `App` carries a `Step` out through
+  `Session::execute` (`finish_tool`, `back_point`, `set_shape`, `shape_preview`); a child of `app` so it reaches the private handlers. `paint/preview.rs`: `ghost`, what the next
+  click would make as strokes. `ui/draw_bar.rs`: the Draw panel's shapes for the Wall tool, over the plan while it is in hand. What is built and what is not: the area write-up
+  [the plan tools](../../docs/areas/rune-ui-tools.md). Their tests: `tooling/tests.rs`, `app/tooling_tests.rs`, `ui/tooling_tests.rs`.
 - `camera.rs`: pan, zoom and Zoom In Region of the plan, in the core's `View` (the history Previous Pan/Zoom walks back is `App`'s). `paint.rs`: a `Drawing`'s primitives as Rune shapes (dashes split,
   lettering through `text::triangles`, what cannot be drawn counted). `props.rs`: the Properties rows from `element_json`.
   `status.rs`: the status line. `lang.rs`: `t`, `tf`, `tc` over `translations/ui/*.po`, the catalogs egui reads.
