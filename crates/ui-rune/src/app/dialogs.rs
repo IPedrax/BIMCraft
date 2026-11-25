@@ -49,6 +49,8 @@ pub struct Dialogs {
     pub find: Option<FindState>,
     /// The Settings dialog (`app/settings.rs`).
     pub settings: Option<super::settings::SettingsDialog>,
+    /// Type Properties (`app/types.rs`).
+    pub types: Option<super::types::TypeDialog>,
     /// Where an edit goes when its field is gone (a stale handler): never read.
     pub scratch: TextEdit,
 }
@@ -56,7 +58,20 @@ pub struct Dialogs {
 impl Dialogs {
     /// A dialog is open: the keys and pointer are its, not the plan's.
     pub fn any(&self) -> bool {
-        self.form.is_some() || self.find.is_some() || self.settings.is_some()
+        self.form.is_some() || self.find.is_some() || self.settings.is_some() || self.types.is_some()
+    }
+
+    /// Closes every dialog: they are open one at a time.
+    pub fn clear(&mut self) {
+        (self.form, self.find, self.settings, self.types) = (None, None, None, None);
+    }
+
+    /// The box of field `i` of the open Type Properties.
+    pub fn type_edit(&mut self, i: usize) -> &mut TextEdit {
+        match self.types.as_mut().and_then(|d| d.fields.get_mut(i)) {
+            Some(f) => &mut f.edit,
+            None => &mut self.scratch,
+        }
     }
 
     /// The box Find types into.
@@ -86,7 +101,7 @@ impl App {
         // The field starts focused, so what is typed goes to it.
         let mut edit = TextEdit::new("");
         edit.focused = true;
-        (self.dialogs.form, self.dialogs.settings) = (None, None);
+        self.dialogs.clear();
         self.dialogs.find = Some(FindState { edit, at: 0 });
     }
 
@@ -118,6 +133,9 @@ impl App {
             }
             Found::Level(id) => self.set_level(id),
             Found::Settings => self.toggle_settings(),
+            Found::TypeProperties => {
+                self.open_type_of_selection();
+            }
         }
     }
 
@@ -143,14 +161,14 @@ impl App {
         if let Some(i) = form.fields.iter().position(|f| !f.kind.chosen()) {
             entries[i].edit.focused = true;
         }
-        (self.dialogs.find, self.dialogs.settings) = (None, None);
+        self.dialogs.clear();
         self.dialogs.form = Some(FormState { form, entries, rest: TextEdit::new(""), open: None, error: None, reply: None });
         true
     }
 
     /// Closes whatever dialog is open.
     pub fn close_dialogs(&mut self) {
-        (self.dialogs.form, self.dialogs.find, self.dialogs.settings) = (None, None, None);
+        self.dialogs.clear();
     }
 
     /// Opens the choices of field `i`, or closes them when they are open.

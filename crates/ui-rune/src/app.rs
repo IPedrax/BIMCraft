@@ -20,6 +20,7 @@ use crate::status;
 
 pub mod dialogs;
 pub mod settings;
+pub mod types;
 
 /// How near a click or a hover must be to a line to take it, points.
 const REACH: f32 = 4.0;

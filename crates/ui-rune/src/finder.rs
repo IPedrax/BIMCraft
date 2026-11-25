@@ -22,6 +22,8 @@ pub enum Found {
     Level(Id),
     /// Opens the Settings dialog.
     Settings,
+    /// Opens Type Properties on the selected element's type.
+    TypeProperties,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -84,6 +86,10 @@ fn ranked(query: &str, levels: &[(Id, String)]) -> Vec<Hit> {
     let settings = t("Settings");
     if matches(settings, query) {
         rows.push((rank(settings, &first), 1, Hit { label: settings.to_string(), note: t("Dialog").to_string(), found: Found::Settings }));
+    }
+    let types = t("Type Properties");
+    if matches(types, query) {
+        rows.push((rank(types, &first), 1, Hit { label: types.to_string(), note: t("Dialog").to_string(), found: Found::TypeProperties }));
     }
     for (id, name) in levels {
         if matches(name, query) {

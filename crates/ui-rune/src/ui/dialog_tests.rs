@@ -207,3 +207,44 @@ fn project_information_is_the_commands_own_form() {
     assert_eq!(rt.state.dialogs.form.as_ref().map(|f| f.form.id), Some("project_info"));
     assert!(rt.find("form-run").is_some());
 }
+
+#[test]
+fn edit_type_opens_type_properties_on_the_selected_walls_type_and_apply_changes_it() {
+    let mut rt = window();
+    rt.update(|s, _| {
+        let made = s.session.execute("type", &serde_json::json!({"category": "wall", "name": "Rune Test Wall", "thickness": 200}));
+        assert!(made.is_ok(), "{made:?}");
+        let wall = s.session.execute("wall", &serde_json::json!({"points": [[50000, 50000], [53000, 50000]], "type": "Rune Test Wall"}));
+        assert!(wall.is_ok(), "{wall:?}");
+    });
+    let model = rt.state.session.model.clone();
+    let id = model
+        .elements
+        .iter()
+        .map(|(id, _)| *id)
+        .find(|id| bimcraft_core::element_json(&model, *id)["type"] == "Rune Test Wall")
+        .expect("the wall");
+    rt.update(|s, _| s.select(vec![id]));
+    rt.frame(0.0);
+    rt.frame(0.0);
+    tap(&mut rt, "edit-type");
+    assert!(rt.state.dialogs.types.is_some(), "Edit Type opens it");
+    let i = rt.state.dialogs.types.as_ref().and_then(|d| d.fields.iter().position(|f| f.name == "thickness")).expect("thickness");
+    tap(&mut rt, &format!("type-field-{i}"));
+    press(&mut rt, Key::Command('a'), ctrl());
+    rt.paste("350");
+    rt.frame(0.0);
+    tap(&mut rt, "type-apply");
+    assert_eq!(rt.state.session.model.types.wall["Rune Test Wall"].thickness, 350.0, "the type changed through the engine");
+    assert!(rt.find("type-done").is_some() && rt.find("type-error").is_none());
+    tap(&mut rt, "type-close");
+    assert!(rt.state.dialogs.types.is_none());
+}
+
+#[test]
+fn edit_type_with_nothing_selected_says_so_in_the_status_bar() {
+    let mut rt = window();
+    tap(&mut rt, "edit-type");
+    assert!(rt.state.dialogs.types.is_none());
+    assert!(rt.state.message.is_some());
+}

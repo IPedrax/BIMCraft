@@ -19,6 +19,7 @@ mod settings;
 mod status_bar;
 mod tools;
 mod topbar;
+mod types;
 
 /// The Properties panel's width, points.
 pub const PANEL_WIDTH: f32 = 300.0;

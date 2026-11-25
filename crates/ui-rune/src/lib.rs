@@ -23,6 +23,7 @@ pub mod snapping;
 pub mod software;
 pub mod status;
 pub mod tools;
+pub mod typeprops;
 pub mod ui;
 
 use rune::AppSpec;

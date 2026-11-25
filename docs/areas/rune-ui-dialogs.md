@@ -99,3 +99,25 @@ for the shared registry.
 **Words.** Written first here, so English until the tool learns this folder: Settings (in the catalogs already), Language, Units,
 Theme, Profile, Dark, Light, Project Information and Close are in them (egui's), so those show translated; System, BIMCraft, Rev and Dialog
 may not be.
+
+## Piece 3: Type Properties
+
+| Module | What it owns | Tests |
+|---|---|---|
+| `typeprops.rs` | the project's types as a form, pure: `all(&Model)` (every type of `Model::types` with its fields as a file writes them, the runs by their own categories), `of_element`, `fields`, `changes` | 3 |
+| `app/types.rs` | the state (`TypeDialog` in `Dialogs`) and handlers: `open_type`, `open_type_of_selection`, `switch_type`, `apply_type` | 3, no window |
+| `ui/types.rs` | the dialog: the type's name in a select of its category's types, its scalar fields in boxes, the rest as rows, Apply | 2, in `ui/dialog_tests.rs` |
+
+The Properties panel's Edit Type button (and Find, "Type Properties") opens the dialog on the type of the selected element. There is
+no per-category code: `Model::types` is written as JSON (the same JSON a project file holds), so a category's types are whatever the
+core has (walls, floors, doors, windows, columns, roofs, ceilings, railings, rooms, the runs, curtain panels, framing types…), a type's
+fields are its JSON object, and the scalars among them (numbers, text, yes or no: `props::editable`) are typed; layers and the other
+structures are shown as rows and left to the commands made for them. Apply sends one `type {category, name, …}` with only the fields
+that differ (numbers compared by value, so `200` typed is the `200.0` the type has), which "creates the type, or changes it everywhere it's used";
+the dialog then shows the type as the project now holds it. A field that is no number, or a refusal of the core (a type's field the
+`type` command does not take under that name), is said under the rows. A type is not renamed, duplicated or deleted here: those are
+`rename_type`, `type` with `name` and `delete_type`, which Find opens as the generic form.
+
+**Not done in this piece.** Materials and Parameters (the generic form carries `material` and `parameter` for now, and Find opens it); a
+layer editor for compound types; a picker for a field that names another type or a material; units in the boxes (millimetres, as the
+type is held); the Type Properties of a family's types.

@@ -9,9 +9,14 @@ use crate::lang::t;
 
 pub fn panel(s: &App, th: &Theme) -> El {
     let title = text(t("Properties")).font(type_::TITLE).color(th.text);
-    let buttons = row().gap(8.0).child(button("delete", t("Delete"), th, |s: &mut App| {
-        s.delete_selection();
-    }));
+    let buttons = row()
+        .gap(8.0)
+        .child(button("delete", t("Delete"), th, |s: &mut App| {
+            s.delete_selection();
+        }))
+        .child(button("edit-type", t("Edit Type"), th, |s: &mut App| {
+            s.open_type_of_selection();
+        }));
     let body = if s.props.is_empty() {
         col().child(text(t("Nothing selected")).font(type_::BODY).color(th.text_secondary))
     } else {
