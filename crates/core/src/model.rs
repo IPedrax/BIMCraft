@@ -2514,6 +2514,89 @@ pub struct Railing {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// Its parts changed by hand: one left out, a post's or a baluster's height, a rail's ends run on, another material,
+    /// a part's own values of parameters.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<RailingPartEdit>,
+}
+
+/// Which part of a railing: its `kind`, the type's part it is by `name` (none for a panel) and the `index`th of that part
+/// along the railing, counting from its start (a rail's pieces where it stops at a step, a post's or a baluster's places,
+/// a panel's bays).
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PartAt {
+    pub kind: RailingPartKind,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(default)]
+    pub index: usize,
+}
+
+/// What kind of part of a railing: each is a category of its own (`railingrail`, …), as IFC has them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RailingPartKind {
+    #[default]
+    Rail,
+    Post,
+    Baluster,
+    Panel,
+}
+
+impl RailingPartKind {
+    /// Its category.
+    pub fn category(self) -> &'static str {
+        match self {
+            RailingPartKind::Rail => "railingrail",
+            RailingPartKind::Post => "railingpost",
+            RailingPartKind::Baluster => "railingbaluster",
+            RailingPartKind::Panel => "railingpanel",
+        }
+    }
+}
+
+/// One part of a railing as changed by hand, apart from its type: `excluded` (deleted from the pattern), a post's or a
+/// baluster's `height` from its bottom, a rail's ends run on `extend_start` and `extend_end` past what its type says,
+/// `material` instead of its type's, and its values of the project's instance parameters for its category.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RailingPartEdit {
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
+    pub at: PartAt,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub excluded: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<f64>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub extend_start: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub extend_end: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
+}
+
+impl RailingPartEdit {
+    /// Whether it changes nothing: what is kept of it once its last change is taken off.
+    pub fn is_empty(&self) -> bool {
+        !self.excluded
+            && self.height.is_none()
+            && self.extend_start == 0.0
+            && self.extend_end == 0.0
+            && self.material.is_none()
+            && self.params.is_empty()
+    }
+}
+
+impl crate::library::HasPart for RailingPartEdit {
+    fn ident(&mut self) -> (&mut crate::ids::Id, &mut crate::ids::Guid) {
+        (&mut self.id, &mut self.guid)
+    }
 }
 
 /// A roof on `level`, its base `offset` mm above it. By its footprint: its eaves along `boundary`
@@ -3998,6 +4081,14 @@ pub struct RailPart {
     pub bend: f64,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub corner: f64,
+    /// How far it runs on past the railing's start and past its end, level, the way the line goes there.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub extend_start: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub extend_end: f64,
+    /// Its values of the project's type parameters for rails (`railingrail`), by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
 }
 
 /// How a railing's line goes from a landing up to a flight that starts a riser above it (or down from one): climbing to
@@ -4053,12 +4144,18 @@ pub struct PostPart {
     pub depth: f64,
     #[serde(default)]
     pub spacing: f64,
-    /// On a stair, a post on every `steps`th step of each flight instead (0: off), and on its first and last unless
-    /// `skip_ends`.
+    /// On a stair, a post on every `steps`th step instead (0: off), counted again from each post.
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub steps: u32,
+    /// No post at the railing's start and end (a post only).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub skip_ends: bool,
+    /// No post where a landing starts, turns and ends (a post only).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub skip_landings: bool,
+    /// A post on the first and last step of each flight too (a post only).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flight_ends: bool,
     /// A baluster's place in each bay: how the row of them is placed, moved `shift` along; with `single`, one of them
     /// only, `shift` from the bay's start, its middle or its end (spread: its middle).
     #[serde(default, skip_serializing_if = "is_default")]
@@ -4079,6 +4176,9 @@ pub struct PostPart {
     pub offset: f64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub material: String,
+    /// Its values of the project's type parameters for its category (`railingpost` or `railingbaluster`), by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
 }
 
 /// A panel in each bay between posts (along the whole railing, without posts): `thickness` thick, `offset` to the left of
@@ -4100,6 +4200,9 @@ pub struct PanelPart {
     pub side_gap: f64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub material: String,
+    /// Its values of the project's type parameters for panels (`railingpanel`), by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
 }
 
 /// A ceiling type: how thick, and with `grid`, square tiles that wide, which its reflected ceiling
@@ -4456,7 +4559,7 @@ pub struct Classification {
 pub const MAX_PROJECT_PARAMETERS: usize = 4096;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 28] = [
+pub const PARAMETER_CATEGORIES: [&str; 32] = [
     "wall",
     "floor",
     "ceiling",
@@ -4470,6 +4573,10 @@ pub const PARAMETER_CATEGORIES: [&str; 28] = [
     "stair",
     "ramp",
     "railing",
+    "railingrail",
+    "railingpost",
+    "railingbaluster",
+    "railingpanel",
     "mass",
     "structuralcolumn",
     "footing",
@@ -11305,6 +11412,7 @@ impl Model {
                     return Err(format!("{who}: its path has no length"));
                 }
                 crate::railings::check_count(&who, t, length)?;
+                crate::railings::check_edits(self, &who, rl)?;
             }
             Element::Roof(r) => {
                 known(&who, &r.type_name, &self.types.roof)?;

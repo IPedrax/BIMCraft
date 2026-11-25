@@ -2187,8 +2187,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         Some((t, layers))
     };
     let e = |id: u64| r.get(id);
+    // A railing's parts (its rails, posts, balusters and panels) come in with it, as its type makes them: none on its own.
+    let railing_part = |id: u64| l.whole.get(&id).and_then(|w| e(*w)).is_some_and(|w| w.name == "IFCRAILING");
     let named = |names: &[&str]| -> Vec<u64> {
-        ids.iter().copied().filter(|id| e(*id).is_some_and(|x| names.contains(&x.name.as_str()))).collect()
+        ids.iter().copied().filter(|id| e(*id).is_some_and(|x| names.contains(&x.name.as_str())) && !railing_part(*id)).collect()
     };
     let who = |id: u64| {
         e(id).map_or_else(
@@ -4013,6 +4015,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
     for id in named(&["IFCRAILING"]) {
         let Some(x) = e(id) else { continue };
         seen.insert(id);
+        seen.extend(l.parts.get(&id).into_iter().flatten().copied());
         let Some(axis) = r.axis(x).filter(|a| a.len() >= 2).or_else(|| straight(&r, x)) else {
             leave(&mut skipped, &mut seen, id, "it has no axis for BIMCraft to follow, and it isn't straight");
             continue;
@@ -4032,6 +4035,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     side: Some(side),
                     hosts: Vec::new(),
                     flip: false,
+                    parts: Vec::new(),
                 };
                 let start = |side| stairs::railing(&m, &on(side)).first().copied();
                 let side = [Side::Left, Side::Right]
@@ -4083,6 +4087,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     side: None,
                     hosts: Vec::new(),
                     flip: false,
+                    parts: Vec::new(),
                 }
             }
         };

@@ -164,6 +164,27 @@ level; checked on a Z stair from six sides. Plan: rails filled white, nothing ov
 
 Next, after comments: custom profiles, the plan showing rails and posts, ends and extensions, gates.
 
+## Round 6 (2026-11-24)
+
+From the user's comments on round 5:
+
+- **Posts on stairs.** A post at the railing's start and end (`skip_ends` takes them off), where each landing starts,
+  turns and ends (`skip_landings`), on each flight's first and last step only with `flight_ends`, and on every so many
+  steps counted again from each post. A Z stair's inner landing, as long as the railing is in from the edge, has one post,
+  at its corner; panels never run on round it.
+- **Curved and spiral stairs.** The line's heights come from what is under it, stretch by stretch: a winder, a spiral's step
+  or a curved flight's tread is a step like a run's, and the line is the nosing line from each step's front edge to the
+  next. Posts stand at corners of 30 degrees or more only, so a curve drawn in pieces gets none at each piece.
+- **The kink at a flight's top.** A panel's bottom follows the nosing line, not the rail's, which runs higher where it
+  joins two heights.
+- **Parts by hand.** Tab over a selected railing picks a rail, a post, a baluster or a panel; Properties changes its height
+  (posts, balusters), how far a rail runs on past its ends, its material and its parameters; Delete leaves it out of the
+  pattern; As in the Type takes the changes off. A rail type runs on past the railing's ends too (`extend_start`,
+  `extend_end`).
+- **Categories.** Rails, posts, balusters and panels are subcategories of Railings (Visibility/Graphics, Object Styles)
+  and categories of project parameters, type and instance. In IFC: rails `IfcRailing` HANDRAIL, posts `IfcMember` POST,
+  balusters `IfcMember` BALUSTER, panels `IfcPlate` INFILLPANEL, all parts of the railing's `IfcRailing`.
+
 ## What the research suggested for BIMCraft
 
 Proposals, to settle before building:

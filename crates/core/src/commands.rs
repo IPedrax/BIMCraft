@@ -1379,6 +1379,21 @@ other_files(
         railing_hosts,
     ),
     edit(
+        "railing_part",
+        ui_msg!("Railing Part"),
+        &[],
+        "{id, part?: {kind: rail|post|baluster|panel, name?, index}, parts?: [part, …], exclude?, height?: mm|null, extend_start?, \
+         extend_end?, material?: name|null, params?: {name: value|null}, reset?} changes one part of railing `id` (or each of \
+         `parts`) apart from its type: `exclude` leaves it out (true) or puts it back; `height` is a post's or a baluster's \
+         from its bottom (null: its type's); `extend_start` and `extend_end` run a rail on, level, past its ends, on top of \
+         what its type says; `material` is its own (null: its type's); `params` its values of the project's instance \
+         parameters for its category (railingrail, railingpost, railingbaluster, railingpanel); `reset` takes every change \
+         off it first. A part is the `index`th of its type's part `name` along the railing (a rail's pieces, a post's or a \
+         baluster's places, a panel's bays). Returns {parts: [{kind, name, index, category, ifc, material, excluded, …}]}, \
+         every part the railing has; with no change, only that",
+        railing_part,
+    ),
+    edit(
         "roof",
         ui_msg!("Roof"),
         &[],
@@ -1989,7 +2004,7 @@ other_files(
         ui_msg!("Project Parameters"),
         &[],
         "{name, kind?: text|number|integer|length|area|volume|angle|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|\
-         column|component|stair|ramp|railing|mass, …], sets?: {category: property set name|null}, classification?: {system, \
+         column|component|stair|ramp|railing|railingrail|railingpost|railingbaluster|railingpanel|mass, …], sets?: {category: property set name|null}, classification?: {system, \
          edition?}|null, rename?, delete?: true, description?, group?, read_only?: bool, scope?: instance|type, dictionary?: null, \
          vary_by_group?: bool} a project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each element of its \
          categories may have of its own, set with `modify {id, params: {name: value}}`, or, `scope` type, each of their types, \
@@ -15234,6 +15249,7 @@ fn sides(c: &str, s: &mut Session, p: &Value, id: Id, level: Guid) -> Result<Vec
         side: Some(side),
         hosts: Vec::new(),
         flip: false,
+        parts: Vec::new(),
     };
     Ok([Side::Left, Side::Right].into_iter().map(|side| m.insert(Element::Railing(railing(side)))).collect())
 }
@@ -15279,6 +15295,7 @@ fn railing(s: &mut Session, p: &Value) -> R {
         side,
         hosts: Vec::new(),
         flip: false,
+        parts: Vec::new(),
     };
     let made: Vec<Railing> = match id_opt(c, p, "host")? {
         // Along a stair's or a ramp's sides.
@@ -15344,6 +15361,128 @@ fn railing_hosts(s: &mut Session, p: &Value) -> R {
     let hosts: Vec<Id> = crate::railings::hosts(&rl).into_iter().filter_map(|g| m.elements.id(g)).collect();
     s.model_mut().elements.insert(id, Element::Railing(rl));
     Ok(json!({"hosts": hosts}))
+}
+
+fn railing_part(s: &mut Session, p: &Value) -> R {
+    let c = "railing_part";
+    let m = &s.model;
+    let id = ids_param(c, m, p)?.into_iter().next().ok_or_else(|| bad(c, "`id` is required"))?;
+    let Some(Element::Railing(rl)) = m.elements.get(id) else { return Err(bad(c, format!("{id} isn't a railing"))) };
+    let mut rl = rl.clone();
+    let made = crate::railings::made(m, &rl);
+    let at = |v: &Value| -> Result<crate::model::PartAt, String> {
+        serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("a part is {{kind: rail|post|baluster|panel, name?, index}}: {e}")))
+    };
+    let mut targets: Vec<crate::model::PartAt> = Vec::new();
+    if let Some(v) = p.get("part").filter(|v| !v.is_null()) {
+        targets.push(at(v)?);
+    }
+    match p.get("parts") {
+        v if absent(v) => {}
+        Some(Value::Array(a)) if a.len() <= crate::railings::MAX_EDITS => {
+            for v in a {
+                targets.push(at(v)?);
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`parts` is a list of up to {} parts, not {v}", crate::railings::MAX_EDITS))),
+        None => {}
+    }
+    for t in &targets {
+        if !made.iter().any(|x| x.at == *t) && !rl.parts.iter().any(|x| x.at == *t) {
+            return Err(bad(c, format!("railing {id} has no {}", crate::railings::named(t))));
+        }
+    }
+    let reset = flag(c, p, "reset")?;
+    let exclude = optional_flag(c, p, "exclude")?;
+    let height = match p.get("height") {
+        Some(Value::Null) => Some(None),
+        _ => num(c, p, "height")?.map(Some),
+    };
+    let material = match p.get("material") {
+        Some(Value::Null) => Some(None),
+        Some(Value::String(x)) if x.is_empty() => Some(None),
+        _ => string(c, p, "material")?.map(Some),
+    };
+    let params: Option<serde_json::Map<String, Value>> = match p.get("params") {
+        v if absent(v) => None,
+        Some(Value::Object(o)) => Some(o.clone()),
+        Some(v) => return Err(bad(c, format!("`params` is {{name: value, …}} (null takes one off), not {v}"))),
+        None => None,
+    };
+    let (start, end) = (num(c, p, "extend_start")?, num(c, p, "extend_end")?);
+    for t in targets {
+        let k = match rl.parts.iter().position(|x| x.at == t) {
+            Some(k) => k,
+            None => {
+                rl.parts.push(crate::model::RailingPartEdit { at: t.clone(), ..Default::default() });
+                rl.parts.len() - 1
+            }
+        };
+        let Some(e) = rl.parts.get_mut(k) else { continue };
+        if reset {
+            *e = crate::model::RailingPartEdit { id: e.id, guid: e.guid, at: t, ..Default::default() };
+        }
+        if let Some(x) = exclude {
+            e.excluded = x;
+        }
+        if let Some(h) = height {
+            e.height = h;
+        }
+        if let Some(mat) = &material {
+            e.material.clone_from(mat);
+        }
+        if let Some(x) = start {
+            e.extend_start = x;
+        }
+        if let Some(x) = end {
+            e.extend_end = x;
+        }
+        for (k, v) in params.iter().flatten() {
+            if v.is_null() {
+                e.params.remove(k);
+            } else {
+                e.params.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    rl.parts.retain(|e| !e.is_empty());
+    let listed = railing_parts_listed(&made, &rl);
+    s.model_mut().elements.insert(id, Element::Railing(rl));
+    Ok(json!({"parts": listed}))
+}
+
+/// Every part a railing's type makes (`made`), as `railing_part` lists it: which it is, its category and IFC class, its
+/// material, and what the railing changes of it.
+fn railing_parts_listed(made: &[crate::railings::Part], rl: &crate::model::Railing) -> Vec<Value> {
+    let mut seen = std::collections::BTreeSet::new();
+    made.iter()
+        .filter(|x| seen.insert(x.at.clone()))
+        .map(|x| {
+            let e = rl.parts.iter().find(|e| e.at == x.at);
+            let (class, kind, user) = crate::railings::ifc_class(x.at.kind);
+            let mut v = json!({
+                "kind": x.at.kind, "name": x.at.name, "index": x.at.index, "category": x.at.kind.category(),
+                "ifc": format!("{class}.{}", user.unwrap_or(kind)),
+                "material": e.and_then(|e| e.material.clone()).unwrap_or_else(|| x.material.clone()),
+                "excluded": e.is_some_and(|e| e.excluded),
+            });
+            if let Some(e) = e {
+                if let Some(h) = e.height {
+                    v["height"] = json!(h);
+                }
+                if e.extend_start != 0.0 {
+                    v["extend_start"] = json!(e.extend_start);
+                }
+                if e.extend_end != 0.0 {
+                    v["extend_end"] = json!(e.extend_end);
+                }
+                if !e.params.is_empty() {
+                    v["params"] = json!(e.params);
+                }
+            }
+            v
+        })
+        .collect()
 }
 
 fn roof(s: &mut Session, p: &Value) -> R {
@@ -19895,15 +20034,22 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                     Some(v) => serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`{key}` is {shape}: {e}"))),
                 }
             }
-            let rails = part(c, p, "rails", old.rails, "[{name, shape?: rectangle|circle, width, depth?, height, offset?, material?}, …]")?;
+            let rails = part(
+                c,
+                p,
+                "rails",
+                old.rails,
+                "[{name, shape?: rectangle|circle, width, depth?, height, offset?, material?, bend?, corner?, extend_start?, extend_end?, params?}, …]",
+            )?;
             let posts = part(
                 c,
                 p,
                 "posts",
                 old.posts,
-                "[{name, kind?: post|baluster, shape?, width, depth?, spacing, bottom?: rail, bottom_offset?, top?: rail, top_offset?, offset?, material?}, …]",
+                "[{name, kind?: post|baluster, shape?, width, depth?, spacing, steps?, skip_ends?, skip_landings?, flight_ends?, justify?, shift?, single?, bottom?: rail, bottom_offset?, top?: rail, top_offset?, offset?, material?, params?}, …]",
             )?;
-            let panel = part(c, p, "panel", old.panel, "{thickness, offset?, bottom?, top?: rail, top_gap?, side_gap?, material?}")?;
+            let panel =
+                part(c, p, "panel", old.panel, "{thickness, offset?, bottom?, top?: rail, top_gap?, side_gap?, material?, params?}")?;
             let height = height.or((old.height > 0.0).then_some(old.height));
             let mut t = RailingType {
                 height: height.unwrap_or(0.0),

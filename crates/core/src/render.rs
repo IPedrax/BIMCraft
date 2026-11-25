@@ -4198,7 +4198,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), BY_CATEGORY, MASS, true),
             Element::Stair(st) => stair(&mut d, m, st, level, &stair_subs),
             Element::Ramp(r) => ramp(&mut d, m, r, level),
-            Element::Railing(rl) => railing(&mut d, m, rl, m.level_of(e), level, range.cut),
+            Element::Railing(rl) => railing(&mut d, m, rl, m.level_of(e), level, range.cut, &stair_subs.railing),
             Element::PropertyLine(pl) if pl.level == level => property_outline(&mut d, pl),
             // A toposolid: its boundary, the lines where its top crosses each contour height, and its type's surface.
             Element::Toposolid(t) if t.level == level => {
@@ -5446,6 +5446,8 @@ pub(crate) struct StairSubs {
     hidden: [bool; 9],
     paint: [Option<crate::graphics::Override>; 9],
     ways: Option<crate::model::PlanShows>,
+    /// Which of a railing's parts' subcategories ([`crate::graphics::RAILING_SUBS`]) it hides.
+    railing: [bool; 4],
 }
 
 impl StairSubs {
@@ -5458,6 +5460,7 @@ impl StairSubs {
             out.hidden[i] = g.hides(sub);
             out.paint[i] = g.categories.get(*sub).filter(|o| !o.projection.is_empty() || o.halftone).cloned();
         }
+        out.railing = crate::graphics::RAILING_SUBS.map(|sub| g.hides(sub));
         out
     }
 
@@ -5943,7 +5946,7 @@ fn ramp(d: &mut Drawing, m: &Model, r: &Ramp, level: impl Key) {
 /// above and the level below; a railing of no type as on its own level): what each of its parts covers in plan, its
 /// rails by their two sides, those under the cut plane at height `cut` in the type's visible line style and those over it
 /// in its hidden one, as the way it is shown says.
-fn railing(d: &mut Drawing, m: &Model, rl: &Railing, on: Option<Guid>, level: Guid, cut: f64) {
+fn railing(d: &mut Drawing, m: &Model, rl: &Railing, on: Option<Guid>, level: Guid, cut: f64, off: &[bool; 4]) {
     let Some(on) = on else { return };
     let t = m.types.railing.get(&rl.type_name);
     let ways = t.map(|t| t.plan).unwrap_or_default();
@@ -5973,7 +5976,9 @@ fn railing(d: &mut Drawing, m: &Model, rl: &Railing, on: Option<Guid>, level: Gu
             None => d.stroke(px, BY_CATEGORY, INK, dash, closed),
         }
     };
-    let parts = crate::railings::parts(m, rl);
+    let mut parts = crate::railings::parts(m, rl);
+    // What the view hides of its parts, by their subcategories.
+    parts.retain(|p| !off.get(p.at.kind as usize).copied().unwrap_or(false));
     // Posts, balusters and panels first; over the cut plane none of them shows (a railing seen from above is its rails).
     for part in &parts {
         match &part.piece {

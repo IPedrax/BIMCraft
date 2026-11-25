@@ -97,6 +97,26 @@ pub fn rail(line: &[(P2, f64)], r: &RailPart) -> Vec<P3> {
     round(&kept, r.corner, r.bend, if r.shape == PartShape::Circle { r.width } else { r.width.max(d) })
 }
 
+/// `path` run on level, `start` before its first point and `end` past its last, the way it goes in plan there.
+pub fn extended(path: &[P3], start: f64, end: f64) -> Vec<P3> {
+    let mut out = path.to_vec();
+    let way = |a: P3, q: Option<&P3>| q.map(|q| (plan(*q) - plan(a)).unit());
+    let off = |a: P3| move |q: &&P3| plan(**q).dist(plan(a)) > 1e-6;
+    if start > 0.0
+        && let Some(&a) = path.first()
+        && let Some(u) = way(a, path.iter().find(off(a)))
+    {
+        out.insert(0, [a[0] - u.0 * start, a[1] - u.1 * start, a[2]]);
+    }
+    if end > 0.0
+        && let Some(&a) = path.last()
+        && let Some(u) = way(a, path.iter().rev().find(off(a)))
+    {
+        out.push([a[0] - u.0 * end, a[1] - u.1 * end, a[2]]);
+    }
+    out
+}
+
 /// `pts`, each straight stretch lowered as far as a section `half` high each way, square to it, reaches higher than
 /// `half` straight up on its slope; a point between two stretches where their lowered lines meet, along the way it goes
 /// in plan (a turn in plan is level, and keeps its place).

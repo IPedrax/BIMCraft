@@ -328,19 +328,24 @@ is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): 
 mm up), as deep as the runs are wide, the next run turning by its `turn`; a railing on one follows its walk line moved out to
 its side (`stairs::railing`), so it goes wherever its host goes. A railing may follow more hosts (`hosts`, `railing_hosts`; the desktop's Edit
 Hosts, picked as Edit Group picks members): stairs, ramps, floors, roofs and toposolids; its line in plan stays (Edit Path
-redraws it, `sketch::open_path`), and its heights are those of the first host under each point, looked up every 50 mm and
-kept where they bend (`railings::follow`), so one railing runs up a stair and on along the floor it comes to. Over a
-stair's flight the line runs over the treads' nosings, flat over a landing, and where a flight starts a riser above its
-landing, the line is each part's own straight line (a flight's over its nosings, a landing level, a floor at its slope),
-and where a flight starts a riser above its landing (`transition` `continuous`) the higher line runs on at its slope
+redraws it, `sketch::open_path`), and its heights are those of the first host under each point (`railings::follow`), so one
+railing runs up a stair and on along the floor it comes to. Its line is cut where what is under it changes
+(`Ground::stretches`: each step, landing, floor or nothing, the change found by halving): over steps (a run's treads, a
+winder, a spiral's or a curved flight's) its nosing line, from each step's front edge at its top to the next's
+(`railings::nosed`), so a curved or spiral stair's line climbs as one smooth slope; a landing level; a floor at its
+slope. The line is each part's own straight line, and where a flight starts a riser above its landing (`transition` `continuous`) the higher line runs on at its slope
 over the lower part until it meets that part's line, higher there than it need be by at most the step (the type's
 `extra`, 200 mm, the most it allows) and within a going and a half; where it would not meet (an inner corner's flight
 running beside the other) a joining slope steeper than the lower line meets it instead (`railings::envelope`). A
 `gooseneck` runs level to the step and goes straight up or down there, the higher side running on over the lower by
-`extension`; `separate` ends each rail there. Each corner is put in exactly where the lines meet (`railings::corners`); past a stair's flights, landings and winders the stair is no host; over a floor, a roof or a toposolid it is
-their top as the 3D view has it (`view3d::top_solids`: slopes, shape points and survey points). Posts and balusters on
-the host stand on the tread, landing or surface under them (`railings::Ground`), and a post with `steps` stands on every
-so many treads of each flight, its first and last too unless `skip_ends`. A type has one kind of post; balusters are
+`extension`; `separate` ends each rail there. Past a stair's flights, landings and winders the stair is no host; over a
+floor, a roof or a toposolid it is their top as the 3D view has it (`view3d::top_solids`: slopes, shape points and survey
+points). Posts and balusters on the host stand on the tread, landing or surface under them (`railings::Ground`). A post
+stands at the railing's start and end (unless `skip_ends`), at corners of 30 degrees or more (less is a curve drawn in
+pieces), where each landing starts, turns and ends (unless `skip_landings`; one only on a landing too short for both, at
+its corner), on each flight's first and last step with `flight_ends`, and with `steps` on every so many steps, the count
+starting again after each post; between, off the steps it lines up with, at most `spacing` apart. A panel's bottom follows
+the nosing line, not the rail's (which runs higher where it joins two heights). A type has one kind of post; balusters are
 spread evenly in each bay, or their spacing apart from its start, centre or end (`justify`), moved by `shift`, or one only
 (`single`). A railing's `flip` mirrors every offset. In plan each part is drawn as it covers the floor, those under the cut
 plane in the type's visible line style; over it only the rails, in its hidden one, and each rail filled white over what
@@ -351,8 +356,18 @@ each bend by an arc tangent to both stretches, `corner` in plan and `bend` in sl
 section along it level across, unturned up an upright stretch, one ring on the plane halving each bend. A railing type stacks its parts (`railings.rs`, the desktop's Edit Railing):
 named rails, each a rectangle or a circle, its top `height` over the line and `offset` to its left; posts on the host at the
 ends, the corners and at most `spacing` apart; balusters between the posts, from the host or a rail's top up to a rail's
-underside or the railing's top; and a panel in each bay. Its `height` is worked out, the top of its highest rail; a type
-without parts is the older one rail and balusters (`railings::stack`). A stair's `start` is on its location line
+underside or the railing's top; and a panel in each bay. A rail runs on, level, `extend_start` and `extend_end` past the
+railing's ends (`path::extended`). Its `height` is worked out, the top of its highest rail; a type
+without parts is the older one rail and balusters (`railings::stack`). Each part of a railing is the `index`th of its type's
+part along it (`PartAt`: a rail's pieces, a post's or a baluster's places, a panel's bays), and the railing may change one
+apart from its type (`Railing::parts`, `railing_part`; in the desktop, Tab over the selected railing picks one, Delete
+leaves it out): left out of the pattern, a post's or a baluster's height, a rail run on further, its own material, its own
+values of parameters (`railings::edited`). Each kind is a category of its own, a subcategory of Railings in
+Visibility/Graphics and Object Styles (`railingrail`, `railingpost`, `railingbaluster`, `railingpanel`; their solids tagged
+by `graphics::railing_tag`), and project parameters may be for them: an instance's value on the railing's part, a type's on
+its type's part. IFC has the railing as an `IfcRailing` made of its parts (`railings::ifc_class`): a rail an `IfcRailing`
+HANDRAIL, a post an `IfcMember` POST, a baluster an `IfcMember` BALUSTER, a panel an `IfcPlate` INFILLPANEL; an import
+takes the parts with the railing. A stair's `start` is on its location line
 (`line`: its left edge, its middle or its right edge, and `offset` from it; `Stair::foot` is the middle of its first riser), so
 the line stays when the width changes. A turn is straight on, back beside the run, or any angle from 5 to 135 degrees (the runs then share the turn's inside
 corner). A landing has a `length` of its own (0: as deep as the stair is wide), and a turn may

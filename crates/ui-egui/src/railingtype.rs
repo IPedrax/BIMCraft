@@ -3,10 +3,14 @@
 //! placing, material); on the right a preview, a side view of two bays and a cut across them, where a click picks a part.
 //! OK or Apply puts them on the type (`type`). Also Edit Hosts and Edit Path, for one railing selected.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Model, PanelPart, PartShape, Placing, PostKind, PostPart, RailPart, RailingType, Transition};
+use bimcraft_core::model::{
+    Element, Id, Model, PanelPart, ParameterKind, PartAt, PartShape, Placing, PostKind, PostPart, RailPart, RailingPartKind, RailingType,
+    Scope, Transition,
+};
 use bimcraft_core::railings::{self, Piece, Which};
 use bimcraft_core::units::Units;
 use bimcraft_i18n::msg;
@@ -14,7 +18,7 @@ use egui::{
     Color32, Context, DragValue, Grid, Id as UiId, Layout, Rect, RichText, ScrollArea, Sense, Stroke, TextEdit, Ui, WidgetInfo, WidgetType,
     pos2, vec2,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::BimApp;
 use crate::lang::{t, tf};
@@ -326,6 +330,12 @@ impl RailingEditor {
                     row(ui, msg!("Round at corners"), |ui| length(ui, &mut r.corner, units));
                 });
                 hint(ui, msg!("The radius of the curve. 0 makes a sharp corner."));
+                section(ui, msg!("Ends"), |ui| {
+                    row(ui, msg!("Extend at the start"), |ui| length(ui, &mut r.extend_start, units));
+                    row(ui, msg!("Extend at the end"), |ui| length(ui, &mut r.extend_end, units));
+                });
+                hint(ui, msg!("The rail goes on past the end of the railing by this much, level. Each railing can add more."));
+                part_params(ui, m, "railingrail", Scope::Type, &mut r.params);
             }
             Some(Which::Post(i)) => {
                 let another_post = self.posts.iter().enumerate().any(|(k, p)| k != i && p.kind == PostKind::Post);
@@ -387,6 +397,18 @@ impl RailingEditor {
                         row(ui, label, |ui| length(ui, &mut q.spacing, units));
                     }
                     if post {
+                        let mut ends = !q.skip_ends;
+                        row(ui, msg!("At the start and end"), |ui| {
+                            if ui.checkbox(&mut ends, "").changed() {
+                                q.skip_ends = !ends;
+                            }
+                        });
+                        let mut landings = !q.skip_landings;
+                        row(ui, msg!("Where landings start, turn and end"), |ui| {
+                            if ui.checkbox(&mut landings, "").changed() {
+                                q.skip_landings = !landings;
+                            }
+                        });
                         let mut on = q.steps > 0;
                         row(ui, msg!("Line up with steps"), |ui| {
                             if ui.checkbox(&mut on, "").changed() {
@@ -397,11 +419,8 @@ impl RailingEditor {
                             row(ui, msg!("On every … step"), |ui| {
                                 ui.add(DragValue::new(&mut q.steps).range(1..=50));
                             });
-                            let mut ends = !q.skip_ends;
-                            row(ui, msg!("On first and last step"), |ui| {
-                                if ui.checkbox(&mut ends, "").changed() {
-                                    q.skip_ends = !ends;
-                                }
+                            row(ui, msg!("On the first and last step of each flight"), |ui| {
+                                ui.checkbox(&mut q.flight_ends, "");
                             });
                         }
                     }
@@ -411,7 +430,7 @@ impl RailingEditor {
                     hint(
                         ui,
                         msg!(
-                            "Posts go at the ends and corners, and between them no more than this far apart. On a stair, they can stand on the steps instead."
+                            "Posts go at the ends, at corners and where landings start, turn and end. Between them they are no more than this far apart. On a stair they can stand on every few steps instead: the count starts again after each post."
                         ),
                     );
                 } else {
@@ -425,6 +444,7 @@ impl RailingEditor {
                 section(ui, msg!("Material"), |ui| {
                     row(ui, msg!("Material"), |ui| pick(ui, "post-material", &mut q.material, &materials));
                 });
+                part_params(ui, m, if post { "railingpost" } else { "railingbaluster" }, Scope::Type, &mut q.params);
             }
             Some(Which::Panel) => {
                 let Some(pn) = &mut self.panel else { return };
@@ -447,6 +467,7 @@ impl RailingEditor {
                 section(ui, msg!("Material"), |ui| {
                     row(ui, msg!("Material"), |ui| pick(ui, "panel-material", &mut pn.material, &materials));
                 });
+                part_params(ui, m, "railingpanel", Scope::Type, &mut pn.params);
             }
             None => {
                 ui.add_space(20.0);
@@ -738,6 +759,51 @@ pub(crate) fn path_plane(m: &Model, id: bimcraft_core::model::Id) -> Option<bimc
     Some(hosted.unwrap_or_else(|| bimcraft_core::walls::Plane::flat(m.elevation(rl.level) + rl.base_offset)))
 }
 
+/// The project's parameters for `category` of `scope` (a part's type or its own), each a row: text typed, a number or a
+/// length dragged, yes or no ticked. Left as it was, a value is not set.
+pub(crate) fn part_params(ui: &mut Ui, m: &Model, category: &str, scope: Scope, values: &mut BTreeMap<String, Value>) -> bool {
+    let list: Vec<(&String, &bimcraft_core::model::ProjectParameter)> =
+        m.parameters.iter().filter(|(_, p)| p.scope == scope && p.categories.iter().any(|c| c == category)).collect();
+    if list.is_empty() {
+        return false;
+    }
+    let mut changed = false;
+    section(ui, msg!("Parameters"), |ui| {
+        for (name, p) in list {
+            row(ui, name, |ui| {
+                let now = values.get(name.as_str()).cloned();
+                let next = match p.kind {
+                    ParameterKind::YesNo => {
+                        let mut on = now.as_ref().and_then(Value::as_bool).unwrap_or(false);
+                        ui.checkbox(&mut on, "").changed().then(|| json!(on))
+                    }
+                    ParameterKind::Text => {
+                        let mut text = now.as_ref().and_then(Value::as_str).unwrap_or_default().to_string();
+                        ui.add(TextEdit::singleline(&mut text).desired_width(190.0)).changed().then(|| json!(text))
+                    }
+                    ParameterKind::Length => {
+                        let mut x = now.as_ref().and_then(Value::as_f64).unwrap_or(0.0);
+                        length(ui, &mut x, m.units);
+                        (Some(x) != now.as_ref().and_then(Value::as_f64) && (now.is_some() || x != 0.0)).then(|| json!(x))
+                    }
+                    _ => {
+                        let mut x = now.as_ref().and_then(Value::as_f64).unwrap_or(0.0);
+                        let whole = p.kind == ParameterKind::Integer;
+                        let r =
+                            ui.add(DragValue::new(&mut x).speed(if whole { 1.0 } else { 0.1 }).fixed_decimals(if whole { 0 } else { 2 }));
+                        r.changed().then(|| json!(x))
+                    }
+                };
+                if let Some(v) = next {
+                    values.insert(name.clone(), v);
+                    changed = true;
+                }
+            });
+        }
+    });
+    changed
+}
+
 /// A railing type's own rows in Type Properties: how its rails connect where the line steps, how far the higher runs on,
 /// how much higher a straight section may be, and how its plans show it.
 #[derive(Clone, Debug, PartialEq)]
@@ -821,4 +887,187 @@ impl RailingRows {
 /// A label as the interface reads it, owned.
 fn t_(label: &str) -> String {
     t(label).to_string()
+}
+
+/// What Tab goes to next of a railing's parts under the cursor (`list`) after `now`: the one after it, and past the last,
+/// none, the whole railing again.
+pub(crate) fn next_part(now: Option<&(Id, PartAt)>, id: Id, list: &[PartAt]) -> Option<(Id, PartAt)> {
+    let at = now.filter(|(of, _)| *of == id).and_then(|(_, at)| list.iter().position(|x| x == at));
+    let next = at.map_or(0, |i| i + 1);
+    list.get(next).map(|a| (id, a.clone()))
+}
+
+/// The railing alone selected, if one is.
+pub(crate) fn railing_alone(m: &Model, selection: &[Id]) -> Option<Id> {
+    match selection {
+        &[id] if matches!(m.elements.get(id), Some(Element::Railing(_))) => Some(id),
+        _ => None,
+    }
+}
+
+/// The part of a railing Tab picked (`picked`, while its railing alone is `selection`), marked: its edges as `screen`
+/// puts them on the view, lit.
+pub(crate) fn mark_part(
+    p: &egui::Painter,
+    m: &Model,
+    picked: Option<&(Id, PartAt)>,
+    selection: &[Id],
+    screen: impl Fn([f64; 3]) -> Option<egui::Pos2>,
+) {
+    let Some((id, at)) = picked.filter(|(id, _)| selection == [*id]) else { return };
+    let Some(Element::Railing(rl)) = m.elements.get(*id) else { return };
+    let color = crate::curtain::picked_part_color();
+    for line in railings::part_edges(m, rl, at) {
+        let pts: Vec<egui::Pos2> = line.into_iter().filter_map(&screen).collect();
+        if pts.len() >= 2 {
+            p.add(egui::Shape::line(pts, Stroke::new(2.5, color)));
+        }
+    }
+}
+
+/// What a part of a railing is called in Properties: its kind, its name and which it is along the railing.
+fn part_title(at: &PartAt) -> String {
+    let kind = match at.kind {
+        RailingPartKind::Rail => t("Rail"),
+        RailingPartKind::Post => t("Post"),
+        RailingPartKind::Baluster => t("Baluster"),
+        RailingPartKind::Panel => t("Panel"),
+    };
+    let n = (at.index + 1).to_string();
+    if at.name.is_empty() { format!("{kind} {n}") } else { format!("{kind}: {} {n}", at.name) }
+}
+
+impl BimApp {
+    /// Tab over the railing that is selected, `list` its parts under the cursor: the next of them picked, its
+    /// Properties shown; past the last, the whole railing again. Whether it did.
+    pub(crate) fn railing_tab(&mut self, id: Id, list: &[PartAt]) -> bool {
+        if list.is_empty() {
+            return false;
+        }
+        self.railing_part = next_part(self.railing_part.as_ref(), id, list);
+        self.selection = vec![id];
+        true
+    }
+
+    /// Delete with a part of a railing picked: that part left out of the railing's pattern, the railing kept.
+    pub(crate) fn delete_railing_part(&mut self) -> bool {
+        let Some((id, at)) = self.railing_part.take() else { return false };
+        self.run("railing_part", json!({"id": id, "part": at, "exclude": true}));
+        true
+    }
+
+    /// Properties of the part of a railing Tab picked: delete it, its height (a post's or a baluster's), how far a rail
+    /// runs on past its ends, its own material, its values of parameters, or back to what its type makes. With the railing
+    /// alone selected and parts of it deleted, a button to put them back.
+    pub(crate) fn railing_part_panel(&mut self, ui: &mut Ui, model: &Arc<Model>) {
+        let m = model.as_ref();
+        if self.railing_part.as_ref().is_some_and(|(id, _)| self.selection != [*id]) {
+            self.railing_part = None;
+        }
+        let Some((id, at)) = self.railing_part.clone() else {
+            let Some(id) = railing_alone(m, &self.selection) else { return };
+            let Some(Element::Railing(rl)) = m.elements.get(id) else { return };
+            let gone: Vec<&PartAt> = rl.parts.iter().filter(|e| e.excluded).map(|e| &e.at).collect();
+            if !gone.is_empty() && ui.button(tf("Put Back Deleted Parts ({})", &[&gone.len().to_string()])).clicked() {
+                self.run("railing_part", json!({"id": id, "parts": gone, "exclude": false}));
+            }
+            ui.add(egui::Label::new(RichText::new(t("Press Tab over a part to pick it alone.")).small().color(pal().muted)).wrap());
+            ui.separator();
+            return;
+        };
+        let Some(Element::Railing(rl)) = m.elements.get(id) else { return };
+        let edit = rl.parts.iter().find(|e| e.at == at).cloned().unwrap_or_default();
+        let made = railings::made(m, rl);
+        let Some(piece) = railings::parts(m, rl).into_iter().find(|p| p.at == at) else { return };
+        ui.label(RichText::new(part_title(&at)).strong());
+        let sub = bimcraft_core::graphics::sub(at.kind.category()).map_or(at.kind.category(), |x| x.name);
+        let (class, kind, user) = railings::ifc_class(at.kind);
+        let ifc = format!("{class}.{}", user.unwrap_or(kind));
+        ui.label(RichText::new(tf("Category: Railings > {}, in IFC {}", &[t(sub), &ifc])).small().color(pal().muted));
+        let mut changes: Option<Value> = None;
+        Grid::new("railing-part").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
+            match at.kind {
+                RailingPartKind::Post | RailingPartKind::Baluster => {
+                    let now = match &piece.piece {
+                        Piece::Prism(ring, bottom, top) => ring.first().map_or(0.0, |q| top.at(*q) - bottom.at(*q)),
+                        Piece::Tube(g) => g.b[2] - g.a[2],
+                        Piece::Sweep { .. } => 0.0,
+                    };
+                    let mut h = now;
+                    ui.label(t("Height"));
+                    ui.horizontal(|ui| {
+                        length(ui, &mut h, m.units);
+                        if edit.height.is_some() && ui.small_button(t("As in the type")).clicked() {
+                            changes = Some(json!({"height": null}));
+                        }
+                    });
+                    ui.end_row();
+                    if (h - now).abs() > 1e-6 && h > 0.0 {
+                        changes = Some(json!({"height": h}));
+                    }
+                }
+                RailingPartKind::Rail => {
+                    for (key, label, now) in [
+                        ("extend_start", msg!("Extend at the start"), edit.extend_start),
+                        ("extend_end", msg!("Extend at the end"), edit.extend_end),
+                    ] {
+                        let mut x = now;
+                        ui.label(t(label));
+                        length(ui, &mut x, m.units);
+                        ui.end_row();
+                        if (x - now).abs() > 1e-6 && x >= 0.0 {
+                            changes = Some(json!({ key: x }));
+                        }
+                    }
+                }
+                RailingPartKind::Panel => {}
+            }
+            ui.label(t("Material"));
+            let by_type = made.iter().find(|p| p.at == at).map(|p| p.material.clone()).unwrap_or_default();
+            let none = t("None").to_string();
+            let shown = edit
+                .material
+                .clone()
+                .unwrap_or_else(|| if by_type.is_empty() { tf("By type ({})", &[&none]) } else { tf("By type ({})", &[&by_type]) });
+            egui::ComboBox::from_id_salt("railing-part-material").selected_text(shown).width(190.0).show_ui(ui, |ui| {
+                if ui.selectable_label(edit.material.is_none(), t("By type")).clicked() {
+                    changes = Some(json!({"material": null}));
+                }
+                for name in m.materials.keys() {
+                    if ui.selectable_label(edit.material.as_deref() == Some(name.as_str()), name).clicked() {
+                        changes = Some(json!({"material": name}));
+                    }
+                }
+            });
+            ui.end_row();
+        });
+        let mut values = edit.params.clone();
+        if part_params(ui, m, at.kind.category(), Scope::Instance, &mut values) {
+            let mut sent = serde_json::Map::new();
+            for (k, v) in &values {
+                if edit.params.get(k) != Some(v) {
+                    sent.insert(k.clone(), v.clone());
+                }
+            }
+            changes = Some(json!({"params": sent}));
+        }
+        ui.horizontal(|ui| {
+            if ui.button(t("Delete from Pattern")).clicked() {
+                changes = Some(json!({"exclude": true}));
+            }
+            if !edit.is_empty() && ui.button(t("As in the Type")).clicked() {
+                changes = Some(json!({"reset": true}));
+            }
+        });
+        ui.separator();
+        if let Some(mut c) = changes {
+            c["id"] = json!(id);
+            c["part"] = json!(at);
+            let gone = c.get("exclude").and_then(Value::as_bool) == Some(true);
+            self.run("railing_part", c);
+            if gone {
+                self.railing_part = None;
+            }
+        }
+    }
 }

@@ -147,7 +147,7 @@ fn object_styles_has_a_row_for_each_family_category_and_component_sets_them_all(
     let subs: Vec<&str> = crate::styles::model_subs().collect();
     let all: Vec<&str> = MODEL.iter().copied().chain(subs.iter().copied()).chain(crate::graphics::CURTAIN_PARTS).collect();
     assert_eq!(rows, all);
-    assert_eq!(subs, ["dooropening", "windowopening"]);
+    assert_eq!(subs, ["dooropening", "windowopening", "railingrail", "railingpost", "railingbaluster", "railingpanel"]);
     assert!(COMPONENTS.iter().all(|c| rows.contains(c)) && !rows.contains(&COMPONENT));
     let start = ObjectStyle { projection: Pen::PROJECTION, cut: Pen::CUT };
     assert_eq!(s.model.object_style("lighting"), start);

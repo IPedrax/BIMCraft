@@ -80,3 +80,41 @@ fn a_railing_selected_offers_edit_path_and_edit_hosts() {
     press(&mut h, "Finish");
     assert!(h.state().railing_hosts.is_none());
 }
+
+#[test]
+fn tab_picks_a_part_of_the_selected_railing_and_delete_leaves_it_out_of_the_pattern() {
+    let script = format!(
+        "{BOX}\n{}\n{}",
+        r#"type {"category": "railing", "name": "P", "rails": [{"name": "Top", "width": 50, "height": 1000}], "posts": [{"name": "Post", "width": 50, "spacing": 1000}]}"#,
+        r#"railing {"path": [[1000, 500], [4000, 500]], "type": "P"}"#
+    );
+    let mut h = app(&script);
+    let railing = h.state().session.model.elements.iter().find(|(_, e)| e.category() == "railing").map(|(id, _)| *id).unwrap();
+    h.state_mut().selection = vec![railing];
+    h.run();
+    // Tab over the railing's start: its first post, then the rail over it, then the whole railing again.
+    let list = {
+        let m = &h.state().session.model;
+        let Some(Element::Railing(rl)) = m.elements.get(railing) else { panic!() };
+        bimcraft_core::railings::parts_near(m, rl, P2(1000.0, 500.0), 30.0)
+    };
+    assert_eq!(list.first().map(|p| p.kind), Some(bimcraft_core::model::RailingPartKind::Post), "{list:?}");
+    assert!(h.state_mut().railing_tab(railing, &list));
+    h.run();
+    assert!(h.query_by_label("Post: Post 1").is_some(), "the post's own Properties");
+    assert!(h.query_by_label("Delete from Pattern").is_some());
+    // Delete from Pattern: the post left out, the railing kept and still selected.
+    press(&mut h, "Delete from Pattern");
+    let m = &h.state().session.model;
+    let Some(Element::Railing(rl)) = m.elements.get(railing) else { panic!("the railing stays") };
+    assert!(rl.parts.iter().any(|e| e.excluded && e.at.index == 0));
+    assert_eq!(
+        bimcraft_core::railings::parts(m, rl).iter().filter(|p| p.at.kind == bimcraft_core::model::RailingPartKind::Post).count(),
+        3
+    );
+    // With the railing alone selected, its deleted parts can be put back.
+    h.run();
+    press(&mut h, "Put Back Deleted Parts (1)");
+    let Some(Element::Railing(rl)) = h.state().session.model.elements.get(railing) else { panic!() };
+    assert!(rl.parts.is_empty());
+}

@@ -116,6 +116,10 @@ const CODES_CLASSIFIED: u64 = 101;
 /// A framed wall's, floor's or roof's members, and their material.
 const FRAMING_MEMBER: u64 = 102;
 const FRAMING_MATERIALS: u64 = 103;
+/// A railing's parts, each a product of its own; the railing made of them; and each one's material.
+const RAILING_PART: u64 = 104;
+const RAILING_PARTS: u64 = 105;
+const RAILING_PART_MATERIALS: u64 = 106;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -1316,22 +1320,61 @@ impl Step {
             .collect()
     }
 
-    /// A railing, placed in `at`: its rail and balusters as closed shells, its rail's top line
-    /// as its axis (in the `axis` context); heights from `base`.
+    /// A railing, placed in `at`: made of its parts, each a product of its own as IFC has it (a rail an `IfcRailing` of kind
+    /// HANDRAIL, a post an `IfcMember` POST, a baluster an `IfcMember` BALUSTER, a panel an `IfcPlate` INFILLPANEL), its
+    /// shape closed shells and its material its own; the railing itself its rail's top line as its axis (in the `axis`
+    /// context); heights from `base`.
     fn railing(&mut self, m: &Model, id: Id, rl: &Railing, at: u64, base: f64, axis: u64) -> u64 {
         let height = m.types.railing.get(&rl.type_name).map_or(0.0, |t| t.height);
-        let parts = stairs::railing_parts(m, rl);
-        let breps: Vec<u64> = parts.iter().map(|(ring, bottom, top)| self.prism(ring, bottom, top, base)).collect();
         let pts: Vec<u64> = stairs::railing(m, rl)
             .iter()
             .map(|(p, z)| self.add(format!("IFCCARTESIANPOINT(({},{},{}))", real(p.0), real(p.1), real(z + height - base))))
             .collect();
         let line = self.add(format!("IFCPOLYLINE(({}))", refs(&pts)));
         let axis_rep = self.add(format!("IFCSHAPEREPRESENTATION(#{axis},'Axis','Curve3D',(#{line}))"));
-        let shape = self.solid(&breps, &[axis_rep]);
+        let shape = self.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{axis_rep}))"));
         let rat = self.place(Some(at), (0.0, 0.0, 0.0), None);
         let name = s(&rl.type_name);
-        self.add(format!("IFCRAILING({},$,{name},$,{name},#{rat},#{shape},'{id}',.GUARDRAIL.)", self.guid(ELEMENT, id)))
+        let whole = self.add(format!("IFCRAILING({},$,{name},$,{name},#{rat},#{shape},'{id}',.GUARDRAIL.)", self.guid(ELEMENT, id)));
+        // Its parts, the pieces of one part (a panel's along a bend) one product.
+        let mut parts: Vec<(crate::model::PartAt, String, Vec<u64>)> = Vec::new();
+        for part in crate::railings::parts(m, rl) {
+            let breps: Vec<u64> = part.piece.prisms().iter().map(|(ring, bottom, top)| self.prism(ring, bottom, top, base)).collect();
+            match parts.iter_mut().find(|(a, ..)| *a == part.at) {
+                Some((_, _, all)) => all.extend(breps),
+                None => parts.push((part.at, part.material, breps)),
+            }
+        }
+        let mut made = Vec::new();
+        let mut by_material: BTreeMap<String, Vec<u64>> = BTreeMap::new();
+        for (k, (part, material, breps)) in parts.into_iter().enumerate() {
+            let shape = self.solid(&breps, &[]);
+            let place = self.place(Some(rat), (0.0, 0.0, 0.0), None);
+            let (class, kind, user) = crate::railings::ifc_class(part.kind);
+            let label = s(&crate::railings::named(&part));
+            let object = user.map_or_else(|| "$".to_string(), s);
+            let tag = s(&format!("{id}/{k}"));
+            let ent = self.add(format!(
+                "{class}({},$,{label},$,{object},#{place},#{shape},{tag},.{kind}.)",
+                self.guid(RAILING_PART, mix(id ^ ((k as u64 + 1) << 40)))
+            ));
+            if !material.is_empty() {
+                by_material.entry(material).or_default().push(ent);
+            }
+            made.push(ent);
+        }
+        for (k, (material, ents)) in by_material.into_iter().enumerate() {
+            let mat = self.material(m, &material);
+            self.add(format!(
+                "IFCRELASSOCIATESMATERIAL({},$,$,$,({}),#{mat})",
+                self.guid(RAILING_PART_MATERIALS, mix(id ^ ((k as u64 + 1) << 40))),
+                refs(&ents)
+            ));
+        }
+        if !made.is_empty() {
+            self.add(format!("IFCRELAGGREGATES({},$,$,$,#{whole},({}))", self.guid(RAILING_PARTS, id), refs(&made)));
+        }
+        whole
     }
 
     /// A closed shell around the flat counter-clockwise `face` and its copy `rise` above, its

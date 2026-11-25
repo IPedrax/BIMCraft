@@ -162,6 +162,10 @@ pub const SUBCATEGORIES: &[Sub] = &[
     Sub { key: "staircutmark", parent: "stair", name: ui_msg!("Cut Marks"), off: false },
     Sub { key: "stairnumber", parent: "stair", name: ui_msg!("Tread Numbers"), off: false },
     Sub { key: "stairheadroom", parent: "stair", name: ui_msg!("Headroom"), off: true },
+    Sub { key: "railingrail", parent: "railing", name: ui_msg!("Rails"), off: false },
+    Sub { key: "railingpost", parent: "railing", name: ui_msg!("Posts"), off: false },
+    Sub { key: "railingbaluster", parent: "railing", name: ui_msg!("Balusters"), off: false },
+    Sub { key: "railingpanel", parent: "railing", name: ui_msg!("Panels"), off: false },
     Sub { key: "curtainpanel", parent: "wall", name: ui_msg!("Curtain Panels"), off: false },
     Sub { key: "mullion", parent: "wall", name: ui_msg!("Mullions"), off: false },
 ];
@@ -169,6 +173,14 @@ pub const SUBCATEGORIES: &[Sub] = &[
 /// A stair's subcategories, in the order a part of a stair's solid or its plan names one by (`StairPart as usize`).
 pub const STAIR_SUBS: [&str; 9] =
     ["stairrun", "stairriser", "stairlanding", "stairsupport", "stairfinish", "stairpath", "staircutmark", "stairnumber", "stairheadroom"];
+
+/// A railing's subcategories, in the order of its parts' kinds (`RailingPartKind as usize`).
+pub const RAILING_SUBS: [&str; 4] = ["railingrail", "railingpost", "railingbaluster", "railingpanel"];
+
+/// The tag a solid of a railing's part of `kind` carries: after a stair's parts' ([`StairPart::tag`]).
+pub fn railing_tag(kind: crate::model::RailingPartKind) -> u8 {
+    STAIR_SUBS.len() as u8 + 1 + kind as u8
+}
 
 /// What a part of a stair is, for its subcategory: the index into [`STAIR_SUBS`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1168,7 +1180,7 @@ pub struct Look {
 
 /// The bits of the stair parts graphics `g` hides; with none, those off unless shown.
 fn parts_mask(g: Option<&Graphics>) -> u16 {
-    STAIR_SUBS.iter().enumerate().fold(0u16, |mask, (i, key)| {
+    STAIR_SUBS.iter().chain(RAILING_SUBS.iter()).enumerate().fold(0u16, |mask, (i, key)| {
         let hidden = g.map_or_else(|| off_unless_shown(key), |g| g.hides(key));
         if hidden { mask | (1 << (i + 1)) } else { mask }
     })

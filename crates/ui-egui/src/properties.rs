@@ -1902,6 +1902,7 @@ impl BimApp {
                 self.connected_finishes(ui, &model, id);
             }
             self.curtain_part_panel(ui, &model);
+            self.railing_part_panel(ui, &model);
             self.layer_picture(ui, &model);
             self.opening_picker(ui, &model);
             self.floor_slope(ui, &model);

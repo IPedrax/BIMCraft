@@ -81,8 +81,8 @@ pub fn inherited(styles: &BTreeMap<String, ObjectStyle>, category: &str) -> Obje
 }
 
 /// The categories whose subcategories Object Styles has rows for, each drawing in its category's pens until it has its own:
-/// a door's and a window's (Doors > Opening). Rooms' are left as they were, Room Separation Lines a kind of element of its own.
-const STYLED_SUBS: [&str; 2] = ["door", "window"];
+/// a door's and a window's (Doors > Opening), a railing's parts (Railings > Posts). Rooms' are left as they were, Room Separation Lines a kind of element of its own.
+const STYLED_SUBS: [&str; 3] = ["door", "window", "railing"];
 
 /// The subcategory `key` is, when Object Styles has a row for it ([`STYLED_SUBS`]).
 pub fn model_sub(key: &str) -> Option<&'static crate::graphics::Sub> {

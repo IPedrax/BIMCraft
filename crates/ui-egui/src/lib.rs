@@ -968,6 +968,8 @@ pub struct BimApp {
     railing_editor: Option<railingtype::RailingEditor>,
     /// Edit Hosts: the railing whose hosts are being picked, and whether a click adds one or takes one out.
     railing_hosts: Option<railingtype::HostEdit>,
+    /// The one part of the selected railing Tab has gone to: what Properties and Delete then act on.
+    railing_part: Option<(Id, bimcraft_core::model::PartAt)>,
     /// Go To View, while Edit Profile begun in a plan asks for a view that looks at the wall.
     go_to_view: Option<profile::GoToView>,
     /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
@@ -1957,6 +1959,7 @@ impl BimApp {
             railing_hosts: None,
             go_to_view: None,
             curtain_part: None,
+            railing_part: None,
             curtain_more: Vec::new(),
             curtain_hover: None,
             curtain_aim: None,
@@ -2738,6 +2741,10 @@ impl BimApp {
         self.selection.retain(|id| m.elements.contains_key(id) || bimcraft_core::coordinates::Point::of(m, *id).is_some());
         let selected = self.selection.as_slice();
         self.curtain_part = self.curtain_part.filter(|(id, at)| selected == [*id] && self.curtain_laid.of(m, *id).has(*at));
+        self.railing_part = self.railing_part.take().filter(|(id, at)| {
+            selected == [*id]
+                && matches!(m.elements.get(*id), Some(Element::Railing(rl)) if bimcraft_core::railings::parts(m, rl).iter().any(|p| p.at == *at))
+        });
         if self.curtain_part.is_none() {
             self.curtain_more.clear();
         }
@@ -4076,6 +4083,10 @@ impl BimApp {
         // With one part of a curtain wall picked, that part, and never the wall.
         if let Some((id, at)) = self.curtain_part {
             self.delete_curtain_part(id, at);
+            return;
+        }
+        // With one part of a railing picked, that part left out of its pattern, and never the railing.
+        if self.delete_railing_part() {
             return;
         }
         // Under Modify Sub Elements, what of the shape is selected.

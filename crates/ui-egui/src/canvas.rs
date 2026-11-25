@@ -2358,7 +2358,16 @@ impl BimApp {
             let id = crate::curtain::tab_wall(&model, &self.selection, &c.under, on_cursor, free)?;
             crate::curtain::parts_under(&model, &self.curtain_laid.of(&model, id), key, id, view.mm(q), view.scale)
         });
-        if let Some((id, list)) = parts {
+        // On the railing that's selected and under the cursor, Tab goes through its rails, posts, balusters and panels there.
+        let railing_parts = local.filter(|_| tabbed && !reference_tabbed && !segment_tabbed).and_then(|q| {
+            let id = crate::railingtype::railing_alone(&model, &self.selection).filter(|id| c.under.contains(id))?;
+            let Some(Element::Railing(rl)) = model.elements.get(id) else { return None };
+            let list = bimcraft_core::railings::parts_near(&model, rl, view.mm(q), f64::from(PICK) / view.scale);
+            (!list.is_empty()).then_some((id, list))
+        });
+        if let Some((id, list)) = railing_parts {
+            self.railing_tab(id, &list);
+        } else if let Some((id, list)) = parts {
             self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
             self.curtain_more.clear();
             if self.curtain_part.is_some() {
@@ -2840,6 +2849,10 @@ impl BimApp {
                 plan_mark(&p, id, at, true);
             }
         }
+        // The part of a railing Tab has picked.
+        crate::railingtype::mark_part(&p, &model, self.railing_part.as_ref(), &self.selection, |q| {
+            Some(pos(rect.min, view.px(P2(q[0], q[1]))))
+        });
         // The Curtain Grid tool: where the cursor would place a line.
         if let Tool::CurtainGrid { wall, way } = self.tool {
             let aim = self.canvas.cursor.zip(model.wall(wall)).and_then(|(q, w)| {
