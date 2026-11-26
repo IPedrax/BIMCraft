@@ -2420,7 +2420,8 @@ other_files(
         &[],
         "{id | ids: [id,…], …fields} change fields as `elements` shows them, of one element or several; `level` and `top_level` may be names. \
          `join: false` on a wall or a run turns off its joins: its ends stay square and it neither stretches with its neighbours nor pulls \
-         them (Revit's Disallow Join). \
+         them (Revit's Disallow Join). A wall given another `location` keeps that line where it is and moves across it; with \
+         `keep: body` it stays where it is and its line moves across it instead. \
          A filled region's, a floor's or a toposolid's model pattern is set by `pattern_origin` [x, y], plan mm, where its lines start, and \
          `pattern_angle`, degrees counter-clockwise (both shown by `elements`); to put a pattern line of one on a reference \
          line, Model::align_pattern gives the `pattern_origin` that does. A floor's, a ceiling's, a roof's or a shaft's \
@@ -20558,6 +20559,11 @@ fn modify(s: &mut Session, p: &Value) -> R {
         for (k, val) in fields {
             let val = match k.as_str() {
                 "id" | "ids" => continue,
+                // A wall put on another of its lines: what stays where it is ([`modify`]'s notes).
+                "keep" if matches!(e, Element::Wall(_)) => match val.as_str() {
+                    Some("line" | "body") => continue,
+                    _ => return Err(bad(c, format!("wall {id}: `keep` is `line` (its location line stays, the wall moves) or `body`"))),
+                },
                 // An image's height, and a PDF's scale (1 : n, its paper's size n times), set its width: it keeps its aspect.
                 "height" | "scale" if matches!(e, Element::Image(_)) => {
                     let Element::Image(im) = e else { continue };
@@ -20642,9 +20648,11 @@ fn modify(s: &mut Session, p: &Value) -> R {
                 }
             }
         }
-        // A wall put on another of its lines stays where it is: its line moves across it instead.
+        // A wall put on another of its lines keeps its line where it is, and moves across it, as its joins keep their
+        // corners (`walls::ends_meet`); with `keep: body` the wall stays where it is and its line moves across it instead.
         if let (Element::Wall(old), Element::Wall(w)) = (e, &mut e2)
             && old.location != w.location
+            && fields.get("keep").and_then(Value::as_str) == Some("body")
             && !fields.contains_key("start")
             && !fields.contains_key("end")
         {

@@ -409,9 +409,11 @@ Duplicate and Rename work as for any type. The headers are a table under Wall Op
 Plies; Flat), with Add Header and Delete. Beside the list stands the type's picture (`framing_diagram.rs`): a framed wall in
 elevation with a window and a door, each kind of member drawn where it stands and as the settings typed so far lay it out
 (`framing_diagram::layout`: the grid's spacing and layout, the plates', kings', jacks' and sill plates' counts, the header for each
-rough opening's width, the rough allowances, the blocking heights), its members four times as thick as they are so a 2x is no
-hairline, a 60 mm stud still thicker than a 38; each kind named in white on the first of it with room, up an upright one. A click on
-one (or on an opening) lights the rows that build it in the list and scrolls to them (`typeprops::Table::light`). A floor's and a roof's Properties keep Framing under
+rough opening's width, the rough allowances, the blocking heights) on a 6 m wall (`framing_diagram::SCALE`), its members 1.75
+times as thick as they are so a 2x is no hairline, a 60 mm stud still thicker than a 38; the bottom plates run under the door's
+jacks, cut across its rough opening. Each kind is named in small text outside the wall, over or under it, a thin leader to one of
+its members (`framing_diagram::labels`, picked so they spread along the wall). A click on one, or on its name (or on an opening),
+lights the rows that build it in the list and scrolls to them (`typeprops::Table::light`). A floor's and a roof's Properties keep Framing under
 Structural. The Project Browser lists framing types
 under Families, a click opens one's Type Properties and its right-click menu deletes one nothing uses.
 

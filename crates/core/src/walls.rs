@@ -712,10 +712,13 @@ fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &i
         .filter_map(|a| m.wall(a.id))
         .map(|o| lean(m, o, m.top_z(o)).abs().max(lean(m, o, m.base_z(o)).abs()))
         .fold(0.0, f64::max);
-    // Of walls on different location lines, the node is where one's line ends, off the others': the corner is where their
-    // centre lines cross, as it is of leaning walls.
+    // Of walls on different location lines, the node is where one's line ends, off the others', or where their lines meet off
+    // the mitre between their faces: the corner is where their centre lines cross, as it is of leaning walls.
     let apart = !through
-        && arms.iter().any(|a| a.id != id && m.wall(a.id).is_some_and(|o| (if a.at_end { o.end } else { o.start }).dist(node) > TOL));
+        && arms.iter().any(|a| {
+            a.id != id
+                && m.wall(a.id).is_some_and(|o| o.location != w.location || (if a.at_end { o.end } else { o.start }).dist(node) > TOL)
+        });
     let hub = if leaning || apart {
         let reach = 3.0 * (top_lean + limit);
         let pairs = if n > 2 { n } else { 1 };
@@ -1728,32 +1731,41 @@ mod tests {
 
     #[test]
     fn walls_put_on_other_location_lines_keep_their_corner() {
-        // An L of 200 mm walls, mitred where their centre lines meet; one put on its exterior face moves its line 100 mm
-        // across it, and its line's end no longer meets the other's: the corner stays as it was.
+        // An L of 200 mm walls on their centre lines, mitred where they meet.
         let mut s = session(
             r#"wall {"points": [[-4000, 0], [0, 0]]}
                wall {"points": [[0, 0], [0, 4000]]}"#,
         );
-        let corner_at = |s: &Session, id, at_end, dy: f64| {
+        // The corner's two points, outside and in, on each wall's cap, and the cap no other point off the line between them.
+        let corner = |s: &Session, id, at_end, outer: P2, inner: P2| {
             let c = cap(&s.model, id, at_end);
-            assert!(c.iter().any(|p| near(*p, P2(100.0, dy - 100.0))) && c.iter().any(|p| near(*p, P2(-100.0, dy + 100.0))), "{id}: {c:?}");
+            assert!(c.iter().any(|p| near(*p, outer)) && c.iter().any(|p| near(*p, inner)), "{id}: {c:?}");
+            let u = (inner - outer).unit();
+            assert!(c.iter().all(|p| (*p - outer).cross(u).abs() < 1e-6), "{id}: a mitre, straight: {c:?}");
         };
-        let corner = |s: &Session, id, at_end| corner_at(s, id, at_end, 0.0);
-        corner(&s, 100002, true);
+        corner(&s, 100002, true, P2(-100.0, 100.0), P2(100.0, -100.0));
+        // The first put on its exterior face: its line stays where it is, the wall moves across it, its exterior face now on it
+        // (from 0 to -200), and the corner is mitred still.
         s.execute("modify", &serde_json::json!({"id": 100002, "location": "exterior-finish"})).unwrap();
-        assert!(near(s.model.wall(100002).unwrap().end, P2(0.0, 100.0)), "its line moved across it");
-        corner(&s, 100002, true);
-        corner(&s, 100003, false);
-        // The other on its interior face, too: neither line's end on the other's, both across each other's ends.
-        s.execute("modify", &serde_json::json!({"id": 100003, "location": "interior-finish"})).unwrap();
-        corner(&s, 100002, true);
-        corner(&s, 100003, false);
+        assert!(near(s.model.wall(100002).unwrap().end, P2(0.0, 0.0)), "its line stays");
+        assert_eq!(faces(&s.model, s.model.wall(100002).unwrap()), (0.0, -200.0));
+        corner(&s, 100002, true, P2(-100.0, 0.0), P2(100.0, -200.0));
+        corner(&s, 100003, false, P2(-100.0, 0.0), P2(100.0, -200.0));
+        // Kept where it is instead (`keep: body`), back on its centre: its line moves across it, off the other's end, and the
+        // lines across their ends still cross where the two lines met.
+        s.execute("modify", &serde_json::json!({"id": 100002, "location": "centre", "keep": "body"})).unwrap();
+        assert!(near(s.model.wall(100002).unwrap().end, P2(0.0, -100.0)), "its line moved");
+        corner(&s, 100002, true, P2(-100.0, 0.0), P2(100.0, -200.0));
+        s.execute("modify", &serde_json::json!({"id": 100003, "location": "interior-finish", "keep": "body"})).unwrap();
+        assert!(near(s.model.wall(100003).unwrap().start, P2(100.0, 0.0)), "its line moved");
+        corner(&s, 100002, true, P2(-100.0, 0.0), P2(100.0, -200.0));
+        corner(&s, 100003, false, P2(-100.0, 0.0), P2(100.0, -200.0));
         assert_eq!(joined(&s.model, 100003, false).0, [100002]);
         // Moving one stretches the other, as it did when their lines met.
         s.execute("move", &serde_json::json!({"ids": [100002], "by": [0, -500]})).unwrap();
         assert!(near(s.model.wall(100003).unwrap().start, P2(100.0, -500.0)), "{:?}", s.model.wall(100003).unwrap().start);
-        corner_at(&s, 100003, false, -500.0);
-        corner_at(&s, 100002, true, -500.0);
+        corner(&s, 100003, false, P2(-100.0, -500.0), P2(100.0, -700.0));
+        corner(&s, 100002, true, P2(-100.0, -500.0), P2(100.0, -700.0));
     }
 
     #[test]

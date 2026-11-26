@@ -1070,6 +1070,7 @@ impl BimApp {
         let mut p = p.clone();
         if let Some(loc) = picked {
             p["location"] = json!(loc.name());
+            p["keep"] = json!("body");
             self.curtain_location = None;
             self.run("modify", p);
         } else if cancel || r.should_close() {
