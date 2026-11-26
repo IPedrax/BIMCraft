@@ -53,7 +53,7 @@ mod publisher;
 mod stairgrips;
 mod stairtype;
 mod viewrange;
-pub use gpu::limits_for;
+pub use gpu::{features_for, limits_for, points_drawn_by};
 mod asset_manager;
 mod graphics;
 mod gridtypes;

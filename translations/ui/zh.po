@@ -1138,7 +1138,7 @@ msgstr "对齐尺寸标注 (DI)：拾取平行的墙面、墙端、门、窗、�
 msgid "Aligned Dimension in 3D"
 msgstr "三维对齐尺寸标注"
 
-#: crates/ui-egui/src/orbit.rs:1660
+#: crates/ui-egui/src/orbit.rs:1662
 msgid "Aligned dimension: {}"
 msgstr "对齐尺寸标注：{}"
 
@@ -1621,7 +1621,7 @@ msgstr "面积"
 msgid "Area and Volume Computations"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:670
+#: crates/ui-egui/src/orbit.rs:672
 msgid "Area {}"
 msgstr ""
 
@@ -1866,7 +1866,7 @@ msgstr "轴线：轮廓绕其旋转的线，单击两次绘制或拾取"
 msgid "Axonometric"
 msgstr "轴测"
 
-#: crates/ui-egui/src/orbit.rs:753
+#: crates/ui-egui/src/orbit.rs:755
 msgid "BACK"
 msgstr ""
 
@@ -1940,7 +1940,7 @@ msgstr ""
 msgid "BIMCraft's own: the tools in a palette, the Inspector and the Navigator on the right"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:751
+#: crates/ui-egui/src/orbit.rs:753
 msgid "BOTTOM"
 msgstr ""
 
@@ -2320,7 +2320,7 @@ msgid "Build"
 msgstr "构建"
 
 #: crates/ui-egui/src/editor/document.rs:2451
-#: crates/ui-egui/src/orbit.rs:1850
+#: crates/ui-egui/src/orbit.rs:1852
 msgid "Building 3D view…"
 msgstr ""
 
@@ -4689,7 +4689,7 @@ msgid "Cost"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:2455
-#: crates/ui-egui/src/orbit.rs:1854
+#: crates/ui-egui/src/orbit.rs:1856
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -5663,7 +5663,7 @@ msgstr "详图线 (DL)：每次单击都从上一点画一条线，使用选项�
 msgid "Detail elements only ({})"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1859
+#: crates/ui-egui/src/orbit.rs:1861
 msgid "Detail shown from {} to {}; {} elements farther away are left out to fit the memory there is."
 msgstr ""
 
@@ -7122,7 +7122,7 @@ msgstr "视点高度："
 msgid "Eye-Dome Lighting"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:752
+#: crates/ui-egui/src/orbit.rs:754
 msgid "FRONT"
 msgstr ""
 
@@ -8570,7 +8570,7 @@ msgstr "高亮显示光标下的对象"
 msgid "Home"
 msgstr "主页"
 
-#: crates/ui-egui/src/orbit.rs:2892
+#: crates/ui-egui/src/orbit.rs:2894
 msgid "Home View"
 msgstr "主视图"
 
@@ -8698,7 +8698,7 @@ msgid "How many phases and wires each system has (the line conductors and the ne
 msgstr "每个系统的相数和导线数（相线和中性线）、其供应的电压，以及接地方式。"
 
 #: crates/ui-egui/src/settings.rs:853
-msgid "How many points of indexed scans the 3D view draws once it stands still. Auto: 10 million on the graphics card, 3 million on the processor"
+msgid "How many points of indexed scans the 3D view draws once it stands still. Auto: 10 million, on the graphics card or the processor"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:3166
@@ -9577,7 +9577,7 @@ msgstr "厨房水槽"
 msgid "Know the survey coordinates of one spot, such as a site corner or a benchmark? Type them here, press Pick Point and Specify, and click that spot in the view. The window hides while you pick and comes back so you can check before OK. A wall's corner gives its bottom; a floor, roof or ceiling gives its top."
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:755
+#: crates/ui-egui/src/orbit.rs:757
 msgid "LEFT"
 msgstr ""
 
@@ -10236,7 +10236,7 @@ msgid "Loaded; nothing taken from it yet"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:2566
-#: crates/ui-egui/src/orbit.rs:2135
+#: crates/ui-egui/src/orbit.rs:2137
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -11734,7 +11734,7 @@ msgstr ""
 msgid "No Clip"
 msgstr "不剪裁"
 
-#: crates/ui-egui/src/orbit.rs:672
+#: crates/ui-egui/src/orbit.rs:674
 msgid "No area: its points aren't in one plane"
 msgstr ""
 
@@ -13297,11 +13297,11 @@ msgstr ""
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "拾取一个圆或圆弧，然后单击尺寸标注的放置位置。"
 
-#: crates/ui-egui/src/orbit.rs:1664
+#: crates/ui-egui/src/orbit.rs:1666
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr "请拾取模型的一个角点、一条边或一个面来标注尺寸。"
 
-#: crates/ui-egui/src/orbit.rs:2740
+#: crates/ui-egui/src/orbit.rs:2742
 msgid "Pick a corner, an edge or a face of the model to measure."
 msgstr ""
 
@@ -13309,7 +13309,7 @@ msgstr ""
 msgid "Pick a curved wall or an arc."
 msgstr "拾取一面弧形墙或一段圆弧。"
 
-#: crates/ui-egui/src/orbit.rs:2690
+#: crates/ui-egui/src/orbit.rs:2692
 msgid "Pick a face of a wall, a floor, a ceiling or a roof to place it on."
 msgstr "选取墙、楼板、天花板或屋顶的一个面以将其放置在上面。"
 
@@ -13716,12 +13716,12 @@ msgid "Place Centre"
 msgstr "放置于中心"
 
 #: crates/ui-egui/src/lib.rs:2425
-#: crates/ui-egui/src/orbit.rs:1679
+#: crates/ui-egui/src/orbit.rs:1681
 msgid "Place Column"
 msgstr "放置柱"
 
 #: crates/ui-egui/src/lib.rs:2427
-#: crates/ui-egui/src/orbit.rs:1681
+#: crates/ui-egui/src/orbit.rs:1683
 msgid "Place Component"
 msgstr "放置构件"
 
@@ -13881,7 +13881,7 @@ msgid "Place Voice Outlet"
 msgstr "放置语音插座"
 
 #: crates/ui-egui/src/lib.rs:2398
-#: crates/ui-egui/src/orbit.rs:1678
+#: crates/ui-egui/src/orbit.rs:1680
 msgid "Place Wall"
 msgstr "放置墙"
 
@@ -14323,7 +14323,7 @@ msgstr "轮廓 2"
 msgid "Profile 2: sketch the profile at the path's end, square to it"
 msgstr "轮廓 2：在路径终点处绘制轮廓，与路径垂直"
 
-#: apps/bimcraft/src/main.rs:384
+#: apps/bimcraft/src/main.rs:390
 #: crates/core/src/title_starters.rs:35
 #: crates/core/src/title_starters.rs:55
 #: crates/core/src/title_starters.rs:75
@@ -14615,7 +14615,7 @@ msgstr ""
 msgid "REDUNDANT"
 msgstr "冗余"
 
-#: crates/ui-egui/src/orbit.rs:754
+#: crates/ui-egui/src/orbit.rs:756
 msgid "RIGHT"
 msgstr ""
 
@@ -18223,7 +18223,7 @@ msgstr "系统 {} 导线数"
 msgid "Systems"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:750
+#: crates/ui-egui/src/orbit.rs:752
 msgid "TOP"
 msgstr ""
 
@@ -18799,7 +18799,7 @@ msgstr ""
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "从上一点向墙或轴网所作垂线的垂足"
 
-#: crates/ui-egui/src/orbit.rs:347
+#: crates/ui-egui/src/orbit.rs:349
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "显卡无法绘制三维视图（{}）：改由处理器绘制"
 
@@ -19192,7 +19192,7 @@ msgstr ""
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "视图与草图平面平行：请旋转视图后再在其上拾取。"
 
-#: crates/ui-egui/src/orbit.rs:1650
+#: crates/ui-egui/src/orbit.rs:1652
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr "视图与尺寸标注方向一致：请先旋转视图，再放置尺寸线。"
 
@@ -19777,7 +19777,7 @@ msgstr ""
 msgid "Total selected items: {}"
 msgstr "选中图元总数：{}"
 
-#: crates/ui-egui/src/orbit.rs:663
+#: crates/ui-egui/src/orbit.rs:665
 msgid "Total {}"
 msgstr ""
 
@@ -21483,7 +21483,7 @@ msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:3159
 #: crates/ui-egui/src/editor/document.rs:1451
-#: crates/ui-egui/src/orbit.rs:2895
+#: crates/ui-egui/src/orbit.rs:2897
 msgid "Zoom to Fit"
 msgstr "缩放以适应"
 
@@ -21731,11 +21731,11 @@ msgstr ""
 msgid "click on the curtain wall"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:2820
+#: crates/ui-egui/src/orbit.rs:2822
 msgid "click on the floor's top"
 msgstr "请单击楼板的顶面"
 
-#: crates/ui-egui/src/orbit.rs:2717
+#: crates/ui-egui/src/orbit.rs:2719
 msgid "click on the work plane, where the view doesn't run along it"
 msgstr ""
 
@@ -22350,7 +22350,7 @@ msgstr "已存在参数 `{}`"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "还没有详图组：请选择详图线并创建组"
 
-#: crates/ui-egui/src/orbit.rs:1598
+#: crates/ui-egui/src/orbit.rs:1600
 msgid "there's no face to paint there"
 msgstr "该处没有可上漆的面"
 
@@ -22366,7 +22366,7 @@ msgstr ""
 msgid "this machine"
 msgstr "本机"
 
-#: crates/ui-egui/src/orbit.rs:2707
+#: crates/ui-egui/src/orbit.rs:2709
 #: crates/ui-egui/src/paper.rs:180
 #: crates/ui-egui/src/section.rs:621
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -22913,7 +22913,7 @@ msgid "{} of {} up, at {}"
 msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:7284
-#: crates/ui-egui/src/orbit.rs:2500
+#: crates/ui-egui/src/orbit.rs:2502
 msgid "{} of {} {}"
 msgstr "{}：{} {}"
 
@@ -23303,11 +23303,11 @@ msgstr ""
 msgid "{}: how far over the level it is measured from"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1692
+#: crates/ui-egui/src/orbit.rs:1694
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr "{}：在三维视图中，它立于水平面上（楼板、平屋顶或标高的顶面）：请指向其中之一"
 
-#: crates/ui-egui/src/orbit.rs:1688
+#: crates/ui-egui/src/orbit.rs:1690
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr "{}：在三维视图中，其各点落在水平面上（楼板、柱、平屋顶或标高的顶面）：请指向其中之一"
 
@@ -24652,3 +24652,6 @@ msgstr "上"
 #: crates/ui-egui/src/lib.rs:5850
 #~ msgid "Point Cloud: laser scans (PTS, XYZ, PLY, LAS or E57) brought into the project, one file or a survey's stations as one scan, drawn in the 3D view, plans and sections and snapped to"
 #~ msgstr "点云：将激光扫描（PTS、XYZ、PLY、LAS 或 E57）引入项目，单个文件或一次测量的各测站合为一个扫描，在三维视图、平面和剖面中绘制并可捕捉"
+#: crates/ui-egui/src/settings.rs:853
+#~ msgid "How many points of indexed scans the 3D view draws once it stands still. Auto: 10 million on the graphics card, 3 million on the processor"
+#~ msgstr ""

@@ -850,7 +850,7 @@ impl BimApp {
             &mut self.scan_points,
             (POINTS_3D, 10_000_000, ""),
             msg!(
-                "How many points of indexed scans the 3D view draws once it stands still. Auto: 10 million on the graphics card, 3 million on the processor"
+                "How many points of indexed scans the 3D view draws once it stands still. Auto: 10 million, on the graphics card or the processor"
             ),
         );
         ui.horizontal(|ui| {

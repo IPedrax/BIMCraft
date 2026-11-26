@@ -13,6 +13,8 @@
 //   5. vs_full / fs_marks: the work plane and its patch (core `PlaneMark`), each pixel's ray met with the plane, blended over
 //      the picture where nothing opaque is nearer, as the processor's `Image::draw_marks` lays them.
 //   A scan's index's nodes are drawn in pass 1 too, by vs_node / fs_dot: each node's points as 16-bit places in its box.
+//   On a card with 64-bit atomics, both kinds of points are drawn instead by a compute pass after pass 1 (gpu/points.wgsl, compiled
+//   after this file), into the same targets.
 //   Eye-dome lighting darkens a point's pixel in pass 3 by how far it lies behind its neighbours (`dome`); in a parallel view
 //   cs_near first finds the nearest depth in the picture, which the distances are taken from.
 //   In wireframe, passes 1 and 2 have nothing to draw and pass 3 only paper, and vs_wire / fs_wire draw every edge over it; then

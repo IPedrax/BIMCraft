@@ -16,6 +16,9 @@ use bimcraft_core::view3d::{Camera, Caps, MAX_SIDE, PlaneMark};
 use eframe::egui_wgpu::{RenderState, wgpu};
 use egui::TextureId;
 
+mod raster;
+pub use raster::{features_for, points_drawn_by};
+
 const COLOR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 /// The plane a pixel shows and its element.
 const IDS: wgpu::TextureFormat = wgpu::TextureFormat::Rg32Uint;
@@ -114,6 +117,9 @@ struct Targets {
     /// The colour target itself, which a wireframe drawn in parts is copied from.
     color_texture: wgpu::Texture,
     ids: wgpu::TextureView,
+    /// The id target itself, for a test to read back.
+    #[cfg_attr(not(test), allow(dead_code))]
+    ids_texture: wgpu::Texture,
     depth: wgpu::TextureView,
     clear_color: wgpu::TextureView,
     clear_ids: wgpu::TextureView,
@@ -302,7 +308,13 @@ fn store_bytes(mesh: &Mesh, kind: Kind, k: usize, per: usize, cancelled: &dyn Fn
 }
 
 /// `bytes`, on the card in a buffer of its own, with `held` bytes there already.
-fn hold(device: &wgpu::Device, queue: &wgpu::Queue, bytes: &[u8], held: u64, full_at: Option<u64>) -> Result<wgpu::Buffer, Hold> {
+fn hold(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    (bytes, kind): (&[u8], Kind),
+    held: u64,
+    full_at: Option<u64>,
+) -> Result<wgpu::Buffer, Hold> {
     let size = bytes.len() as u64;
     if full_at.is_some_and(|at| held + size > at) {
         return Err(Hold::Full);
@@ -311,7 +323,10 @@ fn hold(device: &wgpu::Device, queue: &wgpu::Queue, bytes: &[u8], held: u64, ful
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("bimcraft-3d-held"),
         size,
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        // A scan's points are read by the compute pass too, on a card that draws them so (`raster.rs`).
+        usage: wgpu::BufferUsages::VERTEX
+            | wgpu::BufferUsages::COPY_DST
+            | if kind == Kind::Dots { wgpu::BufferUsages::STORAGE } else { wgpu::BufferUsages::empty() },
         mapped_at_creation: false,
     });
     queue.write_buffer(&buffer, 0, bytes);
@@ -401,7 +416,7 @@ impl Uploaded {
             Hold::Full => TOO_LITTLE.to_string(),
         })?;
         loop {
-            match hold(device, queue, &bytes, self.held, full_at) {
+            match hold(device, queue, (&bytes, kind), self.held, full_at) {
                 Ok(buffer) => {
                     if let Some(slot) = self.store_mut(kind).buffers.get_mut(k) {
                         *slot = Some(buffer);
@@ -453,6 +468,8 @@ pub struct Gpu {
     nodes: Nodes,
     node_pipeline: wgpu::RenderPipeline,
     node_layout: wgpu::BindGroupLayout,
+    /// The points (the mesh's and the nodes') drawn by a compute pass, on a card with 64-bit atomics; none draws them as quads.
+    raster: Option<raster::Raster>,
     /// Eye-dome lighting in a parallel view: the nearest depth of the picture, found on the card, and how.
     near: wgpu::Buffer,
     near_pipeline: wgpu::ComputePipeline,
@@ -538,6 +555,8 @@ struct NodeUp {
     step: [f32; 3],
     owner: u32,
     count: u32,
+    /// Its points bound for the compute pass, on a card that draws them so.
+    points: Option<wgpu::BindGroup>,
 }
 
 /// The nodes of scans' indexes the card keeps (`stream.rs`), by node, within a budget, those used longest ago let go first.
@@ -929,7 +948,8 @@ impl Gpu {
         let group0 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("bimcraft-3d-buffers"),
             entries: &[
-                buffer(wgpu::BufferBindingType::Uniform, 0, vertex | fragment),
+                // The view's numbers are read by the compute pass that draws points too (`raster.rs`).
+                buffer(wgpu::BufferBindingType::Uniform, 0, vertex | fragment | wgpu::ShaderStages::COMPUTE),
                 buffer(storage, 1, vertex | fragment),
                 buffer(storage, 2, vertex),
                 buffer(storage, 3, fragment),
@@ -1108,7 +1128,7 @@ impl Gpu {
             label: Some("bimcraft-3d-node"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 3,
-                visibility: vertex,
+                visibility: vertex | wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: true,
@@ -1166,6 +1186,10 @@ impl Gpu {
         });
         let segments = (Gpu::storage(&device, SEGMENT), SEGMENT);
         caught(guard)?;
+        // Points by a compute pass where the device has 64-bit atomics; a card whose compiler refuses it draws quads.
+        let guard = scopes(&device);
+        let raster = raster::Raster::new(&device, &group0, &node_layout, stride);
+        let raster = caught(guard).ok().and(raster);
         Ok(Gpu {
             device,
             queue,
@@ -1190,6 +1214,7 @@ impl Gpu {
             nodes: Nodes::new(NODE_BYTES.min(limits.max_buffer_size.saturating_mul(4)), stride),
             node_pipeline,
             node_layout,
+            raster,
             near,
             near_pipeline,
             near_bind,
@@ -1461,13 +1486,14 @@ impl Gpu {
             let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("bimcraft-3d-node"),
                 size: bytes,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::STORAGE,
                 mapped_at_creation: false,
             });
             let mut words = Words::with_capacity(bytes as usize);
             put_words(&mut words, &dots.words);
             self.queue.write_buffer(&buffer, 0, &words);
-            let node = NodeUp { buffer, min: dots.min, step: dots.step, owner, count: dots.count };
+            let points = self.raster.as_ref().and_then(|r| r.bind_points(&self.device, &buffer));
+            let node = NodeUp { buffer, min: dots.min, step: dots.step, owner, count: dots.count, points };
             self.nodes.held.insert(key, node, bytes);
             fresh.push(key);
             sent += bytes;
@@ -1815,7 +1841,43 @@ impl Gpu {
             self.nodes.in_targets.clear();
         }
         self.nodes.in_targets.extend(node_draws.iter().copied());
-        self.nodes.write_params(device, queue, &self.node_layout, &node_draws);
+        // The points by a compute pass where the card has it and this frame can (`raster.rs`): no more owners than it has slots,
+        // and every buffer one a shader may read; else as quads.
+        let mut owners: Vec<u32> = Vec::new();
+        let dot_draws: Vec<std::ops::Range<usize>> = draws
+            .iter()
+            .filter_map(|(clear, d)| match d {
+                Draw::Dots(range) if !clear => Some(range.clone()),
+                _ => None,
+            })
+            .collect();
+        let mut by_compute = false;
+        let mut point_binds: Vec<(std::ops::Range<u32>, wgpu::BindGroup)> = Vec::new();
+        if let Some(raster) = self.raster.as_mut().filter(|_| raster::Raster::fits(device, (w, h)))
+            && let Some(mesh_owners) = if dot_draws.is_empty() { Some(Vec::new()) } else { raster.dot_owners(mesh).map(<[u32]>::to_vec) }
+        {
+            owners = mesh_owners;
+            for key in &node_draws {
+                if let Some(n) = self.nodes.held.get(key)
+                    && !owners.contains(&n.owner)
+                {
+                    owners.push(n.owner);
+                }
+            }
+            by_compute =
+                owners.len() <= raster::SLOTS && node_draws.iter().all(|k| self.nodes.held.get(k).is_none_or(|n| n.points.is_some()));
+            for range in if by_compute { &dot_draws[..] } else { &[] } {
+                for (k, part) in spans(up.dots.per, range.start as u64..range.end as u64) {
+                    match up.dots.buffers.get(k).and_then(Option::as_ref).and_then(|b| raster.bind_points(device, b)) {
+                        Some(bound) => point_binds.push((part, bound)),
+                        None => by_compute = false,
+                    }
+                }
+            }
+        }
+        if !by_compute {
+            self.nodes.write_params(device, queue, &self.node_layout, &node_draws);
+        }
         let complete = matches!(up.progress, Some((_, _, Stage::Exact { done, total })) if done >= total);
         // The picture is made again when the surfaces are whole, exact or standing in; while the exact ones are on their way it
         // stays what the camera last showed.
@@ -1920,6 +1982,8 @@ impl Gpu {
                             (_, None) => {}
                         }
                     }
+                    // Drawn by the compute pass after this one.
+                    Draw::Dots(_) if by_compute => {}
                     Draw::Dots(range) => {
                         for (k, part) in spans(up.dots.per, range.start as u64..range.end as u64) {
                             if let Some(Some(buffer)) = up.dots.buffers.get(k) {
@@ -1942,7 +2006,10 @@ impl Gpu {
             }
             // The nodes of scans' indexes, after the mesh's own points and cut as theirs are: all of them in a picture's first
             // part, else those not in the targets yet, drawn over what is there.
-            if !clear && let Some((_, _, params)) = self.nodes.params.as_ref().filter(|_| !node_draws.is_empty()) {
+            if !clear
+                && !by_compute
+                && let Some((_, _, params)) = self.nodes.params.as_ref().filter(|_| !node_draws.is_empty())
+            {
                 pass.set_pipeline(&self.node_pipeline);
                 pass.set_bind_group(0, &bind, &[]);
                 for (slot, key) in node_draws.iter().enumerate() {
@@ -1951,6 +2018,34 @@ impl Gpu {
                     pass.set_vertex_buffer(0, node.buffer.slice(..));
                     pass.draw(0..6, 0..node.count);
                 }
+            }
+            drop(pass);
+            // The points by a compute pass, the mesh's and the nodes', into the opaque targets where nearer than what they hold:
+            // before what is seen through, which reads their depth.
+            if !clear
+                && by_compute
+                && let Some(raster) = self.raster.as_mut()
+            {
+                let mut jobs: Vec<raster::Job<'_>> = point_binds
+                    .iter()
+                    .map(|(part, bound)| raster::Job {
+                        points: bound,
+                        min: [0.0; 3],
+                        step: [0.0; 3],
+                        owner: 0,
+                        first: part.start,
+                        count: part.end.saturating_sub(part.start),
+                        mesh: true,
+                    })
+                    .collect();
+                for key in &node_draws {
+                    if let Some(n) = self.nodes.held.get(key)
+                        && let Some(points) = &n.points
+                    {
+                        jobs.push(raster::Job { points, min: n.min, step: n.step, owner: n.owner, first: 0, count: n.count, mesh: false });
+                    }
+                }
+                raster.draw((device, queue), &mut encoder, &bind, &self.node_layout, (color, ids, z), (w, h), &jobs, &owners);
             }
         }
         if !picture {
@@ -2197,8 +2292,8 @@ impl Gpu {
                     store.buffers.push(None);
                     continue;
                 }
-                let made =
-                    store_bytes(mesh, kind, k, per as usize, cancelled).and_then(|bytes| hold(device, queue, &bytes, held, room.full_at));
+                let made = store_bytes(mesh, kind, k, per as usize, cancelled)
+                    .and_then(|bytes| hold(device, queue, (&bytes, kind), held, room.full_at));
                 match made {
                     Ok(buffer) => {
                         store.buffers.push(Some(buffer));
@@ -2326,11 +2421,8 @@ impl Gpu {
         let (render, sampled) = (wgpu::TextureUsages::RENDER_ATTACHMENT, wgpu::TextureUsages::TEXTURE_BINDING);
         let view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor::default());
         let color_texture = texture("bimcraft-3d-color", COLOR, render | sampled | wgpu::TextureUsages::COPY_SRC);
-        let (color, ids, depth) = (
-            view(&color_texture),
-            view(&texture("bimcraft-3d-ids", IDS, render | sampled)),
-            view(&texture("bimcraft-3d-depth", DEPTH, render | sampled)),
-        );
+        let ids_texture = texture("bimcraft-3d-ids", IDS, render | sampled | wgpu::TextureUsages::COPY_SRC);
+        let (color, ids, depth) = (view(&color_texture), view(&ids_texture), view(&texture("bimcraft-3d-depth", DEPTH, render | sampled)));
         let (clear_color, clear_ids, clear_depth) = (
             view(&texture("bimcraft-3d-clear-color", COLOR, render | sampled)),
             view(&texture("bimcraft-3d-clear-ids", CLEAR_IDS, render | sampled)),
@@ -2368,6 +2460,7 @@ impl Gpu {
             color,
             color_texture,
             ids,
+            ids_texture,
             depth,
             clear_color,
             clear_ids,
@@ -2432,12 +2525,12 @@ pub(crate) fn headless() -> Option<Gpu> {
         return None;
     }
     alone_on(adapter.get_info().device_type);
-    let (device, queue) =
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            required_limits: limits_for(&adapter, wgpu::Limits::default()),
-            ..Default::default()
-        }))
-        .ok()?;
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        required_limits: limits_for(&adapter, wgpu::Limits::default()),
+        required_features: features_for(&adapter, wgpu::Features::empty()),
+        ..Default::default()
+    }))
+    .ok()?;
     match Gpu::from_device(device, queue) {
         Ok(gpu) => Some(gpu),
         // A software adapter may lack what the card needs; a real one that can't draw is a bug to hear about.
@@ -2513,6 +2606,66 @@ mod tests {
         for entry in ["vs_node", "vs_dot", "fs_dot", "fs_post", "cs_near"] {
             assert!(module.entry_points.iter().any(|e| e.name == entry), "{entry}");
         }
+    }
+
+    /// The compute path's shader (`gpu.wgsl` and `points.wgsl` after it) is valid WGSL on a card with 64-bit integers and their
+    /// atomic least and greatest, and on no less: it is compiled only on a card that has them.
+    #[test]
+    fn the_points_shader_validates_with_64_bit_atomics_and_only_with_them() {
+        use wgpu::naga;
+        use wgpu::naga::valid::Capabilities;
+        let source = concat!(include_str!("gpu.wgsl"), "\n", include_str!("gpu/points.wgsl"));
+        let module = naga::front::wgsl::parse_str(source).unwrap_or_else(|e| panic!("{}", e.emit_to_string(source)));
+        let atomics = Capabilities::SHADER_INT64 | Capabilities::SHADER_INT64_ATOMIC_MIN_MAX;
+        naga::valid::Validator::new(naga::valid::ValidationFlags::all(), atomics).validate(&module).unwrap_or_else(|e| panic!("{e:?}"));
+        for entry in ["cs_points", "fs_points", "vs_full"] {
+            assert!(module.entry_points.iter().any(|e| e.name == entry), "{entry}");
+        }
+        for less in [Capabilities::default(), Capabilities::SHADER_INT64, Capabilities::SHADER_INT64_ATOMIC_MIN_MAX] {
+            let refused = naga::valid::Validator::new(naga::valid::ValidationFlags::all(), less).validate(&module);
+            assert!(refused.is_err(), "validated with {less:?}");
+        }
+        // The features a device is asked for are those the capabilities stand for.
+        assert_eq!(raster::point_features(), wgpu::Features::SHADER_INT64 | wgpu::Features::SHADER_INT64_ATOMIC_MIN_MAX);
+        assert_eq!(points_drawn_by(wgpu::Features::empty()), "quads");
+        assert_eq!(points_drawn_by(raster::point_features()), "a compute pass with 64-bit atomics");
+    }
+
+    /// The last picture's ids: each pixel's plane and owner.
+    fn read_ids(gpu: &Gpu) -> Vec<[u32; 2]> {
+        let texture = &gpu.targets.as_ref().expect("a picture drawn").ids_texture;
+        let (w, h) = (texture.width() as usize, texture.height() as usize);
+        let row = (w * 8).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize);
+        let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: (row * h) as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row as u32), rows_per_image: None },
+            },
+            texture.size(),
+        );
+        gpu.queue.submit([encoder.finish()]);
+        buffer.slice(..).map_async(wgpu::MapMode::Read, |_| ());
+        gpu.device.poll(wgpu::PollType::wait_indefinitely()).expect("the card finishes");
+        let mapped = buffer.slice(..).get_mapped_range().expect("a mapped buffer");
+        mapped
+            .chunks_exact(row)
+            .flat_map(|r| {
+                r[..w * 8]
+                    .as_chunks::<8>()
+                    .0
+                    .iter()
+                    .map(|c| [u32::from_le_bytes([c[0], c[1], c[2], c[3]]), u32::from_le_bytes([c[4], c[5], c[6], c[7]])])
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     /// The picture's pixels as rows of red, green, blue and alpha.
@@ -3236,6 +3389,129 @@ floor {}"#,
         // What the view hides.
         s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"pointcloud": {"hidden": true}}})).unwrap();
         dots_as_the_processor(&mut gpu, &s, &[], flat, false);
+    }
+
+    /// The card's picture of `mesh` through `cam` with `tints`, drawn afresh, and its ids: the points by the compute pass, or by
+    /// quads where `quads`.
+    fn points_drawn(gpu: &mut Gpu, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], quads: bool) -> (Vec<u8>, Vec<[u32; 2]>) {
+        let raster = if quads { gpu.raster.take() } else { None };
+        gpu.forget_progress();
+        let mut drawn = None;
+        for _ in 0..1000 {
+            if gpu.draw(mesh, cam, tints, PAPER).unwrap() {
+                drawn = Some((read(gpu), read_ids(gpu)));
+                break;
+            }
+        }
+        if raster.is_some() {
+            gpu.raster = raster;
+        }
+        drawn.expect("the picture settles")
+    }
+
+    /// The pixels where two pictures differ, and where their ids do.
+    fn differ((a, a_ids): &(Vec<u8>, Vec<[u32; 2]>), (b, b_ids): &(Vec<u8>, Vec<[u32; 2]>)) -> (usize, usize) {
+        let pixels = a.as_chunks::<4>().0.iter().zip(b.as_chunks::<4>().0).filter(|(x, y)| x != y).count();
+        (pixels, a_ids.iter().zip(b_ids).filter(|(x, y)| x != y).count())
+    }
+
+    /// How many pixels show a point of the mesh's owner `owner`, as the ids name it.
+    fn points_of(ids: &[[u32; 2]], owner: u32) -> usize {
+        ids.iter().filter(|[plane, o]| *plane == u32::MAX && *o == owner).count()
+    }
+
+    #[test]
+    fn the_compute_pass_draws_a_scan_s_points_as_the_quads_do_and_names_the_scan_for_picking() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        if gpu.raster.is_none() {
+            eprintln!("this card has no 64-bit atomics: its points are drawn as quads alone");
+            return;
+        }
+        let mut s = sample();
+        let scan = scanned(&mut s);
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"roofs": {"hidden": true}}})).unwrap();
+        let may = pixels_that_may_differ();
+        for cut in [false, true] {
+            if cut {
+                cut_through(&mut s, [0.6, 0.7, 0.45]);
+            }
+            let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+            let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+            let owner = mesh.owners.iter().position(|o| o.id == scan).unwrap() as u32 + 1;
+            let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+            let lens = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..flat }, &look);
+            for (cam, tints) in [(flat, vec![]), (lens, vec![]), (flat, vec![(scan, Rgb(0, 120, 215))])] {
+                // The same picture as the processor's, as the quads draw it.
+                dots_as_the_processor(&mut gpu, &s, &tints, cam, true);
+                let compute = points_drawn(&mut gpu, &mesh, &cam, &tints, false);
+                let quads = points_drawn(&mut gpu, &mesh, &cam, &tints, true);
+                let (pixels, ids) = differ(&compute, &quads);
+                assert!(pixels <= may && ids <= may, "cut {cut}, {cam:?}: {pixels} pixels and {ids} ids differ from the quads'");
+                // Picking and the edges read the scan off the points' pixels.
+                let shown = points_of(&compute.1, owner);
+                assert!(shown > 200, "{shown} pixels name the scan");
+                assert_eq!(shown, points_of(&quads.1, owner));
+            }
+        }
+    }
+
+    #[test]
+    fn a_card_drawing_quads_draws_a_scan_s_points_as_it_always_has() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        // As a card without 64-bit atomics: none of the compute path.
+        gpu.raster = None;
+        let mut s = sample();
+        scanned(&mut s);
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"roofs": {"hidden": true}}})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let cam = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..flat }, &look);
+        dots_as_the_processor(&mut gpu, &s, &[], flat, true);
+        dots_as_the_processor(&mut gpu, &s, &[], cam, true);
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        dots_as_the_processor(&mut gpu, &s, &[], flat, true);
+        assert!(gpu.raster.is_none());
+    }
+
+    #[test]
+    fn the_compute_pass_draws_a_scan_s_index_nodes_as_the_quads_do() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        if gpu.raster.is_none() {
+            eprintln!("this card has no 64-bit atomics: its points are drawn as quads alone");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = sample();
+        crate::stream::testing::indexed_scan(&mut s, dir.path(), [4000.0, 3000.0]);
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"roofs": {"hidden": true}}})).unwrap();
+        let model = Arc::clone(&s.model);
+        let (scene, look) = (Scene::new(&model), Look::of_3d(&model));
+        let far = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let may = pixels_that_may_differ();
+        for cam in [
+            Camera { scale: far.scale * 3.0, target: [6000.0, 3000.0, 1500.0], ..far },
+            Camera { lens: Some(bimcraft_core::view3d::LENS), ..far },
+        ] {
+            let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+            let mut stream = crate::stream::Stream::default();
+            settled(&mut gpu, &mesh, &cam);
+            stream_all(&mut gpu, &mut stream, &model, &mesh, cam);
+            let compute = points_drawn(&mut gpu, &mesh, &cam, &[], false);
+            let quads = points_drawn(&mut gpu, &mesh, &cam, &[], true);
+            let (pixels, ids) = differ(&compute, &quads);
+            assert!(pixels <= may && ids <= may, "{cam:?}: {pixels} pixels and {ids} ids differ from the quads'");
+            let points = compute.1.iter().filter(|[plane, _]| *plane == u32::MAX).count();
+            assert!(points > 500, "{points} pixels show the nodes' points");
+        }
     }
 
     /// Streams the nodes `cam` wants of `model`'s indexes to the card, packed for `mesh`, until none is left to come.

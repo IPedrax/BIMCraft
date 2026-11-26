@@ -230,7 +230,7 @@ In the desktop, the Point Cloud box has Keep full detail (index beside the proje
 where the index goes when the project has no file yet (beside the scan's); an indexed scan is always built on a thread of its own, behind the progress box. The 3D view
 streams the indexes' nodes (`stream.rs`, `Orbit::stream_nodes`), as Potree does; it's described below. A plan is drawn from what's read and,
 where that left nodes out, drawn again by the plan worker, which reads them (`PlanCache::complete`). Settings > Graphics has Point
-cloud memory (`lod::set_memory`), Points drawn in 3D (Auto: ten million on the card, three on the processor) and Point cloud
+cloud memory (`lod::set_memory`), Points drawn in 3D (Auto: ten million, on the card or the processor, whose points are drawn side by side on every thread) and Point cloud
 index folder. The Project Browser lists the point clouds with what an open index takes; a scan whose index isn't open says
 "(index missing)" ("(index on host)" for a Co-Work guest), and its menu has Find Index…, Reload Index, Rebuild Index and Delete
 Index…, which asks first (`point_cloud_index`).
@@ -252,3 +252,18 @@ Another mesh or look packs them again; the card's held ones are let go. Nothing 
 Eye-dome lighting (Graphic Display Options) darkens each point by how far it lies behind its neighbours two pixels off, as
 `view3d::eye_dome` does on the processor: on the card in the edges' pass (`dome` in `gpu.wgsl`), off the opaque depth, the points'
 pixels known by their plane; in a parallel view `cs_near` first finds the nearest depth in the picture. Off, it costs nothing.
+
+On a card with 64-bit atomics (wgpu's `SHADER_INT64` and `SHADER_INT64_ATOMIC_MIN_MAX`: Vulkan with `VK_KHR_shader_atomic_int64`,
+DirectX 12 with shader model 6.6, Metal with MSL 2.4), the points are drawn the way the processor's `raster_points` draws them
+(Schütz, Kerbl and Wimmer, 2022) rather than as quads (`gpu/raster.rs`, `gpu/points.wgsl`). The window asks for the two features
+when it makes its device, only where the adapter has them (`features_for`), and the log says which way the points are drawn
+(`3D view's points:`); the choice is made once for the device (`Gpu::raster`). After the opaque surfaces' pass, `cs_points` reads
+each point straight from the buffer it was sent up in (the mesh's 20-byte `Dot`s, or a node's 12-byte records) and puts one 64-bit
+number in each pixel of its 2x2 dot with `atomicMax`: its depth above (larger nearer), and below, inverted so that the least wins a
+tie as on the processor, its colour and its owner's slot in a table of the picture's owners. `fs_points` then writes each pixel's
+number into the opaque targets, its depth through `frag_depth` and the depth test, so a point shows only where it is nearer than the
+surfaces there, its id the point's plane (`DOT_PLANE`) and its owner: what is seen through, the edges, the selection's tint and
+eye-dome lighting read the targets as they read a quad's. It reads the numbers as two 32-bit words, since a 64-bit load is more than
+min and max. A card without the features, or a frame whose points have more than 256 owners or lie in a buffer bigger than a shader
+may read, draws the quads as before (`vs_dot`, `vs_node`). The tests hold the two ways to the same pixels and ids, and the shader
+is validated without a card with and only with the two capabilities.

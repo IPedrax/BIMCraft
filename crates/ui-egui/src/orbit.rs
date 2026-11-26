@@ -137,8 +137,10 @@ fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<Sce
 }
 
 /// How many of their points the 3D view draws at most, unless the user said (Settings > Graphics): on the card, and on the processor.
+/// The same since the processor draws points side by side on every thread (`view3d::raster_points`): ten million took 24 ms there
+/// on 32 threads, three million 21.
 pub(crate) const DETAIL_CARD: usize = 10_000_000;
-pub(crate) const DETAIL_PROCESSOR: usize = 3_000_000;
+pub(crate) const DETAIL_PROCESSOR: usize = 10_000_000;
 
 /// Caps made: of which model, for which box.
 type Capped = (Arc<Model>, (P3, P3), Arc<Caps>);
