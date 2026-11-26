@@ -452,10 +452,10 @@ fn a_framing_type_renames_on_its_walls_is_kept_while_used_and_comes_in_with_a_wa
     let kind = Kind::Type("framing".into());
     assert_eq!(to.model.library.guid(&kind, "Cabin 16"), s.model.library.guid(&kind, "Cabin 16"));
     assert_eq!(members(&mut to, here).len(), members(&mut s, w).len());
-    // Unused, the last framing type goes: a project needs none.
+    // Unused, it goes.
     run(&mut s, "unframe", json!({"id": w}));
     run(&mut s, "delete_type", json!({"category": "framing", "type": "Cabin 16"}));
-    assert!(s.model.types.framing.is_empty());
+    assert!(!s.model.types.framing.contains_key("Cabin 16"));
 }
 
 #[test]
@@ -533,6 +533,24 @@ pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
         ("delete_type", json!({"category": "framing", "type": "Sweep"})),
         ("rename_type", json!({"category": "framing", "type": "Sweep", "name": "Swept"})),
         ("rename_type", json!({"category": "framing", "type": "Sweep", "name": ""})),
+        ("framing_member", json!({"id": w, "key": "stud/start", "section": [38, 140], "plies": 3})),
+        ("framing_member", json!({"id": w, "keys": ["stud/start", "stud/end"], "exclude": true})),
+        ("framing_member", json!({"id": w, "key": "stud/start", "section": [1e300, -1], "plies": 0})),
+        ("framing_member", json!({"id": w, "key": "stud/start", "section": [38], "plies": 1e9})),
+        ("framing_member", json!({"id": w, "key": "nope", "exclude": true})),
+        ("framing_member", json!({"id": w, "key": 5, "exclude": "yes"})),
+        ("framing_member", json!({"id": w, "keys": [], "reset": true})),
+        ("framing_member", json!({"id": w, "key": "stud/start"})),
+        ("framing_member", json!({"id": win, "key": "stud/start", "exclude": true})),
+        ("framing_member", json!({"id": p, "key": "stud/start", "reset": true, "extra": 1})),
+        (
+            "type",
+            json!({"category": "wall", "name": "2x4", "layers": [{"function": "structure", "material": "Timber", "thickness": 89, "framed": true}, {"function": "structure", "material": "Timber", "thickness": 89, "framed": true}]}),
+        ),
+        (
+            "type",
+            json!({"category": "wall", "name": "2x4", "layers": [{"function": "finish", "material": "Timber", "thickness": 89, "framed": true}]}),
+        ),
     ]
 }
 

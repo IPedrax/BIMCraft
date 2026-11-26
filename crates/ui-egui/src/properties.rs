@@ -973,8 +973,9 @@ pub(crate) enum Subject {
     Schedule,
 }
 
-/// A type's layer as typed: what it does, what it's made of, how thick, and whether it's variable (a floor's or a roof's).
-type LayerRow = (Function, String, String, bool);
+/// A type's layer as typed: what it does, what it's made of, how thick, whether it's variable (a floor's or a roof's), and
+/// whether the framing members stand in it (a structure layer of a wall's, a floor's or a roof's).
+type LayerRow = (Function, String, String, bool, bool);
 
 /// The categories whose types have layers: a wall's from its exterior in, the others' from the top down.
 const LAYERED: [&str; 5] = ["wall", "floor", "roof", "ceiling", "ramp"];
@@ -1541,9 +1542,9 @@ impl TypeDialog {
     /// A layered type's layers, as typed: one structure layer as thick as it, without any.
     fn layers(m: &Model, category: &str, name: &str) -> Vec<LayerRow> {
         let Some((.., thickness, layers)) = m.layered_types().find(|(c, n, ..)| *c == category && *n == name) else { return Vec::new() };
-        let typed = |l: &Layer| (l.function, l.material.clone(), m.field(l.thickness), l.variable);
+        let typed = |l: &Layer| (l.function, l.material.clone(), m.field(l.thickness), l.variable, l.framed);
         match layers {
-            [] => vec![(Function::Structure, String::new(), m.field(thickness), false)],
+            [] => vec![(Function::Structure, String::new(), m.field(thickness), false, false)],
             layers => layers.iter().map(typed).collect(),
         }
     }
@@ -1562,11 +1563,14 @@ impl TypeDialog {
         }
         let layered = copy || self.layers != self.layers_were;
         if layered {
-            let layers = self.layers.iter().map(|(function, material, typed, variable)| {
+            let layers = self.layers.iter().map(|(function, material, typed, variable, framed)| {
                 let thickness = units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t("Thickness"), typed]))?;
                 let mut l = json!({"function": function, "material": material.trim(), "thickness": thickness});
                 if *variable {
                     l["variable"] = json!(true);
+                }
+                if *framed && *function == Function::Structure {
+                    l["framed"] = json!(true);
                 }
                 Ok(l)
             });
@@ -1937,6 +1941,8 @@ impl BimApp {
                 self.connected_finishes(ui, &model, id);
             }
             self.curtain_part_panel(ui, &model);
+            self.framing_member_panel(ui, &model);
+            self.framing_edits_note(ui, &model);
             self.layer_picture(ui, &model);
             self.opening_picker(ui, &model);
             self.floor_slope(ui, &model);
@@ -2573,6 +2579,8 @@ impl BimApp {
         let mut findings = false;
         // A framing type whose Type Properties were asked for.
         let mut edit_framing = None;
+        // A starter framing type the project lacks, picked: `frame` makes it and frames the selection with it.
+        let mut frame_with: Option<String> = None;
         let units = model.units;
         // A note on a sheet sits in paper mm.
         let paper = matches!(model.elements.get(id), Some(Element::Text(n)) if model.sheet(n.view).is_some());
@@ -2760,15 +2768,41 @@ impl BimApp {
                         }
                         Framing => {
                             let none = t("None").to_string();
-                            let options: Vec<String> = std::iter::once(none.clone()).chain(model.types.framing.keys().cloned()).collect();
+                            // The project's framing types, and the starter ones an older project lacks, which picking makes.
+                            let missing = bimcraft_core::framing::PRESETS.into_iter().filter(|n| !model.types.framing.contains_key(*n));
+                            let options: Vec<String> = std::iter::once(none.clone())
+                                .chain(model.types.framing.keys().cloned())
+                                .chain(missing.map(String::from))
+                                .collect();
                             let framed = val.as_str().filter(|n| model.types.framing.contains_key(*n));
                             let now = framed.map_or(none.clone(), str::to_string);
+                            // A wall whose type has no structure layer has nothing to frame: say so, rather than refuse a pick.
+                            let bare = ids.iter().filter_map(|i| model.wall(*i)).find(|w| {
+                                !model
+                                    .type_layers("wall", &w.type_name)
+                                    .iter()
+                                    .any(|l| l.function == bimcraft_core::model::Function::Structure)
+                            });
                             ui.horizontal(|ui| {
                                 let tall = ui.spacing().interact_size.y;
                                 let wide = (ui.available_width() - tall - ui.spacing().item_spacing.x).max(40.0);
-                                let picked = ui.allocate_ui(vec2(wide, tall), |ui| combo(ui, (id, key), name.id, &now, &options)).inner;
+                                let picked = ui
+                                    .allocate_ui(vec2(wide, tall), |ui| {
+                                        if let Some(w) = bare.filter(|_| framed.is_none()) {
+                                            let hint = tf("Type {} has no Structure layer to frame", &[&w.type_name]);
+                                            ui.label(RichText::new(hint).color(pal().muted).small()).labelled_by(name.id);
+                                            None
+                                        } else {
+                                            combo(ui, (id, key), name.id, &now, &options)
+                                        }
+                                    })
+                                    .inner;
                                 if let Some(n) = picked {
-                                    change = Some((key, Ok(if n == none { Value::Null } else { json!(n) })));
+                                    if n != none && !model.types.framing.contains_key(&n) {
+                                        frame_with = Some(n);
+                                    } else {
+                                        change = Some((key, Ok(if n == none { Value::Null } else { json!(n) })));
+                                    }
                                 }
                                 let edit = t("Edit Framing Type");
                                 let r = ui.add_enabled(framed.is_some(), Button::new("…").min_size(vec2(tall, tall)));
@@ -2825,6 +2859,9 @@ impl BimApp {
         }
         if let Some(name) = edit_framing {
             self.type_dialog = Some(TypeDialog::new(model, "framing", name, ids.to_vec()));
+        }
+        if let Some(name) = frame_with {
+            self.run("frame", json!({"ids": ids, "type": name}));
         }
         // A view's crop: on to all it shows, or off.
         if let (Some(on), &[view]) = (crop, ids) {
@@ -3895,7 +3932,8 @@ impl BimApp {
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
                             let variable = matches!(d.category, "floor" | "roof");
-                            tb.full(|ui| layer_editor(ui, &mut d.layers, model.units, &materials, (out, inward), variable));
+                            let framed = matches!(d.category, "wall" | "floor" | "roof");
+                            tb.full(|ui| layer_editor(ui, &mut d.layers, model.units, &materials, (out, inward), (variable, framed)));
                         }
                     }
                     if let Some(ramp) = &mut d.ramp {
@@ -4008,23 +4046,36 @@ impl BimApp {
 }
 
 /// A type's layers, exterior or top first: what each does, what it's made of (from the library),
-/// how thick; with `variable` (a floor's or a roof's), which one takes up a shaped top's falls; a new one on the outside, or on
-/// top, and each moved, or taken away.
-fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials: &[String], (out, inward): (&str, &str), variable: bool) {
+/// how thick; with `variable` (a floor's or a roof's), which one takes up a shaped top's falls; with `framed` (a wall's, a floor's
+/// or a roof's), which structure layer the framing members stand in; a new one on the outside, or on top, and each moved, or
+/// taken away.
+fn layer_editor(
+    ui: &mut Ui,
+    layers: &mut Vec<LayerRow>,
+    units: Units,
+    materials: &[String],
+    (out, inward): (&str, &str),
+    (variable, framed): (bool, bool),
+) {
     ui.label(RichText::new(t("Layers")).strong());
     let mut action: Option<(usize, i8)> = None;
     let mut varied: Option<usize> = None;
-    Grid::new("type-layers").num_columns(if variable { 5 } else { 4 }).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
+    let mut marked: Option<usize> = None;
+    let columns = 4 + usize::from(variable) + usize::from(framed);
+    Grid::new("type-layers").num_columns(columns).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
         let function = ui.label(RichText::new(t("Function")).color(pal().muted));
         let material = ui.label(RichText::new(t("Material")).color(pal().muted));
         let thickness = ui.label(RichText::new(t("Thickness")).color(pal().muted));
         if variable {
             ui.label(RichText::new(t("Variable")).color(pal().muted));
         }
+        if framed {
+            ui.label(RichText::new(t("Framing")).color(pal().muted));
+        }
         ui.label("");
         ui.end_row();
         let last = layers.len().saturating_sub(1);
-        for (k, (f, mat, typed, var)) in layers.iter_mut().enumerate() {
+        for (k, (f, mat, typed, var, holds)) in layers.iter_mut().enumerate() {
             let c = ComboBox::from_id_salt(("layer-function", k)).selected_text(t(function_name(*f))).width(110.0).show_ui(ui, |ui| {
                 for (g, n) in FUNCTIONS {
                     if ui.selectable_label(*f == g, t(n)).clicked() {
@@ -4053,6 +4104,19 @@ fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials
             {
                 varied = Some(k);
             }
+            // Which structure layer the framing members stand in: one at most, and only a structure layer.
+            if framed {
+                let structure = *f == Function::Structure;
+                if !structure {
+                    *holds = false;
+                }
+                let r = ui
+                    .add_enabled(structure, Checkbox::new(holds, t("Framed")))
+                    .on_hover_text(t("The framing members stand in this structure layer: one layer at most"));
+                if r.changed() && *holds {
+                    marked = Some(k);
+                }
+            }
             ui.horizontal(|ui| {
                 if ui.add_enabled(k > 0, Button::new(t(out)).small()).clicked() {
                     action = Some((k, -1));
@@ -4075,15 +4139,20 @@ fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials
         Some((k, _)) if k + 1 < layers.len() => layers.swap(k, k + 1),
         _ => {}
     }
-    // One variable layer at most: the one just ticked.
+    // One variable layer at most, and one framed: the one just ticked.
     if let Some(k) = varied {
         for (j, row) in layers.iter_mut().enumerate() {
             row.3 = j == k;
         }
     }
+    if let Some(k) = marked {
+        for (j, row) in layers.iter_mut().enumerate() {
+            row.4 = j == k;
+        }
+    }
     // A finish 10 mm thick, on the exterior side.
     if ui.button(t("Insert Layer")).clicked() {
-        layers.insert(0, (Function::Finish, String::new(), units.length(10.0), false));
+        layers.insert(0, (Function::Finish, String::new(), units.length(10.0), false, false));
     }
 }
 

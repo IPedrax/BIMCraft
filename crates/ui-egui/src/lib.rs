@@ -43,6 +43,7 @@ mod find;
 mod finishes;
 mod fly;
 mod footer;
+mod framing_members;
 mod gpu;
 mod halftone;
 mod plugin_form;
@@ -990,6 +991,10 @@ pub struct BimApp {
     curtain_hover: Option<(Id, f64, bimcraft_core::curtain::GridWay)>,
     /// The part of the selected curtain wall a Tab would go to next, under the cursor.
     curtain_aim: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// The one framing member of the selected framed wall Tab has gone to, by its key: what Properties and Delete then act on.
+    framing_member: Option<(Id, String)>,
+    /// The framing member a Tab would go to next, under the cursor.
+    framing_aim: Option<(Id, String)>,
     /// The stretch of a grid line Add/Remove Segments would take off or put back.
     curtain_segment_hover: Option<(Id, bimcraft_core::curtain::Address)>,
     /// The layout of the curtain wall a frame works with, kept while the model is the same.
@@ -2048,6 +2053,8 @@ impl BimApp {
             curtain_more: Vec::new(),
             curtain_hover: None,
             curtain_aim: None,
+            framing_member: None,
+            framing_aim: None,
             curtain_segment_hover: None,
             curtain_laid: Default::default(),
             curtain_seen: None,
@@ -2839,6 +2846,9 @@ impl BimApp {
         if self.curtain_part.is_none() {
             self.curtain_more.clear();
         }
+        // A framing member picked stays while its wall is alone selected and the member is still there.
+        self.framing_member =
+            self.framing_member.take().filter(|(id, key)| selected == [*id] && framing_members::member(m, *id, key).is_some());
         if matches!(self.tool, Tool::CurtainGrid { wall, .. } | Tool::CurtainSegment { wall } if !m.wall(wall).is_some_and(|w| bimcraft_core::curtain::pattern(m, w).is_some()))
         {
             self.tool = Tool::Modify;
@@ -4180,6 +4190,11 @@ impl BimApp {
         // With one part of a curtain wall picked, that part, and never the wall.
         if let Some((id, at)) = self.curtain_part {
             self.delete_curtain_part(id, at);
+            return;
+        }
+        // With one framing member picked, it's left out, and never the wall.
+        if self.framing_member.is_some() {
+            self.exclude_framing_member();
             return;
         }
         // Under Modify Sub Elements, what of the shape is selected.

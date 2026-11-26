@@ -1410,11 +1410,12 @@ impl Model {
             g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
         for e in self.elements.values_mut() {
-            if let crate::model::Element::Wall(w) = e
-                && let Some(c) = &mut w.curtain
-            {
-                c.parts.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
-                c.grids.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            if let crate::model::Element::Wall(w) = e {
+                if let Some(c) = &mut w.curtain {
+                    c.parts.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+                    c.grids.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+                }
+                w.framing_edits.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             }
             if let Some(lines) = e.sketch_mut() {
                 lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
@@ -1850,11 +1851,11 @@ impl Model {
 }
 
 /// The kinds of part an element holds, as [`element_parts`] names them.
-const ELEMENT_PARTS: [&str; 5] = ["sketch line", "shape point", "split line", "curtain part", "curtain grid"];
+const ELEMENT_PARTS: [&str; 6] = ["sketch line", "shape point", "split line", "curtain part", "curtain grid", "framing edit"];
 
 /// An element's own parts, in the order [`Model::parts_now`] walks them: its sketch lines, then a floor's or a roof's shape's
-/// points and its split lines, then a curtain wall's edited parts, each with what it is, its place in its list, its id and its
-/// GUID.
+/// points and its split lines, then a curtain wall's edited parts, then a wall's framing members' edits, each with what it is,
+/// its place in its list, its id and its GUID.
 fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
     let mut out: Vec<(&'static str, usize, Id, Guid)> = Vec::new();
     if let Some(lines) = e.sketch() {
@@ -1867,6 +1868,9 @@ fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
     if let Element::Wall(Wall { curtain: Some(c), .. }) = e {
         out.extend(c.parts.iter().enumerate().map(|(k, x)| ("curtain part", k, x.id, x.guid)));
         out.extend(c.grids.iter().enumerate().map(|(k, x)| ("curtain grid", k, x.id, x.guid)));
+    }
+    if let Element::Wall(w) = e {
+        out.extend(w.framing_edits.iter().enumerate().map(|(k, x)| ("framing edit", k, x.id, x.guid)));
     }
     out
 }
@@ -1883,6 +1887,9 @@ fn element_parts_mut(e: &mut Element, f: &mut dyn FnMut(&mut Id, &mut Guid)) {
     if let Element::Wall(Wall { curtain: Some(c), .. }) = e {
         c.parts.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
         c.grids.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
+    }
+    if let Element::Wall(w) = e {
+        w.framing_edits.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
     }
 }
 

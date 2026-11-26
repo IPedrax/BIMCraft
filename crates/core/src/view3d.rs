@@ -2513,10 +2513,12 @@ impl Streamed {
 pub const BYTES_PER_TRIANGLE: u64 = 600;
 
 /// About how many triangles an element of each kind makes: a component (a family's copy) 114 and a run 96 on the tower, a
-/// wall 161, the rest a dozen.
+/// wall 161 (a framed one its members' too), the rest a dozen.
 fn triangles_of(e: &Element) -> u64 {
     match e {
         Element::Component(_) => 120,
+        // A framed wall's members are boxes of 12 triangles each, about 30 of them on a 4 m wall with a window.
+        Element::Wall(w) if w.framing.is_some() => 160 + 30 * 12,
         Element::Wall(_) => 160,
         e if e.run().is_some() => 100,
         Element::Rebar(_) => 100,

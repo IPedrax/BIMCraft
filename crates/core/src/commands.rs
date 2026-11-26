@@ -3221,15 +3221,16 @@ other_files(
         "Framing",
         &[],
         "{ids | id, type?, angle?} frames walls, floors and roofs: gives each a framing type (`type`, one of the project's, see \
-         `type` {category: framing}; else the project's default, `2x4 @ 406`, made when the project has no framing type), and \
+         `type` {category: framing}; else the project's default: a new project has `2x4 @ 406` and `KVH 60x160 @ 625`, both of \
+         Pine, and one with none is given `2x4 @ 406`), and \
          each floor its joists' direction where `angle` is given (degrees from +x, the way they run; none, square to the \
          floor's longest edge, spanning the short way; a roof's rafters run up each of its slopes, and a flat roof's square to \
          its longest edge). A wall's studs, plates, kings, jacks, headers, sills, cripples and blocking, a floor's joists, \
          rims, trimmers, headers and blocking, and a roof's rafters, ridge boards, rims, trimmers, headers and blocking, are \
          then worked out from it whenever they're asked for (`framing`), never stored: moving a window, an opening, a beam \
          under a floor or a roof or a wall on it, changing a height or a slope or editing the framing type changes them. A \
-         framed wall is straight, of a wall type with a structure layer (the members stand in its thickest one, as deep \
-         across the wall as it is thick: an 89 mm layer for 2x4s), and its headers' plies fit that layer; a framed floor is \
+         framed wall is straight, of a wall type with a structure layer (the members stand in the one marked `framed`, else \
+         its thickest one, as deep across the wall as it is thick: an 89 mm layer for 2x4s), and its headers' plies fit that layer; a framed floor is \
          flat (no slope, no edited shape) and of a floor type with a structure layer (its joists as deep as it is thick: 184 \
          mm for 2x8s); a framed roof is by footprint (not by extrusion, no edited shape) and of a roof type with a structure \
          layer (its rafters as deep square to the slope as it is thick: 235 mm for 2x10s); otherwise it's refused, saying \
@@ -3268,7 +3269,9 @@ other_files(
          them), s [from, to] along x_axis from origin, across [from, to] to its left, z [bottom at s from, bottom at s to, top \
          at s from, top at s to], absolute, frame? {origin, x_axis} (a member not square to its host's frame, a rim along a \
          floor's skewed edge, every member of a roof in its slope's frame, up the slope: its s and across are in this frame)}], \
-         cut_list: [{role, section, plies, length (to the mm), stock, count}], warnings; a floor's and a roof's also supports \
+         cut_list: [{role, section, plies, length (to the mm), stock, count}], warnings; a wall's also edits (its members \
+         edited by hand, `framing_member`: [{key, section?, plies?, excluded?}], laid over the members, which leave out the \
+         excluded); a floor's and a roof's also supports \
          (the ids of the beams and walls bearing its joists or rafters) and span (the longest clear span of one between them, \
          in plan, mm); a floor's angle (the way its joists run, degrees); a roof's faces [{index, origin, x_axis, slope \
          (degrees)}], its slopes as framed}. Keys stay while what \
@@ -3286,6 +3289,21 @@ other_files(
          `face/<lower slope>/ridge/<edge>` (a rim or a ridge board spliced at a stock length adds `/<n>`); slopes are numbered as the roof's faces are, so an edit to its footprint that \
          changes how they meet may number them anew",
         crate::framing::query,
+    ),
+    edit(
+        "framing_member",
+        "Framing Member",
+        &[],
+        "{id, key | keys, section?, plies?, exclude?, reset?} a framed wall's members edited one by one (`framing` lists their \
+         keys): `section` [thickness, depth] mm gives one ply another size and `plies` another number of plies; `exclude: true` \
+         leaves the member out, `exclude: false` takes it back; `reset: true` drops its edits. A member keeps its place: an \
+         upright one stays centred where it stood, along the wall and across it; a lying one stays centred across the wall, on \
+         what it lies on (a top plate and a sill under what they lie under); nothing round it moves, and one that comes out \
+         deeper than the structure layer or runs into another member is warned of. Each edit is kept with the wall by the \
+         member's key and laid over the members whenever they're worked out, so the 3D view, plans, sections, the schedule, \
+         the cut list and IFC take it; one whose member goes (a window moved away, the studs laid out again) sleeps until it \
+         comes back. Replies with the members as `framing` gives them, the wall's `edits` and its `warnings`",
+        crate::framing::edit::command,
     ),
     other(
         "timber_framing",
@@ -12789,6 +12807,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 slant,
                 profile: Vec::new(),
                 framing: None,
+                framing_edits: Vec::new(),
             }))),
             _ => None,
         })
@@ -15657,6 +15676,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             slant: 0.0,
             profile: Vec::new(),
             framing: None,
+            framing_edits: Vec::new(),
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));

@@ -278,10 +278,17 @@ share but `under_partitions`; and the roofs' own, `ridge` ([below](#roofs)), non
 it (up to 3000), 0 to 4 plates of each kind, 0 to 3 kings and jacks, rough allowances 0 to 500, 1 to 8 headers of 1 to 3 plies
 and 1 to 1000 deep, 8 rows of blocking and 16 stock lengths at most, each longer than the last, a lap of 0 to 2000, bridging
 of 0 or 300 to 100000, 1 to 3 trimmers, and a material the library has.
-A new project has no framing type: `frame` makes `2x4 @ 406` when there is none, so a project that frames nothing doesn't change.
+A new project has two framing types, both of the starter material Pine: `2x4 @ 406` (`FramingType::american`, the defaults) and
+`KVH 60x160 @ 625` (`FramingType::european`: German timber frame, Holzrahmenbau, KVH studs 60 mm thick at the 625 mm grid Baunetz
+Wissen gives as the usual one, so a 1250 mm board spans two bays; one sill and one top plate; headers of two 60 mm plies 200 deep up
+to a 1250 mm rough opening and 240 above; Rettenmeier's KVH stock lengths, 5 m and 13 m), and two wall types to frame with them,
+`Timber Frame - 114mm` and `Timber Frame - 185mm` (gypsum board 12.5 each side of a pine structure layer of 89 or 160, marked framed).
+An older project without them is given one when `frame` names it (`framing::preset`), and `frame` with no type in a project with
+none makes `2x4 @ 406`; the Framing drop-down in Properties lists the two, picking one runs `frame`.
 
-The members stand in the wall type's structure layer, the thickest where it has several (the first of those): as deep across the
-wall as that layer is thick, so a 2x4 wall is one with an 89 mm structure layer and a 2x6 one with a 140, never a second number
+The members stand in the wall type's structure layer: the one marked `framed` (Layer's `framed`, the Framing column of a type's
+layers in Edit Type, one structure layer a type at most, which `Model::check` holds), else the thickest where it has several (the
+first of those); a floor's and a roof's alike (`framing::framed_layer`). As deep across the wall as that layer is thick, so a 2x4 wall is one with an 89 mm structure layer and a 2x6 one with a 140, never a second number
 that could disagree. `framing::check`, which `Model::check` asks of each framed wall, refuses a framing type that doesn't exist,
 a wall that isn't straight, a wall type with no structure layer, a wall longer than 1024 spacings (`MAX_STATIONS`) and a header
 whose plies are wider together than the layer; each error says what to change, and `frame`, `modify` or `type` rolls back.
@@ -385,6 +392,32 @@ it to its Type Properties, where every field but the headers is typed or picked 
 stock lengths as lengths parted by commas, layout, corner and tee, rough allowances, kings, jacks, sill plates and material) and
 Duplicate and Rename work as for any type; the headers are shown and set with `type`. The Project Browser lists framing types
 under Families, a click opens one's Type Properties and its right-click menu deletes one nothing uses.
+
+#### Members edited one by one
+
+A wall's members can be changed by hand, each kept by its key (`framing/edit.rs`): `framing_member {id, key | keys, section?,
+plies?, exclude?, reset?}` gives one another section ([thickness, depth] of a ply) or number of plies, leaves it out, takes it back
+or drops its edits. Each is a `MemberEdit` in the wall's `framing_edits`, with an id and a GUID of its own (a part, `framing edit`
+in `library.rs`'s `element_parts`); `Model::check` holds them to 4096 a wall, one to a key, sections 1 to 1000 mm and 1 to 8
+plies. They're laid over the members whenever `framing::wall` works them out (`edit::apply`, after `framing::unedited`), so the 3D
+view, plans, sections, the schedule, the cut list and IFC all take them. A member resized keeps its place (option A): an upright
+one stays centred where it stood, its plies side by side along the wall; a lying one stays centred across the wall and on what it
+lies on, a top plate and a sill under what they lie under; a header's plies stay side by side across it (a flat one's stacked).
+Nothing round it moves: one deeper than the structure layer, or running into another member, is warned of. An edit whose member
+is gone (a window moved away, the studs laid out from the other end) sleeps, and wakes when the member is back; `reset` may name
+one asleep. `framing` lists a wall's `edits`. Floors' and roofs' members aren't edited this way yet.
+
+In the window, Tab on a framed wall under the cursor (selected, or any with Modify in hand) steps through its members there,
+nearest first, then back to the whole wall (`framing_members.rs`): a plan takes those its cut plane crosses within the pick
+distance (`edit::in_plan`), the 3D view those the cursor's ray passes through (`edit::on_ray`), so a member inside the wall's
+finishes is reached through them. What Tab would go to is outlined in the accent, what it picked in the picked part's colour, as a
+curtain wall's parts are. Properties shows the member (Framing Member: its role, its key, Thickness, Depth, Plies, Length) with
+Exclude and, edited, Reset; Delete leaves it out and never deletes the wall; a framed wall alone selected with edits says how many
+and has Reset Members.
+
+`framing::wall` is kept with the model (`Derived::framing`, by the elements' state and the types), as a level's rooms and a
+schedule's table are: a plan redrawn as it pans, the 3D view, sections, IFC and the schedule ask each framed wall once for a model.
+A framed wall counts its members' triangles in the 3D view's memory budget (`view3d::triangles_of`).
 
 #### Floors
 

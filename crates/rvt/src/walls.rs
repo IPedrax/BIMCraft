@@ -362,6 +362,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 slant: 0.0,
                 profile: Vec::new(),
                 framing: None,
+                framing_edits: Vec::new(),
             };
             let note = if tid == 0 {
                 "no_type".to_string()

@@ -2,7 +2,7 @@
 //! shafts through it, the walls and beams under it and its framing type whenever they are asked for, and never stored, as a
 //! framed floor's joists are ([`super::floor`], whose region framer each of its slopes is framed by).
 //!
-//! The members stand in the roof type's structure layer (the thickest, where it has several), as the roof's own solid lays
+//! The members stand in the roof type's structure layer (the one marked `framed`, else the thickest), as the roof's own solid lays
 //! its layers: each layer's share of the roof's depth plumb (`Model::roof_rise`, its type's thickness square to the slope), so
 //! a rafter is as deep square to the slope as its layer is thick (a 2x10 roof is one with a 235 mm structure layer) and fills
 //! that layer from its underside to its top; the layers over it (sheathing, roofing) stay drawn as layers.
@@ -48,7 +48,7 @@
 use super::floor::{BEARING, Hole, MAX_BLOCKS, Region, Splice, Support, Top, Words, ccw, gather, meets, region, spliced_rim, strip};
 use super::{EPS, Framing, Grain, MAX_STATIONS, Member, Role};
 use crate::geom::{self, P2};
-use crate::model::{Element, Function, Id, Model, Roof, TOL};
+use crate::model::{Element, Id, Model, Roof, TOL};
 use crate::walls::{self, Plane};
 
 const RAFTERS: Words = Words { role: Role::Rafter, one: "rafter", many: "rafters", host: "slope" };
@@ -81,15 +81,11 @@ impl Face {
     }
 }
 
-/// How far up from the roof's underside its type's thickest structure layer (the first of the thickest) lies, as shares of
+/// How far up from the roof's underside the structure layer its members stand in ([`super::framed_layer`]) lies, as shares of
 /// the roof's plumb depth: its index, and its underside's and top's shares. None without one.
 pub(crate) fn structure(m: &Model, r: &Roof) -> Option<(usize, [f64; 2])> {
     let layers = m.type_layers("roof", &r.type_name);
-    let (k, _) = layers
-        .iter()
-        .enumerate()
-        .filter(|(_, l)| l.function == Function::Structure)
-        .max_by(|(i, a), (j, b)| a.thickness.total_cmp(&b.thickness).then(j.cmp(i)))?;
+    let k = super::framed_layer(layers)?;
     let shares = shares(m, r);
     Some((k, [*shares.get(k + 1)?, *shares.get(k)?]))
 }
