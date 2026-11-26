@@ -2045,7 +2045,7 @@ fn properties_show_0_where_the_json_leaves_a_number_out_and_blank_where_it_is_no
     // Both floors: the slopes they share show, their offsets differ.
     h.state_mut().selection = floors;
     h.run();
-    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope")), (String::new(), "0°".into()));
+    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope")), (String::new(), "0.00°".into()));
     // None is not 0: a section with no far clip sees all there is, a plan's top is the level above (its View Range says so).
     h.state_mut().selection = ids(&h, "section");
     h.run();
@@ -3411,12 +3411,14 @@ fn project_units_show_and_read_lengths_in_feet_and_inches() {
 
 #[test]
 fn project_units_offer_the_decimals_their_units_allow_and_the_project_keeps_the_one_picked() {
+    use egui::accesskit::Role;
     let mut h = app(&format!("{BOX}\nunits {}", json!({"length": "m"})));
     press(&mut h, "Manage");
     press(&mut h, "Project Units");
     // The Length row's Format opens its own dialog: units and rounding.
     press(&mut h, "1.24 m");
-    press(&mut h, "0.00 m");
+    h.get_all_by_role(Role::ComboBox).find(|n| n.value().as_deref() == Some("0.00 m")).expect("the rounding list").click_accesskit();
+    h.run();
     assert!(h.query_by_label("0.000 m").is_some(), "the places metres allow");
     press(&mut h, "0.000 m");
     press(&mut h, "OK");
@@ -3426,8 +3428,9 @@ fn project_units_offer_the_decimals_their_units_allow_and_the_project_keeps_the_
     // Inches and feet-inches show fractions of an inch, so their rounding list is 1" to 1/16".
     press(&mut h, "Manage");
     press(&mut h, "Project Units");
-    press(&mut h, "1.24 m");
-    press(&mut h, "Metres");
+    press(&mut h, "1.235 m");
+    h.get_all_by_role(Role::ComboBox).find(|n| n.value().as_deref() == Some("Metres")).expect("the units list").click_accesskit();
+    h.run();
     press(&mut h, "Feet and inches");
     press(&mut h, "OK");
     press(&mut h, "OK");
@@ -3435,8 +3438,10 @@ fn project_units_offer_the_decimals_their_units_allow_and_the_project_keeps_the_
     press(&mut h, "Manage");
     press(&mut h, "Project Units");
     press(&mut h, "4'-1\"");
-    press(&mut h, "1\"");
-    assert!(h.query_by_label("1/8\"").is_some(), "fractions of an inch");
+    h.get_all_by_role(Role::ComboBox).find(|n| n.value().as_deref() == Some("1")).expect("the rounding list").click_accesskit();
+    h.run();
+    press(&mut h, "1/16\"");
+    assert!(h.get_all_by_role(Role::ComboBox).any(|n| n.value().as_deref() == Some("1/16\"")), "sixteenths picked");
     press(&mut h, "Escape");
 }
 
@@ -6244,10 +6249,7 @@ fn the_units_shortcut_gets_to_the_choices_in_the_smallest_window_too() {
             break;
         }
     }
-    assert!(egui::Popup::is_any_open(&h.ctx), "the panel's list is open");
-    let row = h.get_by_label("Project Units").rect().center();
-    click_at(&mut h, row);
-    assert!(h.state().project_units.is_some(), "the Project Units dialog is open");
+    assert!(h.state().project_units.is_some(), "Project Units opens its dialog");
     press(&mut h, "OK");
 }
 

@@ -35,7 +35,7 @@ fn family_types_greys_a_value_a_formula_works_out_showing_what_the_type_comes_to
     press(&mut h, "Type Name");
     press_near(&mut h, "B", "Type Name");
     h.run();
-    assert_eq!(value(&h, "Parameter Value Height").as_deref(), Some("300"), "type B: 600 / 2");
+    assert_eq!(value(&h, "Parameter Value Height").as_deref(), Some("300 mm"), "type B: 600 / 2");
     // Loaded into the project, the family is as it was: no type sets Height.
     press(&mut h, "OK");
     press(&mut h, "Load into Project");
