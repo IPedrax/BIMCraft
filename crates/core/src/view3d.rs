@@ -3506,10 +3506,13 @@ impl Detail {
     }
 }
 
+/// The scans with an index open, and the nodes picked of them: which scan (by its place there) and which node.
+type Chosen = (Vec<(Scan, Arc<crate::cloud::lod::Indexed>)>, Vec<(usize, usize)>);
+
 /// The points of the model's indexed scans `cam` sees below the top the project holds, as `look` shows them: of each scan, the
 /// nodes of its index whose points are more than [`crate::cloud::lod::SPREAD`] px apart in the picture's parent, ranked across
 /// every scan by how big they are on the screen, no more than `most` points among them all. With `load`, a node not yet read is read; without, it's counted `missing`.
-fn chosen(m: &Model, cam: &Camera, look: &Look, most: usize) -> (Vec<(Scan, Arc<crate::cloud::lod::Indexed>)>, Vec<(usize, usize)>) {
+fn chosen(m: &Model, cam: &Camera, look: &Look, most: usize) -> Chosen {
     let plain = look.is_plain();
     let scans: Vec<(Scan, Arc<crate::cloud::lod::Indexed>, &crate::model::PointCloud)> = scans_of(m)
         .into_iter()

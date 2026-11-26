@@ -70,6 +70,10 @@ impl BimApp {
                 ui.label(RichText::new(t("Shadows")).strong());
                 ui.checkbox(&mut d.options.ambient_shadows, t("Show Ambient Shadows"))
                     .on_hover_text(t("Soft shadows where faces meet inside a corner"));
+                ui.add_space(8.0);
+                ui.label(RichText::new(t("Point Clouds")).strong());
+                ui.checkbox(&mut d.options.eye_dome, t("Eye-Dome Lighting"))
+                    .on_hover_text(t("A scan's points darkened where they lie behind their neighbours, so its edges read"));
                 if let Some(e) = &d.error {
                     ui.add_space(6.0);
                     ui.label(RichText::new(e).color(pal().error));
@@ -100,7 +104,9 @@ impl BimApp {
             return true;
         }
         let view = self.active_3d().map_or_else(|| json!("{3D}"), |id| json!(id));
-        let p = json!({"view": view, "edges": o.edges, "silhouette": o.silhouette, "ambient_shadows": o.ambient_shadows});
+        let p = json!({
+            "view": view, "edges": o.edges, "silhouette": o.silhouette, "ambient_shadows": o.ambient_shadows, "eye_dome": o.eye_dome,
+        });
         if self.run("graphic_display_options", p).is_some() {
             return true;
         }

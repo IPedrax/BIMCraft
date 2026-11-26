@@ -662,3 +662,44 @@ fn point_cloud_memory_and_points_drawn_in_3d_are_kept_in_settings_json() {
     }
     bimcraft_core::cloud::lod::set_memory(None);
 }
+
+#[test]
+fn the_3d_view_streams_the_nodes_of_an_indexed_scan_as_it_moves_and_its_picture_draws_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app(BOX);
+    crate::stream::testing::indexed_scan(&mut h.state_mut().session, dir.path(), [2000.0, 2000.0]);
+    h.state_mut().open_3d(None);
+    h.run();
+    let at = h.state().orbit.rect.center();
+    let wheel = |h: &mut Harness<BimApp>, by: f32| {
+        for _ in 0..4 {
+            h.hover_at(at);
+            h.event(egui::Event::MouseWheel {
+                phase: egui::TouchPhase::Move,
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0.0, by),
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.step();
+        }
+        h.run();
+    };
+    // Far off, the view wants few of the nodes below the top the project holds, and reads them as it stands.
+    wheel(&mut h, -300.0);
+    let wanted = h.state().orbit.stream.wanted().len();
+    let read = h.state().orbit.stream.arrived();
+    assert!(wanted > 0 && read as usize >= wanted, "read as the view stands: {read} of {wanted}");
+    // Zoomed in, it wants more, and has read them as it moved, with no wait for the camera to stand still: the picture finds
+    // every node it wants read.
+    let before = h.state().orbit.camera.unwrap().scale;
+    wheel(&mut h, 300.0);
+    wheel(&mut h, 300.0);
+    let state = h.state();
+    let cam = state.orbit.camera.unwrap();
+    assert!(cam.scale > before * 1.5, "zoomed in");
+    assert!(state.orbit.stream.wanted().len() > wanted, "more wanted near: {} and {wanted}", state.orbit.stream.wanted().len());
+    let look = bimcraft_core::graphics::Look::of_3d(&state.session.model);
+    let detail = bimcraft_core::view3d::scan_detail(&state.session.model, &cam, &look, crate::orbit::DETAIL_PROCESSOR, false);
+    assert_eq!(detail.missing, 0, "every node wanted is read");
+    assert!(detail.points() > 0 && !state.orbit.stream.busy());
+}

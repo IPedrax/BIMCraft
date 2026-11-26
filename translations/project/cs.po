@@ -53,7 +53,7 @@ msgstr "Cihla"
 msgid "Brick 225 x 75"
 msgstr "Cihla 225 x 75"
 
-#: crates/core/src/commands.rs:7155
+#: crates/core/src/commands.rs:7161
 msgid "Camera"
 msgstr "Kamera"
 
@@ -180,7 +180,7 @@ msgstr ""
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:16938
+#: crates/core/src/commands.rs:16944
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -198,7 +198,7 @@ msgid "Desk"
 msgstr "Pracovní stůl"
 
 #: crates/core/src/commands/rebar_detail.rs:163
-#: crates/core/src/commands.rs:16728
+#: crates/core/src/commands.rs:16734
 msgid "Detail"
 msgstr ""
 
@@ -275,9 +275,9 @@ msgstr "Elektroinstalace – osvětlení"
 msgid "Electrical Power"
 msgstr "Elektroinstalace – napájení"
 
-#: crates/core/src/commands.rs:16593
-#: crates/core/src/commands.rs:16609
-#: crates/core/src/commands.rs:21980
+#: crates/core/src/commands.rs:16599
+#: crates/core/src/commands.rs:16615
+#: crates/core/src/commands.rs:21986
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -355,7 +355,7 @@ msgid "Gate Valve"
 msgstr "Šoupátko"
 
 #: crates/core/src/family.rs:3515
-#: crates/core/src/view3d.rs:2031
+#: crates/core/src/view3d.rs:2035
 msgid "Glass"
 msgstr "Sklo"
 
@@ -497,7 +497,7 @@ msgstr "Šířka nohy"
 msgid "Length"
 msgstr "Délka"
 
-#: crates/core/src/commands.rs:10288
+#: crates/core/src/commands.rs:10294
 #: crates/core/src/model.rs:5069
 msgid "Level"
 msgstr "Podlaží"
@@ -538,7 +538,7 @@ msgstr "Označení"
 msgid "Masking"
 msgstr "Maskovací"
 
-#: crates/core/src/commands.rs:13533
+#: crates/core/src/commands.rs:13539
 msgid "Mass"
 msgstr "Objem"
 
@@ -558,8 +558,8 @@ msgstr "Střední čáry"
 msgid "Membrane"
 msgstr "Hydroizolační fólie"
 
-#: crates/core/src/commands.rs:4911
-#: crates/core/src/commands.rs:20477
+#: crates/core/src/commands.rs:4913
+#: crates/core/src/commands.rs:20483
 #: crates/core/src/curtain.rs:133
 #: crates/core/src/family.rs:3515
 #: crates/core/src/model.rs:6893
@@ -684,7 +684,7 @@ msgstr "Porcelán"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:5233
+#: crates/core/src/commands.rs:5235
 #: crates/core/src/title_starters.rs:35
 #: crates/core/src/title_starters.rs:55
 #: crates/core/src/title_starters.rs:75
@@ -695,7 +695,7 @@ msgstr "Projekt"
 msgid "Project no."
 msgstr ""
 
-#: crates/core/src/commands.rs:11505
+#: crates/core/src/commands.rs:11511
 msgid "Property Line"
 msgstr ""
 
@@ -745,7 +745,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
-#: crates/core/src/commands.rs:14063
+#: crates/core/src/commands.rs:14069
 msgid "Room"
 msgstr "Místnost"
 
@@ -787,8 +787,8 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:16527
-#: crates/core/src/commands.rs:21979
+#: crates/core/src/commands.rs:16533
+#: crates/core/src/commands.rs:21985
 #: crates/core/src/schedule.rs:704
 msgid "Section"
 msgstr "Řez"
@@ -964,7 +964,7 @@ msgstr "Dřevo"
 msgid "Title"
 msgstr ""
 
-#: crates/core/src/commands.rs:11547
+#: crates/core/src/commands.rs:11553
 msgid "Toposolid"
 msgstr ""
 
@@ -1002,7 +1002,7 @@ msgstr "Neohraničená výška"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:17286
+#: crates/core/src/commands.rs:17292
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

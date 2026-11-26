@@ -215,11 +215,27 @@ the disk while it sorts them.
 
 In the desktop, the Point Cloud box has Keep full detail (index beside the project), on for files of more than 64 MB, and says
 where the index goes when the project has no file yet (beside the scan's); an indexed scan is always built on a thread of its own, behind the progress box. The 3D view
-(`Orbit::detail_for`) asks a worker for the points of the indexes once the camera has stood still 150 ms: on the card they're a
-store of their own beside the mesh's dots (`Gpu::set_detail`, drawn by the same pipeline and cut by the section box as they are),
-on the processor `Scene::render_detailed`; the last ones stay drawn while the view moves. A plan is drawn from what's read and,
+streams the indexes' nodes (`stream.rs`, `Orbit::stream_nodes`), as Potree does; it's described below. A plan is drawn from what's read and,
 where that left nodes out, drawn again by the plan worker, which reads them (`PlanCache::complete`). Settings > Graphics has Point
 cloud memory (`lod::set_memory`), Points drawn in 3D (Auto: ten million on the card, three on the processor) and Point cloud
 index folder. The Project Browser lists the point clouds with what an open index takes; a scan whose index isn't open says
 "(index missing)" ("(index on host)" for a Co-Work guest), and its menu has Find Index…, Reload Index, Rebuild Index and Delete
 Index…, which asks first (`point_cloud_index`).
+
+The 3D view streams the nodes rather than waiting for the camera to stand still. Each frame the camera, the model or the look
+changed, `view3d::scan_wanted` ranks the nodes the picture wants across every scan (no more than Points drawn in 3D), reading
+nothing; three loader threads (`stream::Pool`) take the top of that queue, and each new ranking replaces the queue, so what the
+camera moved away from before a loader took it is never read (a node being read is read once, and kept if it's still wanted). On
+the processor a loader reads the node into the indexes' cache, and the picture draws what that holds (`scan_detail` without
+reading, then `Scene::render_detailed`), drawn again as nodes come in, at most every 250 ms while they're still coming. On the card a
+loader also packs the node for the mesh and the look (`view3d::node_dots`: 12 bytes a point, its place as 16-bit numbers in the
+node's box, and its colour as the view gives it), and the window sends up to 16 MB of them a frame (`Gpu::upload_nodes`), each a
+buffer of its own kept in a cache by node: one budget for all of them (1 GiB, less where the card's buffers are smaller or an
+allocation fails), the nodes used longest ago and not wanted let go first. The view draws those the card holds of what it wants
+(`Gpu::draw_nodes`), each by the `bimcraft-3d-nodes` pipeline with its box, step and owner bound at its slot of a uniform buffer and
+unpacked in `vs_node`, the same points as the mesh's own (`fs_dot`, cut by the section box whole or not at all). Nodes that come
+while the camera stays are drawn over the picture's targets rather than the picture again, unless the view sees through something.
+Another mesh or look packs them again; the card's held ones are let go. Nothing of this runs where no scan's index is open.
+Eye-dome lighting (Graphic Display Options) darkens each point by how far it lies behind its neighbours two pixels off, as
+`view3d::eye_dome` does on the processor: on the card in the edges' pass (`dome` in `gpu.wgsl`), off the opaque depth, the points'
+pixels known by their plane; in a parallel view `cs_near` first finds the nearest depth in the picture. Off, it costs nothing.

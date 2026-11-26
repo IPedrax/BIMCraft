@@ -12,6 +12,9 @@
 //   4. vs_line / fs_line: each level's plane and name as lines, where nothing opaque nearer hides them.
 //   5. vs_full / fs_marks: the work plane and its patch (core `PlaneMark`), each pixel's ray met with the plane, blended over
 //      the picture where nothing opaque is nearer, as the processor's `Image::draw_marks` lays them.
+//   A scan's index's nodes are drawn in pass 1 too, by vs_node / fs_dot: each node's points as 16-bit places in its box.
+//   Eye-dome lighting darkens a point's pixel in pass 3 by how far it lies behind its neighbours (`dome`); in a parallel view
+//   cs_near first finds the nearest depth in the picture, which the distances are taken from.
 //   In wireframe, passes 1 and 2 have nothing to draw and pass 3 only paper, and vs_wire / fs_wire draw every edge over it; then
 //   vs_wire_tinted / fs_wire, those tinted, over the rest.
 // Lengths are mm. A colour is 0 to 255 in each channel, as the processor keeps it, and is divided down only on its way out.
@@ -38,9 +41,10 @@ struct Globals {
     // in front of the eye.
     lens: vec4<f32>,
     // The view's Graphic Display Options: x 1 where it shows its edges, y a silhouette's width (px, 0 for none), z 1 where it
-    // shows ambient shadows.
+    // shows ambient shadows, w 1 where it lights the scans' points by eye-dome lighting.
     display: vec4<f32>,
-    // The section box from the mesh's origin: its least corner (w: 1 where there is one) and its greatest.
+    // The section box from the mesh's origin: its least corner (w: 1 where there is one) and its greatest (w: the nearest
+    // opaque depth in the picture, which cs_near finds for eye-dome lighting in a parallel view).
     cut_lo: vec4<f32>,
     cut_hi: vec4<f32>,
     // The work plane and its patch, drawn over the picture (pass 5).
@@ -509,6 +513,9 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         if !lines || on_dot {
             rgb = bytes(textureLoad(scene_color, vec2<i32>(x, y), 0));
         }
+        if on_dot && g.display.w > 0.5 {
+            rgb = floor(rgb * dome(x, y));
+        }
         if g.display.z > 0.5 && !on_dot {
             rgb = floor(rgb * ambient(x, y, textureLoad(scene_depth, vec2<i32>(x, y), 0)) + vec3<f32>(0.5));
         }
@@ -534,6 +541,61 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     return vec4<f32>(inked(rgb) / 255.0, 1.0);
 }
 
+// How far from the eye, mm, what a pixel of opaque depth `d` shows lies, as the core's `eye_dome` takes it: in perspective
+// how far ahead of the eye; in a parallel view how far behind the nearest thing in the picture, and a metre more.
+fn dome_distance(d: f32) -> f32 {
+    if g.lens.x > 0.0 {
+        return g.lens.w / (d - g.lens.z);
+    }
+    return (g.cut_hi.w - d) / g.back.w + 1000.0;
+}
+
+// How lit by eye-dome lighting the point at a pixel is, 0 to 1, as the core's `eye_dome`: of the four pixels two off, how far
+// (in the log of the distance from the eye) it lies behind those nearer, averaged, shaded by exp(-300 x). One with nothing
+// there counts, as lying behind it.
+fn dome(x: i32, y: i32) -> f32 {
+    let me = textureLoad(scene_depth, vec2<i32>(x, y), 0);
+    let a = dome_distance(me);
+    if me <= 0.0 || !(a > 0.0) {
+        return 1.0;
+    }
+    let size = vec2<i32>(g.size.xy);
+    var offsets = array<vec2<i32>, 4>(vec2<i32>(2, 0), vec2<i32>(-2, 0), vec2<i32>(0, 2), vec2<i32>(0, -2));
+    var sum = 0.0;
+    var n = 0.0;
+    for (var i = 0; i < 4; i++) {
+        let q = vec2<i32>(x, y) + offsets[i];
+        if q.x < 0 || q.y < 0 || q.x >= size.x || q.y >= size.y {
+            continue;
+        }
+        n += 1.0;
+        let d = textureLoad(scene_depth, q, 0);
+        let b = dome_distance(d);
+        if d > 0.0 && b > 0.0 {
+            sum += max(0.0, log(a) - log(b));
+        }
+    }
+    if n == 0.0 {
+        return 1.0;
+    }
+    return exp(-(sum / n) * 300.0);
+}
+
+// The nearest opaque depth in the picture, as the bits of a float (which order as the floats do, all being positive).
+@group(2) @binding(2) var<storage, read_write> nearest: atomic<u32>;
+
+@compute @workgroup_size(8, 8)
+fn cs_near(@builtin(global_invocation_id) id: vec3<u32>) {
+    let size = textureDimensions(scene_depth);
+    if id.x >= size.x || id.y >= size.y {
+        return;
+    }
+    let d = textureLoad(scene_depth, vec2<i32>(id.xy), 0);
+    if d > 0.0 {
+        atomicMax(&nearest, bitcast<u32>(d));
+    }
+}
+
 // The plane a pixel showing a scan's point holds: past any surface's.
 const DOT_PLANE: u32 = 0xffffffffu;
 
@@ -553,15 +615,43 @@ struct DotOut {
 // or not at all by a section box. One with nothing to draw is a point of nothing.
 @vertex
 fn vs_dot(v: DotIn, @builtin(vertex_index) i: u32) -> DotOut {
+    return dot_at(v.at, v.color, v.owner, i);
+}
+
+// A node of a scan's index (`gpu::NodeUp`): its points' least corner from the mesh's origin and the step of their 16-bit
+// places, mm; and its owner, as the mesh numbers them.
+struct Node {
+    min: vec4<f32>,
+    step: vec4<f32>,
+    owner: vec4<u32>,
+}
+
+@group(1) @binding(3) var<uniform> node: Node;
+
+// A node's point: x and y as 16-bit places in its box, z, and its colour.
+struct NodeIn {
+    @location(0) xy: u32,
+    @location(1) z: u32,
+    @location(2) color: u32,
+}
+
+@vertex
+fn vs_node(v: NodeIn, @builtin(vertex_index) i: u32) -> DotOut {
+    let q = vec3<f32>(f32(v.xy & 0xffffu), f32(v.xy >> 16u), f32(v.z));
+    return dot_at(node.min.xyz + q * node.step.xyz, v.color, node.owner.x, i);
+}
+
+// Corner `i` of the point at `at` (from the mesh's origin), of its colour and owner.
+fn dot_at(at: vec3<f32>, color: u32, owner: u32, i: u32) -> DotOut {
     var o: DotOut;
     o.clip = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    if g.cut_lo.w > 0.5 && (any(v.at < g.cut_lo.xyz) || any(v.at > g.cut_hi.xyz)) {
+    if g.cut_lo.w > 0.5 && (any(at < g.cut_lo.xyz) || any(at > g.cut_hi.xyz)) {
         return o;
     }
-    if g.lens.x > 0.0 && g.lens.y - dot(v.at - g.aim.xyz, g.back.xyz) <= 0.0 {
+    if g.lens.x > 0.0 && g.lens.y - dot(at - g.aim.xyz, g.back.xyz) <= 0.0 {
         return o;
     }
-    let seen = to_pixel(v.at);
+    let seen = to_pixel(at);
     var corners = array<vec2<f32>, 6>(
         vec2<f32>(0.0, 0.0), vec2<f32>(2.0, 0.0), vec2<f32>(0.0, 2.0),
         vec2<f32>(0.0, 2.0), vec2<f32>(2.0, 0.0), vec2<f32>(2.0, 2.0),
@@ -569,8 +659,8 @@ fn vs_dot(v: DotIn, @builtin(vertex_index) i: u32) -> DotOut {
     let xy = floor(seen.xy - vec2<f32>(0.5)) + corners[i];
     // A point nearer than the near plane is drawn all the same, as near as depth goes.
     o.clip = vec4<f32>(xy.x / g.size.x * 2.0 - 1.0, 1.0 - xy.y / g.size.y * 2.0, min(seen.z, 1.0), 1.0);
-    o.color = vec3<f32>(f32(v.color & 255u), f32((v.color >> 8u) & 255u), f32((v.color >> 16u) & 255u));
-    o.ids = vec2<u32>(DOT_PLANE, v.owner);
+    o.color = vec3<f32>(f32(color & 255u), f32((color >> 8u) & 255u), f32((color >> 16u) & 255u));
+    o.ids = vec2<u32>(DOT_PLANE, owner);
     return o;
 }
 
