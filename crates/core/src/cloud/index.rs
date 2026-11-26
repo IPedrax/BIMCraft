@@ -34,8 +34,8 @@ const ENTRY: u64 = 32;
 const GRID_BITS: u32 = 7;
 /// The deepest a node may be: below it a node's grid cells would be finer than a point's place holds.
 pub const MAX_DEPTH: u8 = 32 - GRID_BITS as u8 - 1;
-/// The most nodes a file may have.
-pub const MAX_NODES: u64 = 50_000_000;
+/// The most nodes a file may have: a billion points make some tens of thousands, and a node's entry is held for each.
+pub const MAX_NODES: u64 = 4_000_000;
 /// The most points a node may hold.
 pub const MAX_NODE_POINTS: u32 = 1 << 20;
 /// The most a node may take in the file, bytes.
@@ -94,13 +94,53 @@ impl NodePoints {
     }
 }
 
-/// An index opened: its header and table, its points read a node at a time.
+/// An index opened: its header and table, its points read a node at a time. The table is in the order of its nodes' places
+/// (level, then key), which is how a node's children are found; the file is read where each node is, without a lock.
 pub struct Index {
     pub header: Header,
     pub nodes: Vec<Node>,
-    find: HashMap<(u8, [u32; 3]), u32>,
-    file: Mutex<Box<dyn Source>>,
+    file: Backing,
     size: u64,
+}
+
+/// What an index is read from: its file, read at a place without moving a cursor (so readers on several threads share it),
+/// or bytes in memory.
+enum Backing {
+    File(File),
+    Bytes(Vec<u8>),
+}
+
+impl Backing {
+    fn read_at(&self, at: u64, buf: &mut [u8]) -> Result<(), String> {
+        match self {
+            Backing::Bytes(b) => {
+                let from = usize::try_from(at).map_err(|_| broken("a node lies past the file"))?;
+                let src = b.get(from..from + buf.len()).ok_or_else(|| broken("a node lies past the file"))?;
+                buf.copy_from_slice(src);
+                Ok(())
+            }
+            #[cfg(unix)]
+            Backing::File(f) => std::os::unix::fs::FileExt::read_exact_at(f, buf, at).map_err(broken),
+            #[cfg(windows)]
+            Backing::File(f) => {
+                let (mut done, mut at) = (0, at);
+                while done < buf.len() {
+                    let n = std::os::windows::fs::FileExt::seek_read(f, &mut buf[done..], at).map_err(broken)?;
+                    if n == 0 {
+                        return Err(broken("it's cut short"));
+                    }
+                    (done, at) = (done + n, at + n as u64);
+                }
+                Ok(())
+            }
+            #[cfg(not(any(unix, windows)))]
+            Backing::File(f) => {
+                let mut f = f;
+                f.seek(SeekFrom::Start(at)).map_err(broken)?;
+                f.read_exact(buf).map_err(broken)
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for Index {
@@ -226,12 +266,19 @@ impl Node {
 impl Index {
     /// The index at `path`, its header and table read and checked; its points are read when asked for.
     pub fn open(path: &Path) -> Result<Index, String> {
-        let file = File::open(path).map_err(|e| format!("the index {} can't be opened: {e}", path.display()))?;
-        Index::read(Box::new(file))
+        let mut file = File::open(path).map_err(|e| format!("the index {} can't be opened: {e}", path.display()))?;
+        let (header, nodes, size) = Index::table(&mut file)?;
+        Ok(Index { header, nodes, file: Backing::File(file), size })
     }
 
-    /// The index `src` holds.
-    pub fn read(mut src: Box<dyn Source>) -> Result<Index, String> {
+    /// The index `bytes` hold.
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Index, String> {
+        let (header, nodes, size) = Index::table(&mut std::io::Cursor::new(&bytes))?;
+        Ok(Index { header, nodes, file: Backing::Bytes(bytes), size })
+    }
+
+    /// The header and the table of nodes `src` holds, checked, and its size.
+    fn table(mut src: &mut dyn Source) -> Result<(Header, Vec<Node>, u64), String> {
         let size = src.seek(SeekFrom::End(0)).map_err(broken)?;
         let mut head = Vec::with_capacity(HEADER as usize);
         src.seek(SeekFrom::Start(0)).map_err(broken)?;
@@ -242,15 +289,14 @@ impl Index {
         let header = Header::read(&head, size)?;
         src.seek(SeekFrom::Start(header.table)).map_err(broken)?;
         let mut r = BufReader::with_capacity(1 << 20, &mut src);
-        let mut nodes = Vec::with_capacity(header.nodes.min(1 << 20) as usize);
-        let mut find = HashMap::with_capacity(header.nodes.min(1 << 20) as usize);
+        let mut nodes: Vec<Node> = Vec::with_capacity(header.nodes.min(1 << 20) as usize);
         let (mut total, mut entry) = (0_u64, [0u8; ENTRY as usize]);
-        for i in 0..header.nodes {
+        for _ in 0..header.nodes {
             r.read_exact(&mut entry).map_err(|_| broken("its table is cut short"))?;
             let n = Node::read(&entry, &header)?;
             total += u64::from(n.points);
-            if find.insert((n.level, n.key), i as u32).is_some() {
-                return Err(broken("two nodes are in one place"));
+            if nodes.last().is_some_and(|last| (last.level, last.key) >= (n.level, n.key)) {
+                return Err(broken("its table isn't in the order of its nodes, or two nodes are in one place"));
             }
             nodes.push(n);
         }
@@ -258,15 +304,20 @@ impl Index {
         if total != header.count {
             return Err(broken(format!("its nodes hold {total} points, and its header says {}", header.count)));
         }
-        if !find.contains_key(&(0, [0; 3])) {
+        if nodes.first().is_none_or(|n| n.level != 0) {
             return Err(broken("it has no root"));
         }
-        Ok(Index { header, nodes, find, file: Mutex::new(src), size })
+        Ok((header, nodes, size))
+    }
+
+    /// The node at `level` and `key`, if there is one.
+    fn find(&self, level: u8, key: [u32; 3]) -> Option<usize> {
+        self.nodes.binary_search_by(|n| (n.level, n.key).cmp(&(level, key))).ok()
     }
 
     /// The root node.
     pub fn root(&self) -> usize {
-        self.find.get(&(0, [0; 3])).map_or(0, |&i| i as usize)
+        0
     }
 
     /// Node `i`'s children that hold anything or have children of their own.
@@ -278,7 +329,7 @@ impl Index {
                 return None;
             }
             let key = [0, 1, 2].map(|k| (n.key[k] << 1) | ((o >> k) & 1));
-            self.find.get(&(n.level + 1, key)).map(|&c| c as usize)
+            self.find(n.level + 1, key)
         })
     }
 
@@ -310,11 +361,7 @@ impl Index {
             });
         }
         let mut packed = vec![0u8; n.size as usize];
-        {
-            let mut f = self.file.lock().map_err(|_| broken("it was being read when a reader failed"))?;
-            f.seek(SeekFrom::Start(n.offset)).map_err(broken)?;
-            f.read_exact(&mut packed).map_err(broken)?;
-        }
+        self.file.read_at(n.offset, &mut packed)?;
         decode(&self.header, &n, &packed)
     }
 }
@@ -1052,7 +1099,7 @@ mod tests {
         let out = temp("hostile");
         build_tuned(vec![input(&pts(20_000, 7))], 1000.0, &out, 1_000, None, None, Tuning { bucket: 1_000_000, leaf: 1_000 }).unwrap();
         let good = std::fs::read(&out).unwrap();
-        let open = |b: Vec<u8>| Index::read(Box::new(std::io::Cursor::new(b)));
+        let open = Index::from_bytes;
         assert!(open(good.clone()).is_ok());
         // Cut short anywhere, or nothing.
         for n in [0, 7, 100, 128, good.len() / 2, good.len() - 1] {

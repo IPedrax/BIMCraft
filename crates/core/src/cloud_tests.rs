@@ -790,6 +790,7 @@ fn an_index_is_kept_beside_a_saved_project_and_the_project_holds_its_top() {
 
 #[test]
 fn a_plan_zoomed_in_reads_the_index_for_every_point_it_shows() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
     let (s, project, _) = indexed("zoom");
     let full = drawn(&close_plan(&s.model, 3000.0, 3000.0), red);
     // Opened again, nothing has been read: drawn from what's read, it shows the top and says what it didn't read.
@@ -809,6 +810,7 @@ fn a_plan_zoomed_in_reads_the_index_for_every_point_it_shows() {
 
 #[test]
 fn a_scan_whose_index_is_gone_shows_its_top_until_the_index_is_found() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
     let (_, project, _) = indexed("gone");
     let dir = project.parent().unwrap();
     let moved = dir.join("elsewhere.bimpc");
@@ -833,6 +835,7 @@ fn a_scan_whose_index_is_gone_shows_its_top_until_the_index_is_found() {
 
 #[test]
 fn a_3d_view_near_a_scan_reads_its_index_and_a_snap_finds_its_points() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
     let (s, _, r) = indexed("near");
     let id = r["id"].as_u64().unwrap();
     let scene = Scene::new(&s.model);

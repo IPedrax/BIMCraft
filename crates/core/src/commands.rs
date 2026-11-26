@@ -10482,7 +10482,7 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         angle = a;
     }
     let (points, read) = (scan.len(), scan.read());
-    let index = scan.index().map(|r| json!({"path": r.path, "count": r.count, "bytes": scan.indexed().map(|i| i.index.size())}));
+    let index = scan.index().map(|r| json!({"path": r.path, "count": r.count, "bytes": scan.indexed().map(|i| i.source().size())}));
     let m = s.model_mut();
     if new {
         m.clouds.insert(name.clone(), scan);

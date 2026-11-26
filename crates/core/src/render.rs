@@ -3485,7 +3485,45 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
     let (w, h) = (i64::from(d.view.width), i64::from(d.view.height));
     let (dot, half) = (view3d::DOT as i64, view3d::DOT as f64 / 2.0);
     let grey = Rgb(crate::cloud::GREY, crate::cloud::GREY, crate::cloud::GREY);
-    for (id, pc, cloud) in placed {
+    // The nodes of the scans' indexes the plan reads below the top the project holds: each in the slab and the picture, down
+    // to where its points are closer than a dot or two, one budget for all the scans, the most needed first.
+    let mut chosen: Vec<Vec<std::sync::Arc<crate::cloud::lod::Points>>> = vec![Vec::new(); placed.len()];
+    {
+        let view = d.view;
+        let indexed: Vec<(usize, &std::sync::Arc<crate::cloud::lod::Indexed>)> =
+            placed.iter().enumerate().filter_map(|(k, (_, _, c))| c.indexed().map(|ix| (k, ix))).collect();
+        let seens: Vec<Box<dyn Fn([f64; 3], [f64; 3]) -> Option<f64>>> = indexed
+            .iter()
+            .map(|&(k, _)| {
+                let place = m.cloud_place(placed[k].1);
+                let (depth, cut) = (range.depth, range.cut);
+                Box::new(move |lo: [f64; 3], hi: [f64; 3]| -> Option<f64> {
+                    let (mut x0, mut y0, mut z0, mut x1, mut y1, mut z1) =
+                        (f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+                    for c in 0..8 {
+                        let [x, y, z] = place(std::array::from_fn(|a| (if c >> a & 1 == 0 { lo[a] } else { hi[a] }) as f32));
+                        let (px, py) = view.px(P2(x, y));
+                        (x0, y0, x1, y1) = (x0.min(f64::from(px)), y0.min(f64::from(py)), x1.max(f64::from(px)), y1.max(f64::from(py)));
+                        (z0, z1) = (z0.min(z), z1.max(z));
+                    }
+                    let shows = z1 >= depth - TOL && z0 <= cut && x1 >= 0.0 && y1 >= 0.0 && x0 <= w as f64 && y0 <= h as f64;
+                    shows.then_some(view.scale)
+                }) as Box<dyn Fn([f64; 3], [f64; 3]) -> Option<f64>>
+            })
+            .collect();
+        let asked: Vec<(&crate::cloud::lod::Indexed, &dyn Fn([f64; 3], [f64; 3]) -> Option<f64>)> =
+            indexed.iter().zip(&seens).map(|((_, ix), seen)| (ix.as_ref(), seen.as_ref())).collect();
+        let load = FROM_CACHE.with(|c| !c.get());
+        for (s, i) in crate::cloud::lod::select(&asked, crate::cloud::lod::DRAWN) {
+            let Some(&(k, ix)) = indexed.get(s) else { continue };
+            match if load { ix.fetch(i) } else { ix.cached(i) } {
+                Some(p) => chosen[k].push(p),
+                None if !ix.settled(i) => MISSING.with(|m| m.set(m.get() + 1)),
+                None => {}
+            }
+        }
+    }
+    for (k, (id, pc, cloud)) in placed.into_iter().enumerate() {
         let place = m.cloud_place(pc);
         let colours = cloud.colours();
         let stretch = cloud.intensity_levels();
@@ -3496,32 +3534,7 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
             (lo, hi, Some((foot, head))) => (lo.unwrap_or(foot[2]), hi.unwrap_or(head[2])),
             (lo, hi, None) => (lo.unwrap_or(0.0), hi.unwrap_or(0.0)),
         };
-        // The nodes of its index the plan reads below the top the project holds: each in the slab and the picture, down to
-        // where its points are closer than a dot or two.
-        let nodes = cloud.indexed().map_or_else(Vec::new, |ix| {
-            let seen = |lo: [f64; 3], hi: [f64; 3]| -> Option<f64> {
-                let (mut x0, mut y0, mut z0, mut x1, mut y1, mut z1) =
-                    (f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
-                for c in 0..8 {
-                    let [x, y, z] = place(std::array::from_fn(|a| (if c >> a & 1 == 0 { lo[a] } else { hi[a] }) as f32));
-                    let (px, py) = d.view.px(P2(x, y));
-                    (x0, y0, x1, y1) = (x0.min(f64::from(px)), y0.min(f64::from(py)), x1.max(f64::from(px)), y1.max(f64::from(py)));
-                    (z0, z1) = (z0.min(z), z1.max(z));
-                }
-                let shows = z1 >= range.depth - TOL && z0 <= range.cut && x1 >= 0.0 && y1 >= 0.0 && x0 <= w as f64 && y0 <= h as f64;
-                shows.then_some(d.view.scale)
-            };
-            let load = FROM_CACHE.with(|c| !c.get());
-            let mut nodes = Vec::new();
-            for i in ix.select(&seen, crate::cloud::lod::DRAWN) {
-                match if load { ix.fetch(i) } else { ix.cached(i) } {
-                    Some(p) => nodes.push(p),
-                    None if !ix.settled(i) => MISSING.with(|m| m.set(m.get() + 1)),
-                    None => {}
-                }
-            }
-            nodes
-        });
+        let nodes = &chosen[k];
         let pieces = std::iter::once((cloud.points(), colours, cloud.intensity(), step)).chain(
             nodes
                 .iter()

@@ -3456,8 +3456,8 @@ impl Detail {
 }
 
 /// The points of the model's indexed scans `cam` sees below the top the project holds, as `look` shows them: of each scan, the
-/// nodes of its index whose points are more than [`crate::cloud::lod::SPREAD`] px apart in the picture's parent, nearest
-/// first, no more than `most` points among them. With `load`, a node not yet read is read; without, it's counted `missing`.
+/// nodes of its index whose points are more than [`crate::cloud::lod::SPREAD`] px apart in the picture's parent, ranked across
+/// every scan by how big they are on the screen, no more than `most` points among them all. With `load`, a node not yet read is read; without, it's counted `missing`.
 pub fn scan_detail(m: &Model, cam: &Camera, look: &Look, most: usize, load: bool) -> Detail {
     let plain = look.is_plain();
     let scans: Vec<(Scan, Arc<crate::cloud::lod::Indexed>, &crate::model::PointCloud)> = scans_of(m)
@@ -3476,54 +3476,56 @@ pub fn scan_detail(m: &Model, cam: &Camera, look: &Look, most: usize, load: bool
     let k = cam.projector();
     let (w, h) = (f64::from(cam.width), f64::from(cam.height));
     let section = if plain { None } else { look.section_box() };
-    let share = most / scans.len();
-    for (scan, ix, pc) in scans {
-        let place = m.cloud_place(pc);
-        let seen = |lo: [f64; 3], hi: [f64; 3]| -> Option<f64> {
-            let corners: [P3; 8] =
-                std::array::from_fn(|c| place(std::array::from_fn(|a| (if c >> a & 1 == 0 { lo[a] } else { hi[a] }) as f32)));
-            if let Some((blo, bhi)) = section {
-                let (clo, chi) = corners.iter().fold(([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]), |(l, h), p| {
-                    (std::array::from_fn(|a| l[a].min(p[a])), std::array::from_fn(|a| h[a].max(p[a])))
-                });
-                if (0..3).any(|a| chi[a] < blo[a] || clo[a] > bhi[a]) {
+    // What each scan's node shows on the screen: none where the picture or the section box doesn't, else how many pixels a
+    // millimetre takes at its nearest.
+    let seens: Vec<Box<dyn Fn([f64; 3], [f64; 3]) -> Option<f64> + '_>> = scans
+        .iter()
+        .map(|(_, _, pc)| {
+            let place = m.cloud_place(pc);
+            Box::new(move |lo: [f64; 3], hi: [f64; 3]| -> Option<f64> {
+                let corners: [P3; 8] =
+                    std::array::from_fn(|c| place(std::array::from_fn(|a| (if c >> a & 1 == 0 { lo[a] } else { hi[a] }) as f32)));
+                if let Some((blo, bhi)) = section {
+                    let (clo, chi) = corners.iter().fold(([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]), |(l, h), p| {
+                        (std::array::from_fn(|a| l[a].min(p[a])), std::array::from_fn(|a| h[a].max(p[a])))
+                    });
+                    if (0..3).any(|a| chi[a] < blo[a] || clo[a] > bhi[a]) {
+                        return None;
+                    }
+                }
+                let nearest = corners.iter().map(|p| k.ahead(*p)).fold(f64::INFINITY, f64::min);
+                let ahead = corners.iter().map(|p| k.ahead(*p)).fold(f64::NEG_INFINITY, f64::max);
+                if ahead <= NEAR {
                     return None;
                 }
-            }
-            let nearest = corners.iter().map(|p| k.ahead(*p)).fold(f64::INFINITY, f64::min);
-            let ahead = corners.iter().map(|p| k.ahead(*p)).fold(f64::NEG_INFINITY, f64::max);
-            if ahead <= NEAR {
-                return None;
-            }
-            if nearest > NEAR {
-                let (mut x0, mut y0, mut x1, mut y1) = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
-                for p in &corners {
-                    let (x, y, _) = k.at(*p);
-                    (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+                if nearest > NEAR {
+                    let (mut x0, mut y0, mut x1, mut y1) = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+                    for p in &corners {
+                        let (x, y, _) = k.at(*p);
+                        (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+                    }
+                    if x1 < 0.0 || y1 < 0.0 || x0 > w || y0 > h {
+                        return None;
+                    }
                 }
-                if x1 < 0.0 || y1 < 0.0 || x0 > w || y0 > h {
-                    return None;
-                }
-            }
-            Some(k.px_per_mm(nearest.max(NEAR)))
-        };
-        let nodes = ix.select(&seen, share);
-        let mut points = Vec::new();
-        for i in nodes {
-            let node = if load { ix.fetch(i) } else { ix.cached(i) };
-            match node {
-                Some(p) => points.push(p),
-                None if !ix.settled(i) => out.missing += 1,
-                None => {}
-            }
-        }
-        for p in points {
-            out.scans.push(Scan {
+                Some(k.px_per_mm(nearest.max(NEAR)))
+            }) as Box<dyn Fn([f64; 3], [f64; 3]) -> Option<f64> + '_>
+        })
+        .collect();
+    // One budget for them all, the nodes taken by how big they are on the screen whichever scan they're of.
+    let asked: Vec<(&crate::cloud::lod::Indexed, &dyn Fn([f64; 3], [f64; 3]) -> Option<f64>)> =
+        scans.iter().zip(&seens).map(|((_, ix, _), seen)| (ix.as_ref(), seen.as_ref())).collect();
+    for (k, i) in crate::cloud::lod::select(&asked, most) {
+        let Some((scan, ix, _)) = scans.get(k) else { continue };
+        match if load { ix.fetch(i) } else { ix.cached(i) } {
+            Some(p) => out.scans.push(Scan {
                 points: Arc::clone(&p.points),
                 colours: p.colours.clone(),
                 intensity: p.intensity.clone(),
                 ..scan.clone()
-            });
+            }),
+            None if !ix.settled(i) => out.missing += 1,
+            None => {}
         }
     }
     out

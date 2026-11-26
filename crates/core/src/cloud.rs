@@ -18,6 +18,7 @@ pub mod index;
 #[cfg(feature = "laz")]
 mod laz;
 pub mod lod;
+pub mod source;
 
 /// Points a cloud may keep: a file with more is thinned down to it.
 pub const MAX_CLOUD_POINTS: usize = 5_000_000;

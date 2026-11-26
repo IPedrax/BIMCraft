@@ -5,11 +5,12 @@
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
 use super::index::Index;
+use super::source::NodeSource;
 
 /// A node is read below one whose points lie farther apart than this on the screen, px.
 pub const SPREAD: f64 = 1.5;
@@ -90,38 +91,81 @@ pub struct Points {
     bytes: u64,
 }
 
-/// The nodes read, by when they were last asked for.
+/// A node of an index open: the index's number ([`Indexed::uid`]) and the node's.
+type Key = (u64, usize);
+
+/// The nodes every open index has read, by when they were last asked for, held together to [`memory`]: past it, the node
+/// asked for longest ago goes, whichever index it's of. And the nodes being read, so a node two threads ask for is read once.
 #[derive(Default)]
 struct Cache {
-    nodes: HashMap<usize, (Arc<Points>, u64)>,
+    nodes: HashMap<Key, (Arc<Points>, u64)>,
     bytes: u64,
     tick: u64,
-    /// Nodes that couldn't be read: not tried again.
-    failed: HashSet<usize>,
+    reading: HashMap<Key, Arc<OnceLock<Option<Arc<Points>>>>>,
 }
 
-/// Every index open, for their caches to share what they may take.
-static HELD: AtomicU64 = AtomicU64::new(0);
+static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(Mutex::default);
+/// The number the next index opened gets.
+static NEXT: AtomicU64 = AtomicU64::new(1);
 
-/// A scan's index, open: its nodes, those read, and how many have been read, which a plan drawn from them notes.
+impl Cache {
+    fn touch(&mut self, k: Key) -> Option<Arc<Points>> {
+        self.tick += 1;
+        let tick = self.tick;
+        let (p, at) = self.nodes.get_mut(&k)?;
+        *at = tick;
+        Some(Arc::clone(p))
+    }
+
+    /// Node `k` read, kept, and what was asked for longest ago let go while they all take more than [`memory`].
+    fn keep(&mut self, k: Key, p: &Arc<Points>) {
+        self.tick += 1;
+        let tick = self.tick;
+        if let Some((old, _)) = self.nodes.insert(k, (Arc::clone(p), tick)) {
+            self.bytes = self.bytes.saturating_sub(old.bytes);
+        }
+        self.bytes += p.bytes;
+        let most = memory();
+        if self.bytes > most {
+            let mut by: Vec<(u64, Key, u64)> = self.nodes.iter().map(|(&k, (p, t))| (*t, k, p.bytes)).collect();
+            by.sort_unstable();
+            for (_, old, b) in by {
+                if self.bytes <= most - most / 8 {
+                    break;
+                }
+                if old != k {
+                    self.nodes.remove(&old);
+                    self.bytes = self.bytes.saturating_sub(b);
+                }
+            }
+        }
+    }
+}
+
+/// A scan's index, open: where its nodes come from ([`NodeSource`]), how many have been read, which a plan drawn from them
+/// notes, and which couldn't be.
 pub struct Indexed {
-    pub index: Index,
+    source: Box<dyn NodeSource>,
+    uid: u64,
     path: PathBuf,
     levels: u8,
-    cache: Mutex<Cache>,
+    failed: Mutex<HashSet<usize>>,
     loads: AtomicU64,
 }
 
 impl std::fmt::Debug for Indexed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Indexed({}, {:?})", self.path.display(), self.index)
+        write!(f, "Indexed({}, {:?})", self.path.display(), self.source)
     }
 }
 
 impl Drop for Indexed {
     fn drop(&mut self) {
-        if let Ok(c) = self.cache.lock() {
-            HELD.fetch_sub(c.bytes.min(HELD.load(Ordering::Relaxed)), Ordering::Relaxed);
+        if let Ok(mut c) = CACHE.lock() {
+            let uid = self.uid;
+            let gone: u64 = c.nodes.iter().filter(|((u, _), _)| *u == uid).map(|(_, (p, _))| p.bytes).sum();
+            c.nodes.retain(|(u, _), _| *u != uid);
+            c.bytes = c.bytes.saturating_sub(gone);
         }
     }
 }
@@ -129,11 +173,27 @@ impl Drop for Indexed {
 impl Indexed {
     /// The index at `path`, if it's the one `r` names.
     pub fn open(path: &Path, r: &IndexRef) -> Result<Indexed, String> {
-        let index = Index::open(path)?;
-        if IndexRef::id_of(index.header.id) != r.id {
+        Indexed::of(Box::new(Index::open(path)?), path, r)
+    }
+
+    /// The nodes `source` keeps, found at `path`, if they're the index `r` names.
+    pub fn of(source: Box<dyn NodeSource>, path: &Path, r: &IndexRef) -> Result<Indexed, String> {
+        if IndexRef::id_of(source.id()) != r.id {
             return Err(format!("{} is another scan's index, or one built again since", path.display()));
         }
-        Ok(Indexed { index, path: path.to_path_buf(), levels: r.levels, cache: Mutex::default(), loads: AtomicU64::new(0) })
+        Ok(Indexed {
+            source,
+            uid: NEXT.fetch_add(1, Ordering::Relaxed),
+            path: path.to_path_buf(),
+            levels: r.levels,
+            failed: Mutex::default(),
+            loads: AtomicU64::new(0),
+        })
+    }
+
+    /// Where its nodes come from.
+    pub fn source(&self) -> &dyn NodeSource {
+        self.source.as_ref()
     }
 
     pub fn path(&self) -> &Path {
@@ -152,107 +212,122 @@ impl Indexed {
 
     /// Node `i`'s points if they've been read.
     pub fn cached(&self, i: usize) -> Option<Arc<Points>> {
-        let mut c = self.cache.lock().ok()?;
-        c.tick += 1;
-        let tick = c.tick;
-        let (p, at) = c.nodes.get_mut(&i)?;
-        *at = tick;
-        Some(Arc::clone(p))
+        CACHE.lock().ok()?.touch((self.uid, i))
     }
 
     /// Whether node `i` is one that couldn't be read, or has been: nothing to read.
     pub fn settled(&self, i: usize) -> bool {
-        self.cache.lock().is_ok_and(|c| c.nodes.contains_key(&i) || c.failed.contains(&i))
+        CACHE.lock().is_ok_and(|c| c.nodes.contains_key(&(self.uid, i))) || self.failed.lock().is_ok_and(|f| f.contains(&i))
     }
 
-    /// Node `i`'s points, read now if they haven't been; none when they can't be.
+    /// Node `i`'s points, read now if they haven't been; none when they can't be. A node another thread is reading is waited
+    /// for, not read again.
     pub fn fetch(&self, i: usize) -> Option<Arc<Points>> {
-        if let Some(p) = self.cached(i) {
-            return Some(p);
-        }
-        if self.cache.lock().ok()?.failed.contains(&i) {
-            return None;
-        }
-        let read = self.index.load(i);
-        let mut c = self.cache.lock().ok()?;
-        let Ok(p) = read else {
-            c.failed.insert(i);
-            return None;
+        let k = (self.uid, i);
+        let slot = {
+            let mut c = CACHE.lock().ok()?;
+            if let Some(p) = c.touch(k) {
+                return Some(p);
+            }
+            if self.failed.lock().ok()?.contains(&i) {
+                return None;
+            }
+            Arc::clone(c.reading.entry(k).or_default())
         };
-        let bytes = p.bytes() as u64;
-        let p =
-            Arc::new(Points { points: Arc::new(p.points), colours: p.colours.map(Arc::new), intensity: p.intensity.map(Arc::new), bytes });
-        c.tick += 1;
-        let tick = c.tick;
-        if let Some((old, _)) = c.nodes.insert(i, (Arc::clone(&p), tick)) {
-            c.bytes = c.bytes.saturating_sub(old.bytes);
-            HELD.fetch_sub(old.bytes.min(HELD.load(Ordering::Relaxed)), Ordering::Relaxed);
-        }
-        c.bytes += bytes;
-        HELD.fetch_add(bytes, Ordering::Relaxed);
-        self.loads.fetch_add(1, Ordering::Relaxed);
-        // Over what every index may take: what was asked for longest ago goes, of this one's.
-        let most = memory();
-        if HELD.load(Ordering::Relaxed) > most {
-            let mut by: Vec<(u64, usize, u64)> = c.nodes.iter().map(|(&k, (p, t))| (*t, k, p.bytes)).collect();
-            by.sort_unstable();
-            for (_, k, b) in by {
-                if HELD.load(Ordering::Relaxed) <= most - most / 8 || k == i {
-                    break;
+        let read = slot
+            .get_or_init(|| {
+                let p = self.source.load(i).ok()?;
+                let bytes = p.bytes() as u64;
+                self.loads.fetch_add(1, Ordering::Relaxed);
+                Some(Arc::new(Points {
+                    points: Arc::new(p.points),
+                    colours: p.colours.map(Arc::new),
+                    intensity: p.intensity.map(Arc::new),
+                    bytes,
+                }))
+            })
+            .clone();
+        let mut c = CACHE.lock().ok()?;
+        if c.reading.get(&k).is_some_and(|s| Arc::ptr_eq(s, &slot)) {
+            c.reading.remove(&k);
+            match &read {
+                Some(p) => c.keep(k, p),
+                None => {
+                    if let Ok(mut f) = self.failed.lock() {
+                        f.insert(i);
+                    }
                 }
-                c.nodes.remove(&k);
-                c.bytes = c.bytes.saturating_sub(b);
-                HELD.fetch_sub(b.min(HELD.load(Ordering::Relaxed)), Ordering::Relaxed);
             }
         }
-        Some(p)
+        read
     }
 
-    /// What the cache holds, bytes.
+    /// What the cache holds of it, bytes.
     pub fn held(&self) -> u64 {
-        self.cache.lock().map_or(0, |c| c.bytes)
+        CACHE.lock().map_or(0, |c| c.nodes.iter().filter(|((u, _), _)| *u == self.uid).map(|(_, (p, _))| p.bytes).sum())
     }
 
-    /// The nodes below the project's levels a view shows, most needed first, until they hold `most` points. `seen` says of a
-    /// node's box (its lowest and highest corner from the scan's middle, mm) how many pixels a millimetre takes on the screen
-    /// there, or none where the view doesn't show it. A node is read below one whose points are more than [`SPREAD`] px apart.
+    /// [`select`] of this index alone: its nodes a view shows, most needed first.
     pub fn select(&self, seen: &dyn Fn([f64; 3], [f64; 3]) -> Option<f64>, most: usize) -> Vec<usize> {
-        #[derive(PartialEq)]
-        struct Next(f64, usize);
-        impl Eq for Next {}
-        impl PartialOrd for Next {
-            fn partial_cmp(&self, o: &Next) -> Option<std::cmp::Ordering> {
-                Some(self.cmp(o))
-            }
-        }
-        impl Ord for Next {
-            fn cmp(&self, o: &Next) -> std::cmp::Ordering {
-                self.0.total_cmp(&o.0).then(o.1.cmp(&self.1))
-            }
-        }
-        let mut out = Vec::new();
-        let mut heap = BinaryHeap::from([Next(f64::INFINITY, self.index.root())]);
-        let mut held = 0_usize;
-        while let Some(Next(_, i)) = heap.pop() {
-            let Some(n) = self.index.nodes.get(i) else { continue };
-            let (lo, edge) = self.index.cube(i);
-            let Some(px) = seen(lo, lo.map(|v| v + edge)).filter(|px| px.is_finite() && *px > 0.0) else { continue };
-            if n.level >= self.levels && n.points > 0 {
-                if held + n.points as usize > most && !out.is_empty() {
-                    break;
-                }
-                held += n.points as usize;
-                out.push(i);
-            }
-            let spread = self.index.spacing(n.level) * px;
-            if spread > SPREAD {
-                for c in self.index.children(i) {
-                    heap.push(Next(spread / 2.0, c));
-                }
-            }
-        }
-        out
+        select(&[(self, seen)], most).into_iter().map(|(_, i)| i).collect()
     }
+}
+
+/// What the cache of every index holds together, bytes.
+pub fn held() -> u64 {
+    CACHE.lock().map_or(0, |c| c.bytes)
+}
+
+/// Of the indexes `scans`, the nodes below each one's project levels a view shows, most needed first across all of them,
+/// until they hold `most` points: as `(scan, node)`, `scan` its place in `scans`. Each scan's `seen` says of a node's box (its
+/// lowest and highest corner from the scan's middle, mm) how many pixels a millimetre takes on the screen there, or none
+/// where the view doesn't show it. A node is read below one whose points are more than [`SPREAD`] px apart, and the nodes
+/// are taken by how far apart their own points are on the screen, roots too, so the scan the view is near gets the detail.
+pub fn select(scans: &[(&Indexed, &dyn Fn([f64; 3], [f64; 3]) -> Option<f64>)], most: usize) -> Vec<(usize, usize)> {
+    #[derive(PartialEq)]
+    struct Next(f64, usize, usize);
+    impl Eq for Next {}
+    impl PartialOrd for Next {
+        fn partial_cmp(&self, o: &Next) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(o))
+        }
+    }
+    impl Ord for Next {
+        fn cmp(&self, o: &Next) -> std::cmp::Ordering {
+            self.0.total_cmp(&o.0).then(o.1.cmp(&self.1)).then(o.2.cmp(&self.2))
+        }
+    }
+    // A node in the queue by how far apart its points are on the screen: none where the view doesn't show it.
+    let spread = |s: usize, i: usize| -> Option<f64> {
+        let (ix, seen) = scans[s];
+        let (level, _) = ix.source.node(i)?;
+        let (lo, edge) = ix.source.cube(i);
+        let px = seen(lo, lo.map(|v| v + edge)).filter(|px| px.is_finite() && *px > 0.0)?;
+        Some(ix.source.spacing(level) * px)
+    };
+    let mut out = Vec::new();
+    let mut heap: BinaryHeap<Next> =
+        (0..scans.len()).filter(|&s| !scans[s].0.source.is_empty()).filter_map(|s| spread(s, 0).map(|p| Next(p, s, 0))).collect();
+    let mut held = 0_usize;
+    while let Some(Next(apart, s, i)) = heap.pop() {
+        let ix = scans[s].0;
+        let Some((level, points)) = ix.source.node(i) else { continue };
+        if level >= ix.levels && points > 0 {
+            if held + points as usize > most && !out.is_empty() {
+                break;
+            }
+            held += points as usize;
+            out.push((s, i));
+        }
+        if apart > SPREAD {
+            for c in ix.source.children(i) {
+                if let Some(p) = spread(s, c) {
+                    heap.push(Next(p, s, c));
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Where a scan's index is: `path` as the project holds it, from the project's folder when it's relative.
@@ -271,6 +346,10 @@ pub fn relative(index: &Path, project: Option<&Path>) -> String {
         .and_then(|dir| index.strip_prefix(dir).ok())
         .map_or_else(|| index.to_string_lossy().into_owned(), |p| p.to_string_lossy().replace('\\', "/"))
 }
+
+/// The tests that set what the cache may take, or that count what it holds, one at a time: the cache is every index's.
+#[cfg(test)]
+pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
 
 #[cfg(test)]
 mod tests {
@@ -295,20 +374,26 @@ mod tests {
         (out, r)
     }
 
+    /// Node `i`'s level and points.
+    fn node(ix: &Indexed, i: usize) -> (u8, u32) {
+        ix.source().node(i).unwrap()
+    }
+
     #[test]
     fn nearer_reads_deeper_and_within_the_points_asked() {
         let (path, r) = built("select", 60_000);
         let ix = Indexed::open(&path, &r).unwrap();
         let deepest = |px: f64, most: usize| {
             let s = ix.select(&|_, _| Some(px), most);
-            let held: usize = s.iter().map(|&i| ix.index.nodes[i].points as usize).sum();
-            (s.iter().map(|&i| ix.index.nodes[i].level).max().unwrap_or(0), held, s)
+            let held: usize = s.iter().map(|&i| node(&ix, i).1 as usize).sum();
+            (s.iter().map(|&i| node(&ix, i).0).max().unwrap_or(0), held, s)
         };
         let (far, ..) = deepest(0.01, usize::MAX);
         let (near, held, s) = deepest(10.0, usize::MAX);
         assert!(near > far, "{near} {far}");
-        assert_eq!(held as u64 + ix.index.nodes.iter().filter(|n| n.level < r.levels).map(|n| u64::from(n.points)).sum::<u64>(), r.count);
-        assert!(s.iter().all(|&i| ix.index.nodes[i].level >= r.levels));
+        let top: u64 = (0..ix.source().len()).map(|i| node(&ix, i)).filter(|n| n.0 < r.levels).map(|n| u64::from(n.1)).sum();
+        assert_eq!(held as u64 + top, r.count);
+        assert!(s.iter().all(|&i| node(&ix, i).0 >= r.levels));
         let (_, capped, _) = deepest(10.0, 5_000);
         assert!(capped <= 5_000 + crate::cloud::index::MAX_NODE_POINTS as usize && capped < held);
         // Nothing the view doesn't show.
@@ -316,28 +401,68 @@ mod tests {
         // Only what's in a corner of it.
         let s = ix.select(&|lo, _| (lo[0] < -6000.0 && lo[1] < -3000.0).then_some(10.0), usize::MAX);
         assert!(!s.is_empty());
-        assert!(s.iter().all(|&i| ix.index.cube(i).0[0] < -6000.0));
+        assert!(s.iter().all(|&i| ix.source().cube(i).0[0] < -6000.0));
+        // The same view picks the same nodes in the same order, every time.
+        assert_eq!(ix.select(&|_, _| Some(3.0), 20_000), ix.select(&|_, _| Some(3.0), 20_000));
     }
 
     #[test]
-    fn the_cache_reads_a_node_once_and_holds_no_more_than_it_may() {
-        let (path, r) = built("cache", 60_000);
+    fn one_budget_goes_to_the_scan_the_view_is_near_not_shared_out_evenly() {
+        let (a_path, a) = built("near-a", 60_000);
+        let (b_path, b) = built("near-b", 60_000);
+        let (ia, ib) = (Indexed::open(&a_path, &a).unwrap(), Indexed::open(&b_path, &b).unwrap());
+        let near = |_: [f64; 3], _: [f64; 3]| Some(10.0);
+        let far = |_: [f64; 3], _: [f64; 3]| Some(0.02);
+        let got = select(&[(&ia, &near), (&ib, &far)], 30_000);
+        let of = |s: usize| got.iter().filter(|(k, _)| *k == s).map(|&(k, i)| node([&ia, &ib][k], i).1 as usize).sum::<usize>();
+        assert!(of(0) > 10 * of(1).max(1), "near {} far {}", of(0), of(1));
+        assert!(of(0) + of(1) <= 30_000 + crate::cloud::index::MAX_NODE_POINTS as usize);
+        // The most needed come first, whichever scan they're of.
+        assert!(got.iter().take(3).all(|(k, _)| *k == 0) || got.iter().all(|(k, _)| *k == 0), "{got:?}");
+    }
+
+    #[test]
+    fn a_node_several_threads_ask_for_is_read_once() {
+        let _serial = SERIAL.lock();
+        let (path, r) = built("threads", 60_000);
         let ix = Indexed::open(&path, &r).unwrap();
         let some = ix.select(&|_, _| Some(100.0), usize::MAX);
-        let a = ix.fetch(some[0]).unwrap();
+        let got: Vec<Arc<Points>> = std::thread::scope(|t| {
+            (0..8).map(|_| t.spawn(|| ix.fetch(some[0]).unwrap())).collect::<Vec<_>>().into_iter().map(|h| h.join().unwrap()).collect()
+        });
         assert_eq!(ix.loads(), 1);
-        let b = ix.fetch(some[0]).unwrap();
-        assert!(Arc::ptr_eq(&a, &b));
-        assert_eq!(ix.loads(), 1);
-        set_memory(Some(ix.held() * 3));
-        for &i in &some {
-            ix.fetch(i);
+        assert!(got.windows(2).all(|w| Arc::ptr_eq(&w[0], &w[1])));
+    }
+
+    #[test]
+    fn the_cache_holds_no_more_than_it_may_and_lets_go_of_what_any_scan_asked_for_longest_ago() {
+        let _serial = SERIAL.lock();
+        let (a_path, a) = built("cache-a", 60_000);
+        let (b_path, b) = built("cache-b", 60_000);
+        let (ia, ib) = (Indexed::open(&a_path, &a).unwrap(), Indexed::open(&b_path, &b).unwrap());
+        let (sa, sb) = (ia.select(&|_, _| Some(100.0), usize::MAX), ib.select(&|_, _| Some(100.0), usize::MAX));
+        let x = ia.fetch(sa[0]).unwrap();
+        assert!(Arc::ptr_eq(&x, &ia.fetch(sa[0]).unwrap()));
+        assert_eq!(ia.loads(), 1);
+        // Room for about a third of a scan's nodes: A's fill it, then B's, which push A's out rather than their own.
+        let one: u64 = sa.iter().map(|&i| ia.fetch(i).map_or(0, |p| p.bytes)).sum();
+        set_memory(Some(one / 3));
+        for &i in &sa {
+            ia.fetch(i);
         }
-        assert!(ix.held() <= memory(), "{} > {}", ix.held(), memory());
+        for &i in &sb {
+            ib.fetch(i);
+        }
+        assert!(held() <= memory(), "{} > {}", held(), memory());
+        assert!(ib.held() > ia.held(), "B kept {} and A {}", ib.held(), ia.held());
+        assert!(ib.cached(*sb.last().unwrap()).is_some(), "the last B read is kept");
         set_memory(None);
+        // Closed, an index's nodes go.
+        drop(ib);
+        assert!(held() >= ia.held());
         // Another scan's index isn't taken for it.
-        let other = IndexRef { id: IndexRef::id_of(1), ..r };
-        assert!(Indexed::open(&path, &other).unwrap_err().contains("another scan's index"));
+        let other = IndexRef { id: IndexRef::id_of(1), ..a };
+        assert!(Indexed::open(&a_path, &other).unwrap_err().contains("another scan's index"));
     }
 
     #[test]
