@@ -195,6 +195,15 @@ the file renamed from `.bimpc.part`, the buckets removed, whatever ends it. Its 
 scan", "Sorting the points", "Building the index") and stop at Cancel. The scan the project holds is the levels from the root that
 fit in what the project has room for, whole (`Built::levels`; a thinned root when even it doesn't), so a view draws below them.
 
+**COPC, read as it is** (`cloud/copc.rs`, with the `laz` feature). A COPC file (copc.io: LAZ 1.4 written node by node of an
+octree, each node a LASzip chunk of its own, with a hierarchy of them in pages of the file's own) is an index already: `point_cloud`
+on one (any `.laz` whose first record of its own is COPC's info) keeps its top levels in the project and reads the rest from it as
+views zoom in, building nothing (`IndexRef::kind` is `copc`; `index: false` reads it as LAZ, thinned). `Copc` is a second
+`NodeSource`: its info record gives the root cube and spacing, its pages (read once each, no more than `MAX_PAGES`, entries checked
+as an index's are) the nodes, and a node's points are its chunk decompressed by the laz crate as a LAZ file's are. Its colours'
+range (eight bits or sixteen) and its intensities' come from its root's points. It's the user's file, not the project's: Rebuild
+Index has nothing to build, and Delete Index lets it go without deleting it.
+
 **Reading it** (`cloud/lod.rs`). Views ask for nodes through `cloud::source::NodeSource`, never of the `.bimpc` format, so another
 octree (COPC) is a second source. `open` opens every scan's index (`Cloud::attach_in`, shared by every copy of the scan) and lists
 those it can't as `clouds_not_indexed`; their views draw the top. `point_cloud_index {cloud, path?}` finds one again. A view asks

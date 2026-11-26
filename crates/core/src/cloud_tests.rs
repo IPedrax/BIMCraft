@@ -1016,3 +1016,35 @@ fn a_view_streams_the_nodes_it_wants_most_first_and_packs_each_for_the_card_wher
         assert_eq!(colour, 255, "red");
     }
 }
+
+#[cfg(feature = "laz")]
+#[test]
+fn a_copc_file_is_its_own_index_read_as_it_is_never_built_rebuilt_or_deleted() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let dir = std::env::temp_dir().join(format!("bimcraft-cloud-{}-copc", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("survey.copc.laz");
+    std::fs::write(&path, crate::cloud::copc::tests::copc(3_000)).unwrap();
+    let mut s = Session::new();
+    let r = run(&mut s, "point_cloud", json!({"path": path, "name": "survey"}));
+    assert_eq!((r["read"].as_u64(), r["index"]["count"].as_u64()), (Some(3_000), Some(3_000)), "{r}");
+    let cloud = s.model.clouds.get("survey").unwrap();
+    let index = cloud.index().unwrap();
+    assert_eq!(index.kind.as_deref(), Some("copc"));
+    assert!(cloud.indexed().is_some());
+    // Nothing was built beside it.
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    // Saved and opened, it's found and read again.
+    let project = dir.join("house.bimc");
+    run(&mut s, "save", json!({"path": project}));
+    let mut t = Session::new();
+    let r = run(&mut t, "open", json!({"path": project}));
+    assert_eq!(r["clouds_not_indexed"], Value::Null, "{r}");
+    // It's someone else's file: rebuild has nothing to build, and delete lets it go without deleting it.
+    assert!(fails(&mut t, "point_cloud_index", json!({"cloud": "survey", "action": "rebuild"})).contains("COPC"));
+    run(&mut t, "point_cloud_index", json!({"cloud": "survey", "action": "delete"}));
+    assert!(path.exists() && t.model.clouds.get("survey").unwrap().index().is_none());
+    // Asked not to index, it's read as LAZ, thinned into the project.
+    let r = run(&mut s, "point_cloud", json!({"path": path, "name": "plain", "index": false}));
+    assert_eq!(r["index"], Value::Null, "{r}");
+}

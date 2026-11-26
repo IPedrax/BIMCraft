@@ -43,6 +43,9 @@ pub struct IndexRef {
     /// Millimetres to their unit, as they were read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scale: Option<f64>,
+    /// What kind of index it is: none for ours (`.bimpc`), `copc` for a COPC file read as it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 impl IndexRef {
@@ -60,6 +63,9 @@ impl IndexRef {
         }
         if self.sources.len() > super::MAX_STATIONS || self.sources.iter().any(|s| s.len() > 4096) {
             return Err("a scan's index names too many files, or one too long".into());
+        }
+        if self.kind.as_deref().is_some_and(|k| k != "copc") {
+            return Err(format!("a scan's index is ours or COPC, not {:?}", self.kind));
         }
         if self.scale.is_some_and(|k| !(k.is_finite() && k > 0.0 && k <= 1e6)) {
             return Err("a scan's index's unit isn't one".into());
@@ -189,7 +195,17 @@ impl Drop for Indexed {
 impl Indexed {
     /// The index at `path`, if it's the one `r` names.
     pub fn open(path: &Path, r: &IndexRef) -> Result<Indexed, String> {
-        Indexed::of(Box::new(Index::open(path)?), path, r)
+        match r.kind.as_deref() {
+            #[cfg(feature = "laz")]
+            Some("copc") => Indexed::of(Box::new(super::copc::Copc::open(path, r.scale.unwrap_or(1000.0))?), path, r),
+            Some(k) => Err(format!("this build reads no index of kind {k}")),
+            None => Indexed::of(Box::new(Index::open(path)?), path, r),
+        }
+    }
+
+    /// Whether it's a file of someone else's read as it is (COPC), not one built for the project, so never deleted or rebuilt.
+    pub fn is_ours(r: &IndexRef) -> bool {
+        r.kind.is_none()
     }
 
     /// The nodes `source` keeps, found at `path`, if they're the index `r` names.
@@ -410,6 +426,7 @@ mod tests {
             levels: b.levels,
             sources: Vec::new(),
             scale: None,
+            kind: None,
         };
         (out, r)
     }

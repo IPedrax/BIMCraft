@@ -10423,12 +10423,18 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("the project's scans hold {held} points, all it may; delete the point clouds of one first")));
             }
             let options = cloud::Options { scale, spacing, cap: (cap / paths.len()).max(1) };
-            let index = index_at(s, c, p, &paths, &name)?;
+            // A COPC file is an index already: it's read as it is, its top in the project, unless `index` is false.
+            let copc = paths.len() == 1
+                && formats.first() == Some(&cloud::Format::Laz)
+                && p.get("index") != Some(&Value::Bool(false))
+                && is_copc(&paths[0]);
+            let index = if copc { paths.first().cloned() } else { index_at(s, c, p, &paths, &name)? };
             let key = cloud::ScanKey { paths: paths.clone(), index: index.clone(), scale, spacing, cap };
             // A scan read ahead for these files and options is what reading them would give (`Session::read_scan_ahead`).
             let ahead = s.scan_read.take().filter(|r| r.key == key).map(|r| r.cloud);
             let scan = match (ahead, &index) {
                 (Some(cloud), _) => Ok(cloud),
+                (None, Some(at)) if copc => link_copc(s, c, at, scale, cap)?,
                 (None, Some(out)) => index_scan(s, c, &paths, formats, scale, out, cap)?,
                 (None, None) => read_scan(s, c, &paths, formats, &options, cap, spacing)?,
             };
@@ -10584,6 +10590,7 @@ fn index_scan(
         levels: built.levels,
         sources: paths.iter().map(|p| std::path::absolute(p).unwrap_or_else(|_| p.clone()).to_string_lossy().into_owned()).collect(),
         scale: Some(scale),
+        kind: None,
     };
     let scan = match <[_; 1]>::try_from(built.stations) {
         Ok([one]) => Cloud::new(&one.source, built.scan),
@@ -10593,6 +10600,51 @@ fn index_scan(
         cloud.attach(s.path.as_deref())?;
         Ok(cloud)
     }))
+}
+
+/// Whether the file at `path` is COPC: LAZ whose points are written node by node, with its hierarchy.
+fn is_copc(path: &std::path::Path) -> bool {
+    #[cfg(feature = "laz")]
+    return std::fs::File::open(path).is_ok_and(|mut f| cloud::copc::is_copc(&mut f));
+    #[cfg(not(feature = "laz"))]
+    {
+        let _ = path;
+        false
+    }
+}
+
+/// The COPC file at `path` (`scale` mm to its unit) as a scan whose index it is: its levels from the root that fit in `cap`
+/// points in the project, the rest read from it as views zoom in, nothing built. The outer error is the file's; the inner,
+/// the scan's.
+#[cfg(feature = "laz")]
+fn link_copc(s: &Session, c: &str, path: &std::path::Path, scale: f64, cap: usize) -> Result<Result<Cloud, String>, String> {
+    use cloud::source::NodeSource;
+    let copc = cloud::copc::Copc::open(path, scale).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    let (scan, levels) = match cloud::copc::top(&copc, cap) {
+        Ok(top) => top,
+        Err(e) => return Ok(Err(e)),
+    };
+    let full = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let r = cloud::lod::IndexRef {
+        path: cloud::lod::relative(&full, s.path.as_deref()),
+        full: Some(full.to_string_lossy().into_owned()),
+        id: cloud::lod::IndexRef::id_of(copc.id()),
+        count: copc.count(),
+        levels,
+        sources: vec![full.to_string_lossy().into_owned()],
+        scale: Some(scale),
+        kind: Some("copc".into()),
+    };
+    let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    Ok(Cloud::new(&name, scan).and_then(|cloud| cloud.with_index(r)).and_then(|cloud| {
+        cloud.attach(s.path.as_deref())?;
+        Ok(cloud)
+    }))
+}
+
+#[cfg(not(feature = "laz"))]
+fn link_copc(_: &Session, c: &str, _: &std::path::Path, _: f64, _: usize) -> Result<Result<Cloud, String>, String> {
+    Err(bad(c, "this build reads no LAZ, so no COPC"))
 }
 
 /// A scan's index: found again (at `path`, or where the project holds it), said of, built again from its files, or deleted;
@@ -10621,8 +10673,9 @@ fn point_cloud_index(s: &mut Session, p: &Value) -> R {
             if s.read_only.is_some() {
                 return Err(bad(c, "this session may only read, so it deletes no index"));
             }
-            // An index open stays readable to whoever holds it (the file is deleted when the last one lets go of it).
-            let at = scan.indexed().map(|i| i.path().to_path_buf()).or_else(found);
+            // An index open stays readable to whoever holds it (the file is deleted when the last one lets go of it). A COPC
+            // file isn't the project's to delete: it's only let go.
+            let at = scan.indexed().map(|i| i.path().to_path_buf()).or_else(found).filter(|_| cloud::lod::Indexed::is_ours(&r));
             if let Some(at) = &at {
                 std::fs::remove_file(at).map_err(|e| bad(c, format!("{} can't be deleted: {e}", at.display())))?;
             }
@@ -10630,6 +10683,9 @@ fn point_cloud_index(s: &mut Session, p: &Value) -> R {
             return Ok(json!({"cloud": name, "deleted": at.map(|at| at.to_string_lossy().into_owned())}));
         }
         "rebuild" => {
+            if !cloud::lod::Indexed::is_ours(&r) {
+                return Err(bad(c, format!("scan `{name}`'s index is a COPC file, read as it is: there's nothing to build")));
+            }
             if r.sources.is_empty() {
                 return Err(bad(c, format!("scan `{name}`'s index doesn't say what files it was built from: bring them in again")));
             }

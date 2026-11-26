@@ -13,6 +13,8 @@ use flate2::write::ZlibEncoder;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "laz")]
+pub mod copc;
 mod e57;
 pub mod index;
 #[cfg(feature = "laz")]

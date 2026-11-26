@@ -61,7 +61,7 @@ pub(super) fn read(src: &mut dyn Source, size: u64, h: &LasHead, f: &mut impl Fn
 }
 
 /// The data of LASzip's record of its own, found among the file's records before its points.
-fn laszip_record(src: &mut dyn Source, h: &LasHead) -> Result<Vec<u8>, String> {
+pub(super) fn laszip_record(src: &mut dyn Source, h: &LasHead) -> Result<Vec<u8>, String> {
     // Every record lies between the header and the points: that bounds how many there can be.
     let room = h.start.saturating_sub(h.header);
     if u64::from(h.vlrs) > room / VLR_HEADER {
@@ -153,7 +153,7 @@ fn chunks(src: &mut dyn Source, size: u64, h: &LasHead, vlr: &laz::LazVlr) -> Re
 
 /// A decompressor of one chunk's bytes, as LASzip's items for the points say: point by point (items of version 1 and 2), or
 /// in layers (3 and 4).
-fn decompressor<'a>(
+pub(super) fn decompressor<'a>(
     vlr: &laz::LazVlr,
     bytes: &'a [u8],
 ) -> Result<Box<dyn laz::record::RecordDecompressor<std::io::Cursor<&'a [u8]>> + Send + 'a>, String> {
