@@ -266,15 +266,16 @@ pub(crate) fn command(s: &mut Session, p: &Value) -> Result<Value, String> {
     Ok(json!({"id": id, "members": members, "edits": edits, "warnings": f.map(|f| f.warnings.clone()).unwrap_or_default()}))
 }
 
-/// The member of framing `f` a ray from `from` toward `to` meets first, of those `keep` keeps: its key and how far along the ray,
-/// as a share of `from` to `to`. What Tab picks in a 3D view, a section or an elevation.
-pub fn on_ray(f: &Framing, from: [f64; 3], to: [f64; 3], keep: &dyn Fn(&Member) -> bool) -> Vec<(String, f64)> {
+/// The members of framing `f` the line through `far` and `near` passes through, of those `keep` keeps, the one nearest `near`'s
+/// side first: each with its key and where the line leaves it on that side, as a share of `far` to `near`. What Tab picks in a
+/// 3D view, a section or an elevation: `far` a point on the cursor's ray, `near` one nearer the camera (`Camera::point_at`).
+pub fn on_ray(f: &Framing, far: [f64; 3], near: [f64; 3], keep: &dyn Fn(&Member) -> bool) -> Vec<(String, f64)> {
     let local = |p: [f64; 3]| {
         let (u, v) = (f.x_axis, f.depth_axis());
         let d = crate::geom::P2(p[0], p[1]) - f.origin;
         [d.dot(u), d.dot(v), p[2]]
     };
-    let (a, b) = (local(from), local(to));
+    let (a, b) = (local(far), local(near));
     let mut hits: Vec<(String, f64)> = f
         .members
         .iter()
@@ -295,10 +296,10 @@ pub fn on_ray(f: &Framing, from: [f64; 3], to: [f64; 3], keep: &dyn Fn(&Member) 
                 t0 = t0.max(u.min(v));
                 t1 = t1.min(u.max(v));
             }
-            (t1 >= t0 && t1 >= 0.0).then(|| (m.key.clone(), t0.max(0.0)))
+            (t1 >= t0 && t0.is_finite() && t1.is_finite()).then(|| (m.key.clone(), t1))
         })
         .collect();
-    hits.sort_by(|x, y| x.1.total_cmp(&y.1));
+    hits.sort_by(|x, y| y.1.total_cmp(&x.1));
     hits
 }
 

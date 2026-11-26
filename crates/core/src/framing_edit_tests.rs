@@ -243,11 +243,12 @@ fn tab_finds_the_members_under_a_ray_nearest_first_and_in_a_plan_round_a_point()
     let mut s = Session::new();
     let (w, _) = framed(&mut s, "Timber Frame - 114mm", crate::framing::DEFAULT_TYPE);
     let f = crate::framing::wall(&s.model, w).ok().flatten().unwrap_or_else(|| panic!("not framed"));
-    // The wall runs east from the origin, its exterior north: looking south through it at 19 mm along, 1200 up, the start stud.
-    let hits = crate::framing::edit::on_ray(&f, [19.0, 2000.0, 1200.0], [19.0, -2000.0, 1200.0], &|_| true);
+    // The wall runs east from the origin, its exterior north: from the north through it at 19 mm along, 1200 up, the start stud.
+    let hits = crate::framing::edit::on_ray(&f, [19.0, -2000.0, 1200.0], [19.0, 2000.0, 1200.0], &|_| true);
     assert_eq!(hits.first().map(|h| h.0.as_str()), Some("stud/start"), "{hits:?}");
-    // Looking down at the start: the top plates first, then the stud under them.
-    let down = crate::framing::edit::on_ray(&f, [19.0, 0.0, 5000.0], [19.0, 0.0, 0.0], &|_| true);
+    // Looking down at the start: the top plates first, then the stud under them; a line through the wall finds them all, the
+    // points it's given anywhere along it.
+    let down = crate::framing::edit::on_ray(&f, [19.0, 0.0, 1000.0], [19.0, 0.0, 1001.0], &|_| true);
     let keys: Vec<&str> = down.iter().map(|h| h.0.as_str()).collect();
     assert!(keys.first().is_some_and(|k| k.starts_with("top_plate")) && keys.contains(&"stud/start"), "{keys:?}");
     // A plan cut at 1200: what lies within 10 mm of a point on the start stud.

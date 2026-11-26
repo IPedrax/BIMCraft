@@ -40,9 +40,9 @@ pub(crate) fn in_plan(m: &Model, id: Id, q: P2, cut: f64, reach: f64) -> Vec<Str
     framing_of(m, id).map_or_else(Vec::new, |f| edit::in_plan(&f, q, cut, reach))
 }
 
-/// The members of wall `id` a ray from `from` toward `to` passes through, nearest first.
-pub(crate) fn on_ray(m: &Model, id: Id, from: P3, to: P3) -> Vec<String> {
-    framing_of(m, id).map_or_else(Vec::new, |f| edit::on_ray(&f, from, to, &|_| true).into_iter().map(|(k, _)| k).collect())
+/// The members of wall `id` the cursor's ray passes through (`far` on it, `near` nearer the camera), nearest the camera first.
+pub(crate) fn on_ray(m: &Model, id: Id, far: P3, near: P3) -> Vec<String> {
+    framing_of(m, id).map_or_else(Vec::new, |f| edit::on_ray(&f, far, near, &|_| true).into_iter().map(|(k, _)| k).collect())
 }
 
 /// Member `key` of wall `id`, as framed now.
@@ -125,10 +125,10 @@ impl BimApp {
                 ui.end_row();
             }
             let name = ui.label(t("Plies"));
-            let mut plies = x.plies;
-            let r = ui.add(egui::DragValue::new(&mut plies).range(1..=edit::MAX_PLIES)).labelled_by(name.id);
-            if r.changed() && plies != x.plies {
-                change = Some(json!({"plies": plies}));
+            if let Some(typed) = self.field(ui, id, &format!("framing/{key}/plies"), x.plies.to_string(), name.id, "")
+                && let Some(n) = typed.trim().parse::<u32>().ok().filter(|n| (1..=edit::MAX_PLIES).contains(n))
+            {
+                change = Some(json!({"plies": n}));
             }
             ui.end_row();
             ui.label(t("Length"));

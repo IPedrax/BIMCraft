@@ -5292,14 +5292,14 @@ fn layers_pick_their_materials_from_the_projects_library() {
     assert_eq!(t["layers"][0]["material"], "European oak");
     let e = s.execute("material", &json!({"name": "European oak", "delete": true})).unwrap_err();
     assert!(e.contains("Oak floor"), "{e}");
-    run(&mut s, "material", json!({"name": "Gypsum board", "delete": true}));
-    assert_eq!(run(&mut s, "inspect", json!({}))["materials"]["Gypsum board"], Value::Null);
+    run(&mut s, "material", json!({"name": "Marble", "delete": true}));
+    assert_eq!(run(&mut s, "inspect", json!({}))["materials"]["Marble"], Value::Null);
     // The families use timber: it can't go, and renamed, they follow it.
     let e = s.execute("material", &json!({"name": "Timber", "delete": true})).unwrap_err();
     assert!(e.contains("family"), "{e}");
-    run(&mut s, "material", json!({"name": "Timber", "rename": "Pine"}));
+    run(&mut s, "material", json!({"name": "Timber", "rename": "Spruce"}));
     let table = &s.model.families["Table"];
-    assert_eq!(table.parameters.iter().find(|p| p.name == "Material").map(|p| p.value.clone()), Some(json!("Pine")));
+    assert_eq!(table.parameters.iter().find(|p| p.name == "Material").map(|p| p.value.clone()), Some(json!("Spruce")));
     for (bad, says) in [
         (json!({"name": "X", "color": "#12"}), "color"),
         (json!({"name": "X", "color": [300, 0, 0]}), "color"),

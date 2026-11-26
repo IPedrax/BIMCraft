@@ -23,6 +23,10 @@ fn with_type() -> String {
 fn structural(h: &mut Harness<BimApp>, label: &str) {
     press(h, "Structure");
     press(h, label);
+    // A new project has two framing types, so Frame drops them down: the default one, as Frame alone would take.
+    if label == "Frame" && egui::Popup::is_any_open(&h.ctx) {
+        press(h, bimcraft_core::framing::DEFAULT_TYPE);
+    }
 }
 
 fn select(h: &mut Harness<BimApp>, ids: &[Id]) {

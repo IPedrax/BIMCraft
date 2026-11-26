@@ -23,6 +23,10 @@ fn edit_framing_type(h: &mut Harness<BimApp>) {
 fn structural(h: &mut Harness<BimApp>, label: &str) {
     press(h, "Structure");
     press(h, label);
+    // A new project has two framing types, so Frame drops them down: the default one, as Frame alone would take.
+    if label == "Frame" && egui::Popup::is_any_open(&h.ctx) {
+        press(h, bimcraft_core::framing::DEFAULT_TYPE);
+    }
 }
 
 fn select(h: &mut Harness<BimApp>, ids: &[Id]) {
@@ -49,15 +53,15 @@ fn frame_and_remove_framing_act_on_the_selected_walls_each_as_one_step() {
         (framing(&h, walls[0]), framing(&h, walls[1]), framing(&h, walls[2])),
         (json!("2x4 @ 406"), json!("2x4 @ 406"), Value::Null)
     );
-    assert!(h.state().session.model.types.framing.contains_key("2x4 @ 406"), "the project's first framing type, made");
+    assert!(h.state().session.model.types.framing.contains_key("2x4 @ 406"), "one of the project's starter framing types");
     assert_eq!(h.state().session.history().len(), steps + 1, "one undo step");
     let said = &h.state().status;
     assert!(!said.error && said.text.contains("2 walls"), "{}", said.text);
-    // Undone, the walls are as they were, the type gone with them.
+    // Undone, the walls are as they were; the starter types stay.
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.run();
     assert_eq!(framing(&h, walls[0]), Value::Null);
-    assert!(h.state().session.model.types.framing.is_empty());
+    assert_eq!(h.state().session.model.types.framing.len(), 2);
     // A wall framed, the other selected with it: Remove Framing takes it off, in a step.
     structural(&mut h, "Frame");
     let steps = h.state().session.history().len();
@@ -91,7 +95,7 @@ fn frame_wants_walls_selected_and_says_why_the_project_refuses_one() {
     let said = &h.state().status;
     assert!(said.error && said.text.contains("structure layer"), "{}", said.text);
     assert_eq!(framing(&h, wall), Value::Null);
-    assert!(h.state().session.model.types.framing.is_empty());
+    assert_eq!(h.state().session.model.types.framing.len(), 2, "the starter types, and no other");
 }
 
 #[test]
@@ -99,7 +103,8 @@ fn with_several_framing_types_frame_drops_them_down() {
     let mut h = app(&format!("{}\ntype {{\"category\": \"framing\", \"name\": \"Partition\", \"spacing\": 609.6}}", with_type()));
     let walls = ids(&h, "wall");
     select(&mut h, &walls[1..3]);
-    structural(&mut h, "Frame");
+    press(&mut h, "Structure");
+    press(&mut h, "Frame");
     assert_eq!(framing(&h, walls[1]), Value::Null, "the button drops the types down");
     press(&mut h, "Partition");
     assert_eq!((framing(&h, walls[1]), framing(&h, walls[2])), (json!("Partition"), json!("Partition")));
@@ -213,6 +218,10 @@ fn the_tools_palette_has_frame_in_bimcrafts_own_profile() {
     h.get_by_label("Frame").scroll_to_me();
     h.run();
     press(&mut h, "Frame");
+    // Of the project's two framing types, the default.
+    if egui::Popup::is_any_open(&h.ctx) {
+        press(&mut h, "2x4 @ 406");
+    }
     assert_eq!(framing(&h, walls[0]), json!("2x4 @ 406"), "{} {:?}", h.state().status.text, h.state().selection);
 }
 

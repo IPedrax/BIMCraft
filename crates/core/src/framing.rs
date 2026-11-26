@@ -1398,10 +1398,11 @@ pub(crate) fn frame(s: &mut Session, p: &Value) -> Result<Value, String> {
     let ids = hosts_of(c, &s.model, p)?;
     let given = crate::commands::string(c, p, "type")?;
     // One of the types a new project starts with, which an older project lacks: made as a new project has it.
-    if let Some(preset) = given.as_deref().filter(|n| !s.model.types.framing.contains_key(*n)).and_then(|n| preset(&s.model, n)) {
-        if let Some(n) = given.clone() {
-            s.model_mut().types.framing.insert(n, preset);
-        }
+    if let Some(n) = given.clone()
+        && !s.model.types.framing.contains_key(&n)
+        && let Some(preset) = preset(&s.model, &n)
+    {
+        s.model_mut().types.framing.insert(n, preset);
     }
     if let Some(n) = given.as_ref().filter(|n| !s.model.types.framing.contains_key(*n)) {
         let names: Vec<&str> = s.model.types.framing.keys().map(String::as_str).collect();

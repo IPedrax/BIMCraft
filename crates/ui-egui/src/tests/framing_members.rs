@@ -63,11 +63,13 @@ fn properties_doubles_a_picked_stud() {
     let (mut h, id) = framed();
     h.state_mut().framing_member = Some((id, "stud/start".to_string()));
     h.run();
-    let plies = h.get_by_role_and_label(Role::SpinButton, "Plies").accesskit_node().id();
+    let plies = h.get_by_role_and_label(Role::TextInput, "Plies").accesskit_node().id();
     h.get_by(|n| n.id() == plies).focus();
     h.run();
-    h.key_press(Key::ArrowUp);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.get_by(|n| n.id() == plies).type_text("2");
     h.run();
+    key(&mut h, Key::Enter);
     let e = h.state().session.model.wall(id).map(|w| w.framing_edits.clone()).unwrap_or_default();
     assert_eq!(e.first().map(|x| (x.key.as_str(), x.plies)), Some(("stud/start", Some(2))), "{e:?}");
 }
@@ -116,10 +118,7 @@ fn the_framing_drop_down_offers_the_starter_types_and_says_when_a_wall_has_nothi
 wall {"points": [[0, 3000], [4000, 3000]]}"#);
     h.state_mut().selection = vec![100002];
     h.run();
-    let combo = h.get_by_role_and_label(Role::ComboBox, "Framing").accesskit_node().id();
-    h.get_by(|n| n.id() == combo).click();
-    h.run();
-    press(&mut h, bimcraft_core::framing::EUROPEAN_TYPE);
+    choose(&mut h, "Framing", bimcraft_core::framing::EUROPEAN_TYPE);
     let w = h.state().session.model.wall(100002).cloned().unwrap();
     assert_eq!(w.framing.as_deref(), Some(bimcraft_core::framing::EUROPEAN_TYPE));
     // A generic wall has no structure layer: a hint, not a drop-down that refuses.
