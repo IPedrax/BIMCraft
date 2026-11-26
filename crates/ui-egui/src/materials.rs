@@ -768,14 +768,14 @@ fn preview(ui: &mut Ui, d: &mut MaterialsDialog, model: &Model, m: &Material) {
 }
 
 /// The right column's rest: what the material holds of the parameters every material has, and of the project's.
-fn parameters(ui: &mut Ui, d: &mut MaterialsDialog, model: &Model, m: &Material, asked: &mut Asked) {
+fn parameters(ui: &mut Ui, d: &mut MaterialsDialog, model: &Model, m: &Material, asked: &mut Asked, show_units: bool) {
     let units = model.units;
     let own: Vec<(&String, ParameterKind)> =
         model.parameters.iter().filter(|(_, p)| p.categories.iter().any(|c| c == CATEGORY)).map(|(n, p)| (n, p.kind)).collect();
     let kinds = BUILT_IN.iter().map(|(n, k, _)| ((*n).to_string(), *k)).chain(own.iter().map(|(n, k)| ((*n).clone(), *k)));
     if !d.values.as_ref().is_some_and(|(n, v, _)| *n == d.picked && *v == m.parameters) {
         let typed = kinds.map(|(n, k)| {
-            let text = m.parameters.get(&n).map_or_else(String::new, |v| parameter_text(k, v, units));
+            let text = m.parameters.get(&n).map_or_else(String::new, |v| parameter_text(k, v, model, show_units));
             (n, text)
         });
         d.values = Some((d.picked.clone(), m.parameters.clone(), typed.collect()));
@@ -791,7 +791,7 @@ fn parameters(ui: &mut Ui, d: &mut MaterialsDialog, model: &Model, m: &Material,
             }
         } else if let Some(text) = typed.get_mut(name) {
             let r = ui.add(TextEdit::singleline(text).desired_width(150.0)).labelled_by(l.id);
-            let was = m.parameters.get(name).map_or_else(String::new, |v| parameter_text(kind, v, units));
+            let was = m.parameters.get(name).map_or_else(String::new, |v| parameter_text(kind, v, model, show_units));
             if r.lost_focus() && *text != was {
                 match parameter_value(kind, text, units) {
                     Ok(v) => asked.run = Some(json!({"name": picked, "parameters": {name: v}})),
@@ -1069,7 +1069,7 @@ impl BimApp {
                             preview(ui, &mut d, &model, m);
                             heading(ui, t("Parameters"));
                             ScrollArea::vertical().id_salt("material-values").auto_shrink([false, false]).show(ui, |ui| {
-                                parameters(ui, &mut d, &model, m, &mut asked);
+                                parameters(ui, &mut d, &model, m, &mut asked, self.show_units);
                             });
                         }
                     });

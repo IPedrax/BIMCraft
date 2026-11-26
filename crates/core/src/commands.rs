@@ -3020,14 +3020,23 @@ other_files(
         "units",
         ui_msg!("Project Units"),
         &["UN"],
-        "{length?: mm|cm|m|in|ft|ft-in, decimals?: 0..5|null} how drawings, schedules and the desktop show lengths, and read typed ones: \
+        "{length?: mm|cm|m|in|ft|ft-in, decimals?: 0..5|null, rounding?: 1..6|null, signs?: {positive: always|never, zero: signed|plain}|null, area?: mm2|cm2|m2|in2|ft2|null, volume?: mm3|cm3|m3|in3|ft3|null, slope?: deg|percent|null, mass_density?: kg-m3|lb-ft3|null, time?: s|min|h|null, speed?: m-s|km-h|ft-s|mph|null, currency?: string|null} how drawings, schedules and the desktop show lengths, and read typed ones: \
          millimetres, centimetres, metres, fractional inches, decimal feet, or feet and fractional inches (to 1/16\"); areas \
          in m², or ft² with inches and feet. The model, and every command, keep millimetres. `decimals` is how many places \
-         after the point lengths show, in what the project's units allow: metres and feet 2 to 5, centimetres 1 to 4, \
+         after the point lengths show, in what the project's units allow: metres and feet 0 to 5, centimetres 0 to 4, \
          millimetres 0 to 3 (so 3 mm in metres can show as 0.003, not 0.00); null, or the fewest, is what drawings have always \
-         shown (metres 2, centimetres 1, millimetres 0, feet 2). Inches and feet-inches show sixteenths and take none. It is kept \
-         with the project, and starts again at its fewest when `length` changes and no `decimals` comes with it. Typed lengths \
-         are read exactly whatever it is. Says `length` and `decimals` (the places shown, null for inches and feet-inches)",
+         shown (metres 2, centimetres 1, millimetres 0, feet 2). Inches and feet-inches show fractions of an inch: 0 is a whole inch, 4 a sixteenth. It is kept \
+         with the project, and starts again at its fewest when `length` changes and no `decimals` comes with it. `rounding` rounds \
+         before that: 1 to the nearest 10, 2 to 100, 3 to 1000 in the project's units (`10`, `100`, `1000`); null, not. Typed \
+         lengths are read exactly whatever it is. `signs` is the sign of positives (`always` puts `+` before it) and of zero \
+         (`signed` writes `±`); absent leaves it, null resets it to what each kind of value has always shown. `area`, `volume`, \
+         `slope`, `mass_density`, `time` and `speed` set each kind's own unit (`area` mm2, cm2, m2, in2 or ft2; `volume` mm3, \
+         cm3, m3, in3 or ft3; `slope` deg or percent; `mass_density` kg-m3 or lb-ft3; `time` s, min or h; `speed` m-s, km-h, \
+         ft-s or mph); `currency` is the symbol money is shown in; absent leaves one, null resets it to what the length units \
+         imply. `format` sets one kind's own format: {quantity: length|area|volume|angle|slope|mass_density|time|speed|currency, \
+         show_units?, positive?: always|never, zero?: signed|plain, suppress_trailing_zeros?, suppress_zero_feet?, digit_grouping?, \
+         suppress_spaces?, symbol?}; null leaves a value. Says `length`, `decimals` (the places shown, null for inches and feet-inches), \
+         `rounding`, `signs` (null when each kind keeps its own) and `display` (the other kinds' units and formats)",
         units,
     )
     .menu("Manage > Project Units"),
@@ -23809,7 +23818,25 @@ fn stair_check(s: &mut Session, p: &Value) -> R {
 
 fn units(s: &mut Session, p: &Value) -> R {
     let c = "units";
-    only(c, p, &["length", "decimals"])?;
+    only(
+        c,
+        p,
+        &[
+            "length",
+            "decimals",
+            "rounding",
+            "signs",
+            "area",
+            "volume",
+            "slope",
+            "mass_density",
+            "time",
+            "speed",
+            "currency",
+            "decimal_style",
+            "format",
+        ],
+    )?;
     let units = match string(c, p, "length")? {
         Some(name) => Units::from_name(&name).ok_or_else(|| bad(c, format!("`length` is mm, cm, m, in, ft or ft-in, not `{name}`")))?,
         None => s.model.units,
@@ -23835,19 +23862,244 @@ fn units(s: &mut Session, p: &Value) -> R {
                         range.start(),
                         range.end(),
                         units.name(),
-                        range.start()
+                        units.fewest().unwrap_or(*range.start())
                     ),
                 )
             })?;
             // The fewest are what none shows.
-            Some(d).filter(|d| d != range.start())
+            Some(d).filter(|d| Some(*d) != units.fewest())
         }
     };
-    if units != s.model.units || decimals != s.model.decimals {
-        let m = s.model_mut();
-        (m.units, m.decimals) = (units, decimals);
+    // How many places before the point lengths round to: absent leaves it (and a change of units takes it away), null
+    // resets it, 1, 2 or 3 round to the nearest 10, 100 or 1000.
+    let rounding = match p.get("rounding") {
+        None => s.model.rounding.filter(|_| units == s.model.units),
+        Some(Value::Null) => None,
+        Some(v) => {
+            let n = v
+                .as_u64()
+                .and_then(|n| u8::try_from(n).ok())
+                .filter(|n| (1..=6).contains(n))
+                .ok_or_else(|| bad(c, format!("`rounding` is 1, 2 or 3 (to the nearest 10, 100 or 1000) up to 6, or null, not {v}")))?;
+            Some(n)
+        }
+    };
+    // Absent leaves the signs as they are; null resets them to each kind of value's own.
+    let signs = match p.get("signs") {
+        None => s.model.signs,
+        Some(Value::Null) => None,
+        Some(v) => {
+            let positive = v
+                .get("positive")
+                .and_then(Value::as_str)
+                .ok_or_else(|| bad(c, "`signs` is {positive: always|never, zero: signed|plain}, or null"))?;
+            let zero = v
+                .get("zero")
+                .and_then(Value::as_str)
+                .ok_or_else(|| bad(c, "`signs` is {positive: always|never, zero: signed|plain}, or null"))?;
+            let signs = crate::dims::Signs::from_names(positive, zero).ok_or_else(|| {
+                bad(c, format!("`signs` is `positive` always or never and `zero` signed or plain, not `{positive}`, `{zero}`"))
+            })?;
+            if v.as_object().is_some_and(|o| o.keys().any(|k| k != "positive" && k != "zero")) {
+                return Err(bad(c, "`signs` holds `positive` and `zero` alone"));
+            }
+            Some(signs)
+        }
+    };
+    // The other kinds of value's units; absent leaves them, null resets them to what the length units imply.
+    let mut display = s.model.display.clone();
+    for key in ["area", "volume", "slope", "mass_density", "time", "speed"] {
+        match p.get(key) {
+            None => {}
+            Some(Value::Null) => match key {
+                "area" => display.area = None,
+                "volume" => display.volume = None,
+                "slope" => display.slope = None,
+                "mass_density" => display.mass_density = None,
+                "time" => display.time = None,
+                "speed" => display.speed = None,
+                _ => {}
+            },
+            Some(v) => {
+                let named = v.as_str().ok_or_else(|| bad(c, format!("`{key}` is a unit's name, or null, not {v}")))?;
+                match key {
+                    "area" => {
+                        display.area = Some(
+                            crate::units::AreaUnit::from_name(named)
+                                .ok_or_else(|| bad(c, format!("`area` is mm2, cm2, m2, in2 or ft2, not `{named}`")))?,
+                        )
+                    }
+                    "volume" => {
+                        display.volume = Some(
+                            crate::units::VolumeUnit::from_name(named)
+                                .ok_or_else(|| bad(c, format!("`volume` is mm3, cm3, m3, in3 or ft3, not `{named}`")))?,
+                        )
+                    }
+                    "slope" => {
+                        display.slope = Some(
+                            crate::units::SlopeUnit::from_name(named)
+                                .ok_or_else(|| bad(c, format!("`slope` is deg or percent, not `{named}`")))?,
+                        )
+                    }
+                    "mass_density" => {
+                        display.mass_density = Some(
+                            crate::units::MassDensityUnit::from_name(named)
+                                .ok_or_else(|| bad(c, format!("`mass_density` is kg-m3 or lb-ft3, not `{named}`")))?,
+                        )
+                    }
+                    "time" => {
+                        display.time = Some(
+                            crate::units::TimeUnit::from_name(named)
+                                .ok_or_else(|| bad(c, format!("`time` is s, min or h, not `{named}`")))?,
+                        )
+                    }
+                    "speed" => {
+                        display.speed = Some(
+                            crate::units::SpeedUnit::from_name(named)
+                                .ok_or_else(|| bad(c, format!("`speed` is m-s, km-h, ft-s or mph, not `{named}`")))?,
+                        )
+                    }
+                    _ => return Err(bad(c, format!("`{key}` is not a unit"))),
+                }
+            }
+        }
     }
-    Ok(json!({"length": s.model.units.name(), "decimals": s.model.decimals_shown()}))
+    match p.get("currency") {
+        None => {}
+        Some(Value::Null) => display.currency = None,
+        Some(v) => {
+            let symbol = v.as_str().ok_or_else(|| bad(c, format!("`currency` is a symbol such as `$`, or null, not {v}")))?;
+            if symbol.chars().count() > 8 {
+                return Err(bad(c, "`currency` is a symbol of up to 8 characters"));
+            }
+            display.currency = Some(symbol.to_string());
+        }
+    }
+    match p.get("decimal_style") {
+        None => {}
+        Some(Value::Null) => display.decimal_style = crate::units::DecimalStyle::default(),
+        Some(v) => {
+            let name = v.as_str().ok_or_else(|| bad(c, format!("`decimal_style` is a name such as `dot-comma`, not {v}")))?;
+            display.decimal_style = crate::units::DecimalStyle::from_name(name)
+                .ok_or_else(|| bad(c, format!("`decimal_style` is dot-comma, comma-dot, space-dot or none-dot, not `{name}`")))?;
+        }
+    }
+    if let Some(v) = p.get("format") {
+        let object = v
+            .as_object()
+            .ok_or_else(|| bad(c, "`format` is {quantity: length|area|volume|angle|slope|mass_density|time|speed|currency, …}"))?;
+        let quantity = object.get("quantity").and_then(Value::as_str).and_then(crate::units::Quantity::from_name).ok_or_else(|| {
+            bad(c, "`format` names `quantity`: length, area, volume, angle, slope, mass_density, time, speed or currency")
+        })?;
+        let o = display.options_mut(quantity);
+        for key in [
+            "show_units",
+            "positive",
+            "zero",
+            "suppress_trailing_zeros",
+            "suppress_zero_feet",
+            "digit_grouping",
+            "suppress_spaces",
+            "rounding",
+            "decimals",
+            "symbol",
+        ] {
+            let Some(value) = object.get(key) else { continue };
+            match key {
+                "show_units" => {
+                    o.show_units = match value {
+                        Value::Null => None,
+                        v => Some(v.as_bool().ok_or_else(|| bad(c, format!("`format.show_units` is true or false, not {v}")))?),
+                    }
+                }
+                "positive" => {
+                    o.positive = match value {
+                        Value::Null => None,
+                        v => Some(
+                            crate::dims::PositiveSign::from_name(
+                                v.as_str().ok_or_else(|| bad(c, format!("`format.positive` is always or never, not {v}")))?,
+                            )
+                            .ok_or_else(|| bad(c, format!("`format.positive` is always or never, not {v}")))?,
+                        ),
+                    }
+                }
+                "zero" => {
+                    o.zero = match value {
+                        Value::Null => None,
+                        v => Some(
+                            crate::dims::ZeroSign::from_name(
+                                v.as_str().ok_or_else(|| bad(c, format!("`format.zero` is signed or plain, not {v}")))?,
+                            )
+                            .ok_or_else(|| bad(c, format!("`format.zero` is signed or plain, not {v}")))?,
+                        ),
+                    }
+                }
+                "rounding" => {
+                    o.rounding = match value {
+                        Value::Null => None,
+                        v => Some(
+                            v.as_u64()
+                                .and_then(|n| u8::try_from(n).ok())
+                                .filter(|n| (1..=6).contains(n))
+                                .ok_or_else(|| bad(c, format!("`format.rounding` is 1 to 6 (before the point), or null, not {v}")))?,
+                        ),
+                    }
+                }
+                "decimals" => {
+                    o.decimals = match value {
+                        Value::Null => None,
+                        v => Some(
+                            v.as_u64()
+                                .and_then(|n| u8::try_from(n).ok())
+                                .filter(|n| *n <= 6)
+                                .ok_or_else(|| bad(c, format!("`format.decimals` is 0 to 6, or null, not {v}")))?,
+                        ),
+                    }
+                }
+                "symbol" => {
+                    o.symbol = match value {
+                        Value::Null => None,
+                        v => {
+                            let t = v.as_str().ok_or_else(|| bad(c, format!("`format.symbol` is text, not {v}")))?;
+                            if t.chars().count() > 12 || t.contains(['\n', '\r']) {
+                                return Err(bad(c, "`format.symbol` is one line of up to 12 characters"));
+                            }
+                            Some(t.to_string())
+                        }
+                    }
+                }
+                _ => {
+                    let on = value.as_bool().ok_or_else(|| bad(c, format!("`format.{key}` is true or false, not {value}")))?;
+                    match key {
+                        "suppress_trailing_zeros" => o.suppress_trailing_zeros = on,
+                        "suppress_zero_feet" => o.suppress_zero_feet = on,
+                        "digit_grouping" => o.digit_grouping = on,
+                        "suppress_spaces" => o.suppress_spaces = on,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if o == &crate::units::FormatOptions::default() {
+            display.formats.remove(quantity.name());
+        }
+    }
+    if units != s.model.units
+        || decimals != s.model.decimals
+        || rounding != s.model.rounding
+        || signs != s.model.signs
+        || display != s.model.display
+    {
+        let m = s.model_mut();
+        (m.units, m.decimals, m.rounding, m.signs, m.display) = (units, decimals, rounding, signs, display);
+    }
+    Ok(json!({
+        "length": s.model.units.name(),
+        "decimals": s.model.decimals_shown(),
+        "rounding": s.model.rounding,
+        "signs": s.model.signs,
+        "display": s.model.display,
+    }))
 }
 
 fn halftone(s: &mut Session, p: &Value) -> R {

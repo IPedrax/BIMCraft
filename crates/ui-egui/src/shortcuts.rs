@@ -2980,7 +2980,7 @@ impl BimApp {
             },
             "Project Units" => {
                 self.tab = Tab::Manage;
-                self.open_units = true;
+                self.open_project_units();
             }
             "Delete" => self.delete(),
             "Snap to Endpoints" => self.snap_once = Some(Once::Only(Snap::Endpoint)),

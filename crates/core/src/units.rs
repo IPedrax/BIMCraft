@@ -2,9 +2,13 @@
 //! millimetres, and so does every command; units change only what drawings, schedules and the
 //! desktop show. Feet and inches round to the nearest sixteenth of an inch.
 
+use std::collections::BTreeMap;
+
 use bimcraft_i18n::ui_msg;
 
 use serde::{Deserialize, Serialize};
+
+use crate::dims::{PositiveSign, ZeroSign};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Units {
@@ -72,46 +76,65 @@ impl Units {
             // Rounded first, so what rounds to nothing shows no minus.
             Units::Metres => format!("{:.2}", (mm / 10.0).round() / 100.0 + 0.0),
             Units::Feet => format!("{:.2}'", (mm / FOOT * 100.0).round() / 100.0 + 0.0),
-            Units::Inches | Units::FeetInches => {
-                // In sixteenths of an inch.
-                let n = (mm.abs() / INCH * 16.0).round();
-                let sign = if mm < 0.0 && n > 0.0 { "-" } else { "" };
-                let (feet, rest) = if self == Units::FeetInches { ((n / 192.0).floor(), n % 192.0) } else { (0.0, n) };
-                let (whole, part) = ((rest / 16.0).floor(), rest % 16.0);
-                // The sixteenths in lowest terms.
-                let (mut top, mut bottom) = (part as u32, 16);
-                while top > 0 && top % 2 == 0 {
-                    (top, bottom) = (top / 2, bottom / 2);
-                }
-                let inches = match (whole, top) {
-                    (w, 0) => format!("{w}\""),
-                    (0.0, t) if self == Units::Inches => format!("{t}/{bottom}\""),
-                    (w, t) => format!("{w} {t}/{bottom}\""),
-                };
-                if self == Units::FeetInches { format!("{sign}{feet}'-{inches}") } else { format!("{sign}{inches}") }
-            }
+            Units::Inches | Units::FeetInches => self.fractional(mm, 4),
         }
     }
 
-    /// The places after the point a project may show lengths to in these units: from the fewest, which drawings use (metres
-    /// and feet 2, centimetres 1, millimetres 0), to three more. Inches and feet-inches show sixteenths, so none.
-    pub fn decimals(self) -> Option<std::ops::RangeInclusive<u8>> {
-        let fewest = match self {
-            Units::Millimetres => 0,
-            Units::Centimetres => 1,
-            Units::Metres | Units::Feet => 2,
-            Units::Inches | Units::FeetInches => return None,
+    /// A length in inches or feet and inches rounded to `1/2^exp` of an inch: 0 whole inches, 4 sixteenths, and so on.
+    fn fractional(self, mm: f64, exp: u8) -> String {
+        let denom = 1u64 << exp.min(10);
+        let n = (mm.abs() / INCH * denom as f64).round() as u64;
+        let sign = if mm < 0.0 && n > 0 { "-" } else { "" };
+        let per_foot = 12 * denom;
+        let (feet, rest) = if self == Units::FeetInches { (n / per_foot, n % per_foot) } else { (0, n) };
+        let (whole, part) = (rest / denom, rest % denom);
+        let (mut top, mut bottom) = (part as u32, denom as u32);
+        while top > 0 && top % 2 == 0 {
+            (top, bottom) = (top / 2, bottom / 2);
+        }
+        let inches = match (whole, top) {
+            (w, 0) => format!("{w}\""),
+            (0, t) if self == Units::Inches => format!("{t}/{bottom}\""),
+            (w, t) => format!("{w} {t}/{bottom}\""),
         };
-        Some(fewest..=fewest + 3)
+        if self == Units::FeetInches { format!("{sign}{feet}'-{inches}") } else { format!("{sign}{inches}") }
     }
 
-    /// [`Units::length`] to `decimals` places after the point (a project's, [`Units::decimals`]; none, the fewest), the places
-    /// of a file held to the range.
+    /// The fewest places a project shows lengths to in these units, which drawings use: from mm 0, cm 1, metres and feet 2;
+    /// inches and feet-inches show sixteenths (four binary places).
+    pub fn fewest(self) -> Option<u8> {
+        match self {
+            Units::Millimetres => Some(0),
+            Units::Centimetres => Some(1),
+            Units::Metres | Units::Feet => Some(2),
+            Units::Inches | Units::FeetInches => Some(4),
+        }
+    }
+
+    /// The places a project may show lengths to in these units: decimal ones for mm, cm, metres and feet; binary fractions of
+    /// an inch for inches and feet-inches (4 = 1/16", 0 = whole inches).
+    pub fn decimals(self) -> Option<std::ops::RangeInclusive<u8>> {
+        let fewest = self.fewest()?;
+        if matches!(self, Units::Inches | Units::FeetInches) {
+            return Some(0..=4);
+        }
+        let most = fewest + 3;
+        Some(0..=most)
+    }
+
+    /// [`Units::length`] to `decimals` places after the point (a project's; none, the fewest), the places of a file held to the
+    /// range. A count asked for is shown exactly, trailing zeros and all.
     pub fn length_to(self, mm: f64, decimals: Option<u8>) -> String {
         let Some(range) = self.decimals() else { return self.length(mm) };
+        if matches!(self, Units::Inches | Units::FeetInches) {
+            return match decimals {
+                Some(d) => self.fractional(mm, d.clamp(0, 4)),
+                None => self.length(mm),
+            };
+        }
         match decimals.map(|d| d.clamp(*range.start(), *range.end())) {
-            Some(d) if d != *range.start() => crate::dims::rounded(self, Some(d), mm),
-            _ => self.length(mm),
+            Some(d) => crate::dims::rounded(self, Some(d), mm),
+            None => self.length(mm),
         }
     }
 
@@ -130,9 +153,28 @@ impl Units {
         format!("{} mm", (mm * 1e3).round() / 1e3 + 0.0)
     }
 
+    /// A length rounded to `digits` places before the point in these units: 1 to the nearest 10, 2 to 100, 3 to 1000.
+    pub fn round_before(self, mm: f64, digits: u8) -> f64 {
+        let per = match self {
+            Units::Millimetres => 1.0,
+            Units::Centimetres => 10.0,
+            Units::Metres => 1000.0,
+            Units::Inches | Units::FeetInches => INCH,
+            Units::Feet => FOOT,
+        };
+        let step = 10f64.powi(i32::from(digits)) * per;
+        let rounded = (mm / step).round() * step;
+        if rounded.is_finite() { rounded + 0.0 } else { mm }
+    }
+
     /// A length with its unit, as the desktop labels one: 3000 mm, 3.00 m, 9'-10 1/8".
     pub fn with_unit(self, mm: f64) -> String {
         self.with_unit_to(mm, None)
+    }
+
+    /// [`Units::with_unit`], the name the common formatter uses.
+    pub fn length_with_unit(self, mm: f64) -> String {
+        self.with_unit(mm)
     }
 
     /// [`Units::with_unit`] to a project's `decimals`.
@@ -151,6 +193,21 @@ impl Units {
     /// A volume in cubic metres or, in inches and feet, cubic feet; and that unit.
     pub fn volume(self, mm3: f64) -> (f64, &'static str) {
         if self.imperial() { (mm3 / (FOOT * FOOT * FOOT), "ft³") } else { (mm3 / 1e9, "m³") }
+    }
+
+    /// An angle in degrees; and its unit, which no project changes.
+    pub fn angle(self, degrees: f64) -> (f64, &'static str) {
+        (degrees, "°")
+    }
+
+    /// A mass in kilograms or, in inches and feet, pounds; and that unit.
+    pub fn weight(self, kg: f64) -> (f64, &'static str) {
+        if self.imperial() { (kg / 0.453_592_37, "lb") } else { (kg, "kg") }
+    }
+
+    /// A density in kilograms per cubic metre or, in inches and feet, pounds per cubic foot; and that unit.
+    pub fn ratio(self, kg_m3: f64) -> (f64, &'static str) {
+        if self.imperial() { (kg_m3 * 0.062_427_960_6, "lb/ft³") } else { (kg_m3, "kg/m³") }
     }
 
     /// The scales, 1 : n, a view in these units is offered: the metric ones; in inches or feet, the architect's (an
@@ -207,7 +264,9 @@ impl Units {
 
     /// [`Units::parse`], not rounded.
     fn parse_exact(self, text: &str) -> Option<f64> {
-        let t = text.trim().to_ascii_lowercase();
+        let lowered = text.trim().to_ascii_lowercase();
+        // A sign as a field shows zero reads as zero.
+        let t = lowered.strip_prefix('±').unwrap_or(&lowered).trim().to_string();
         let mm = if let Some(n) = t.strip_suffix("mm") {
             number(n)?
         } else if let Some(n) = t.strip_suffix("cm") {
@@ -235,7 +294,636 @@ impl Units {
     }
 }
 
-/// The scales a metric project offers, 1 : n.
+/// The units an area is shown in: square millimetres, centimetres, metres, inches or feet.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AreaUnit {
+    #[serde(rename = "mm2")]
+    SquareMillimetres,
+    #[serde(rename = "cm2")]
+    SquareCentimetres,
+    #[default]
+    #[serde(rename = "m2")]
+    SquareMetres,
+    #[serde(rename = "in2")]
+    SquareInches,
+    #[serde(rename = "ft2")]
+    SquareFeet,
+}
+
+impl AreaUnit {
+    pub const ALL: [AreaUnit; 5] =
+        [AreaUnit::SquareMillimetres, AreaUnit::SquareCentimetres, AreaUnit::SquareMetres, AreaUnit::SquareInches, AreaUnit::SquareFeet];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            AreaUnit::SquareMillimetres => "mm2",
+            AreaUnit::SquareCentimetres => "cm2",
+            AreaUnit::SquareMetres => "m2",
+            AreaUnit::SquareInches => "in2",
+            AreaUnit::SquareFeet => "ft2",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<AreaUnit> {
+        AreaUnit::ALL.into_iter().find(|u| u.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            AreaUnit::SquareMillimetres => ui_msg!("Square millimetres"),
+            AreaUnit::SquareCentimetres => ui_msg!("Square centimetres"),
+            AreaUnit::SquareMetres => ui_msg!("Square metres"),
+            AreaUnit::SquareInches => ui_msg!("Square inches"),
+            AreaUnit::SquareFeet => ui_msg!("Square feet"),
+        }
+    }
+
+    /// An area in mm² as these units show it, and their symbol.
+    pub fn convert(self, mm2: f64) -> (f64, &'static str) {
+        match self {
+            AreaUnit::SquareMillimetres => (mm2, "mm²"),
+            AreaUnit::SquareCentimetres => (mm2 / 100.0, "cm²"),
+            AreaUnit::SquareMetres => (mm2 / 1e6, "m²"),
+            AreaUnit::SquareInches => (mm2 / (INCH * INCH), "in²"),
+            AreaUnit::SquareFeet => (mm2 / (FOOT * FOOT), "ft²"),
+        }
+    }
+
+    /// Its symbol: mm², cm², m², in² or ft².
+    pub fn symbol(self) -> &'static str {
+        self.convert(0.0).1
+    }
+
+    /// How many mm² one of it is.
+    pub fn mm2_per(self) -> f64 {
+        match self {
+            AreaUnit::SquareMillimetres => 1.0,
+            AreaUnit::SquareCentimetres => 100.0,
+            AreaUnit::SquareMetres => 1e6,
+            AreaUnit::SquareInches => INCH * INCH,
+            AreaUnit::SquareFeet => FOOT * FOOT,
+        }
+    }
+
+    /// The area whose symbol `s` names, such as `cm²`.
+    pub fn from_symbol(s: &str) -> Option<AreaUnit> {
+        AreaUnit::ALL.into_iter().find(|u| u.symbol() == s)
+    }
+
+    /// Whether an area in the project's units is imperial.
+    pub fn imperial(self) -> bool {
+        matches!(self, AreaUnit::SquareInches | AreaUnit::SquareFeet)
+    }
+}
+
+/// The units a volume is shown in: cubic millimetres, centimetres, metres, inches or feet.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VolumeUnit {
+    #[serde(rename = "mm3")]
+    CubicMillimetres,
+    #[serde(rename = "cm3")]
+    CubicCentimetres,
+    #[default]
+    #[serde(rename = "m3")]
+    CubicMetres,
+    #[serde(rename = "in3")]
+    CubicInches,
+    #[serde(rename = "ft3")]
+    CubicFeet,
+}
+
+impl VolumeUnit {
+    pub const ALL: [VolumeUnit; 5] = [
+        VolumeUnit::CubicMillimetres,
+        VolumeUnit::CubicCentimetres,
+        VolumeUnit::CubicMetres,
+        VolumeUnit::CubicInches,
+        VolumeUnit::CubicFeet,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            VolumeUnit::CubicMillimetres => "mm3",
+            VolumeUnit::CubicCentimetres => "cm3",
+            VolumeUnit::CubicMetres => "m3",
+            VolumeUnit::CubicInches => "in3",
+            VolumeUnit::CubicFeet => "ft3",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<VolumeUnit> {
+        VolumeUnit::ALL.into_iter().find(|u| u.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            VolumeUnit::CubicMillimetres => ui_msg!("Cubic millimetres"),
+            VolumeUnit::CubicCentimetres => ui_msg!("Cubic centimetres"),
+            VolumeUnit::CubicMetres => ui_msg!("Cubic metres"),
+            VolumeUnit::CubicInches => ui_msg!("Cubic inches"),
+            VolumeUnit::CubicFeet => ui_msg!("Cubic feet"),
+        }
+    }
+
+    /// A volume in mm³ as these units show it, and their symbol.
+    pub fn convert(self, mm3: f64) -> (f64, &'static str) {
+        match self {
+            VolumeUnit::CubicMillimetres => (mm3, "mm³"),
+            VolumeUnit::CubicCentimetres => (mm3 / 1000.0, "cm³"),
+            VolumeUnit::CubicMetres => (mm3 / 1e9, "m³"),
+            VolumeUnit::CubicInches => (mm3 / (INCH * INCH * INCH), "in³"),
+            VolumeUnit::CubicFeet => (mm3 / (FOOT * FOOT * FOOT), "ft³"),
+        }
+    }
+
+    pub fn symbol(self) -> &'static str {
+        self.convert(0.0).1
+    }
+
+    pub fn mm3_per(self) -> f64 {
+        match self {
+            VolumeUnit::CubicMillimetres => 1.0,
+            VolumeUnit::CubicCentimetres => 1000.0,
+            VolumeUnit::CubicMetres => 1e9,
+            VolumeUnit::CubicInches => INCH * INCH * INCH,
+            VolumeUnit::CubicFeet => FOOT * FOOT * FOOT,
+        }
+    }
+
+    pub fn from_symbol(s: &str) -> Option<VolumeUnit> {
+        VolumeUnit::ALL.into_iter().find(|u| u.symbol() == s)
+    }
+
+    pub fn imperial(self) -> bool {
+        matches!(self, VolumeUnit::CubicInches | VolumeUnit::CubicFeet)
+    }
+}
+
+/// How a slope is shown: degrees, percent, or a grade (1 : n).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SlopeUnit {
+    #[default]
+    Degrees,
+    Percent,
+}
+
+impl SlopeUnit {
+    pub const ALL: [SlopeUnit; 2] = [SlopeUnit::Degrees, SlopeUnit::Percent];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            SlopeUnit::Degrees => "deg",
+            SlopeUnit::Percent => "percent",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<SlopeUnit> {
+        SlopeUnit::ALL.into_iter().find(|u| u.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SlopeUnit::Degrees => ui_msg!("Degrees"),
+            SlopeUnit::Percent => ui_msg!("Percent"),
+        }
+    }
+
+    /// A slope in degrees as these units show it.
+    pub fn convert(self, degrees: f64) -> (f64, &'static str) {
+        match self {
+            SlopeUnit::Degrees => (degrees, "°"),
+            SlopeUnit::Percent => (degrees.to_radians().tan() * 100.0, "%"),
+        }
+    }
+}
+
+/// The units a mass density is shown in: kilograms per cubic metre or pounds per cubic foot.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MassDensityUnit {
+    #[default]
+    KilogramsPerCubicMetre,
+    PoundsPerCubicFoot,
+}
+
+impl MassDensityUnit {
+    pub const ALL: [MassDensityUnit; 2] = [MassDensityUnit::KilogramsPerCubicMetre, MassDensityUnit::PoundsPerCubicFoot];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            MassDensityUnit::KilogramsPerCubicMetre => "kg-m3",
+            MassDensityUnit::PoundsPerCubicFoot => "lb-ft3",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<MassDensityUnit> {
+        MassDensityUnit::ALL.into_iter().find(|u| u.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            MassDensityUnit::KilogramsPerCubicMetre => ui_msg!("Kilograms per cubic metre"),
+            MassDensityUnit::PoundsPerCubicFoot => ui_msg!("Pounds per cubic foot"),
+        }
+    }
+
+    pub fn convert(self, kg_m3: f64) -> (f64, &'static str) {
+        match self {
+            MassDensityUnit::KilogramsPerCubicMetre => (kg_m3, "kg/m³"),
+            MassDensityUnit::PoundsPerCubicFoot => (kg_m3 * 0.062_427_960_6, "lb/ft³"),
+        }
+    }
+}
+
+/// The units time is shown in: seconds, minutes or hours.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TimeUnit {
+    #[default]
+    Seconds,
+    Minutes,
+    Hours,
+}
+
+impl TimeUnit {
+    pub const ALL: [TimeUnit; 3] = [TimeUnit::Seconds, TimeUnit::Minutes, TimeUnit::Hours];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            TimeUnit::Seconds => "s",
+            TimeUnit::Minutes => "min",
+            TimeUnit::Hours => "h",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<TimeUnit> {
+        TimeUnit::ALL.into_iter().find(|u| u.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            TimeUnit::Seconds => ui_msg!("Seconds"),
+            TimeUnit::Minutes => ui_msg!("Minutes"),
+            TimeUnit::Hours => ui_msg!("Hours"),
+        }
+    }
+
+    pub fn convert(self, seconds: f64) -> (f64, &'static str) {
+        match self {
+            TimeUnit::Seconds => (seconds, "s"),
+            TimeUnit::Minutes => (seconds / 60.0, "min"),
+            TimeUnit::Hours => (seconds / 3600.0, "h"),
+        }
+    }
+}
+
+/// The units speed is shown in: metres a second, kilometres an hour, feet a second or miles an hour.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SpeedUnit {
+    #[default]
+    MetresPerSecond,
+    KilometresPerHour,
+    FeetPerSecond,
+    MilesPerHour,
+}
+
+impl SpeedUnit {
+    pub const ALL: [SpeedUnit; 4] =
+        [SpeedUnit::MetresPerSecond, SpeedUnit::KilometresPerHour, SpeedUnit::FeetPerSecond, SpeedUnit::MilesPerHour];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            SpeedUnit::MetresPerSecond => "m-s",
+            SpeedUnit::KilometresPerHour => "km-h",
+            SpeedUnit::FeetPerSecond => "ft-s",
+            SpeedUnit::MilesPerHour => "mph",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<SpeedUnit> {
+        SpeedUnit::ALL.into_iter().find(|u| u.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SpeedUnit::MetresPerSecond => ui_msg!("Metres per second"),
+            SpeedUnit::KilometresPerHour => ui_msg!("Kilometres per hour"),
+            SpeedUnit::FeetPerSecond => ui_msg!("Feet per second"),
+            SpeedUnit::MilesPerHour => ui_msg!("Miles per hour"),
+        }
+    }
+
+    pub fn convert(self, m_s: f64) -> (f64, &'static str) {
+        match self {
+            SpeedUnit::MetresPerSecond => (m_s, "m/s"),
+            SpeedUnit::KilometresPerHour => (m_s * 3.6, "km/h"),
+            SpeedUnit::FeetPerSecond => (m_s / FOOT * 1000.0, "ft/s"),
+            SpeedUnit::MilesPerHour => (m_s * 3.6 / 1.609_344, "mph"),
+        }
+    }
+}
+
+/// A kind of value a project shows, as Project Units names it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Quantity {
+    Length,
+    Area,
+    Volume,
+    Angle,
+    Slope,
+    MassDensity,
+    Time,
+    Speed,
+    Currency,
+}
+
+impl Quantity {
+    pub const ALL: [Quantity; 9] = [
+        Quantity::Length,
+        Quantity::Area,
+        Quantity::Volume,
+        Quantity::Angle,
+        Quantity::Slope,
+        Quantity::MassDensity,
+        Quantity::Time,
+        Quantity::Speed,
+        Quantity::Currency,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Quantity::Length => "length",
+            Quantity::Area => "area",
+            Quantity::Volume => "volume",
+            Quantity::Angle => "angle",
+            Quantity::Slope => "slope",
+            Quantity::MassDensity => "mass_density",
+            Quantity::Time => "time",
+            Quantity::Speed => "speed",
+            Quantity::Currency => "currency",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Quantity> {
+        Quantity::ALL.into_iter().find(|q| q.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    /// The places after the point its number shows unless its format says otherwise.
+    pub fn default_decimals(self) -> u8 {
+        match self {
+            Quantity::Length => 2,
+            Quantity::Area => 2,
+            Quantity::Volume => 3,
+            Quantity::Angle => 0,
+            Quantity::Slope => 2,
+            Quantity::MassDensity => 1,
+            Quantity::Time => 1,
+            Quantity::Speed => 2,
+            Quantity::Currency => 2,
+        }
+    }
+}
+
+/// How one kind of value is written: its unit symbol and what may be left out or added around the number.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FormatOptions {
+    /// Whether its unit is shown beside the number; none, the user's Show units in values decides.
+    pub show_units: Option<bool>,
+    /// The sign of positives; none, the project's signs, or none.
+    pub positive: Option<PositiveSign>,
+    /// The sign of zero; none, the project's signs, or none.
+    pub zero: Option<ZeroSign>,
+    pub suppress_trailing_zeros: bool,
+    pub suppress_zero_feet: bool,
+    pub digit_grouping: bool,
+    pub suppress_spaces: bool,
+    /// How many places before the point its number rounds to: 1 to 10, 2 to 100, 3 to 1000; none, not.
+    pub rounding: Option<u8>,
+    /// How many places after the point its number shows; none, the quantity's own.
+    pub decimals: Option<u8>,
+    /// A symbol of its own in place of the unit's, such as `m` for a metre; none, the unit's.
+    pub symbol: Option<String>,
+}
+
+impl FormatOptions {
+    /// `value` rounded to `rounding` places before the point: 1 to 10, 2 to 100, 3 to 1000.
+    pub fn round_value(&self, value: f64) -> f64 {
+        match self.rounding {
+            Some(digits) => {
+                let step = 10f64.powi(i32::from(digits));
+                let rounded = (value / step).round() * step;
+                if rounded.is_finite() { rounded + 0.0 } else { value }
+            }
+            None => value,
+        }
+    }
+
+    /// `text` with its trailing zeros after the point taken away, when asked: `1.230` is `1.23`, `2.000` is `2`.
+    pub fn without_trailing_zeros(&self, text: String) -> String {
+        if !self.suppress_trailing_zeros || !text.contains('.') {
+            return text;
+        }
+        let end = text.trim_end_matches('0').trim_end_matches('.').to_string();
+        if end.is_empty() { "0".into() } else { end }
+    }
+
+    /// `text` with its integer digits grouped in threes by commas, when asked: `1234567.5` is `1,234,567.5`.
+    pub fn grouped(&self, text: String) -> String {
+        if !self.digit_grouping {
+            return text;
+        }
+        let (sign, rest) = match text.strip_prefix('-') {
+            Some(rest) => ("-", rest),
+            None => ("", text.as_str()),
+        };
+        let (whole, point) = rest.split_once('.').map_or((rest, ""), |(w, p)| (w, p));
+        let mut grouped = String::new();
+        for (i, c) in whole.chars().enumerate() {
+            if i > 0 && (whole.len() - i) % 3 == 0 {
+                grouped.push(',');
+            }
+            grouped.push(c);
+        }
+        if point.is_empty() { format!("{sign}{grouped}") } else { format!("{sign}{grouped}.{point}") }
+    }
+
+    /// `number` and `unit` as this format writes them: no space when asked, the symbol of its own, or the unit's.
+    pub fn with_unit(&self, number: String, unit: &str) -> String {
+        let unit = self.symbol.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or(unit);
+        let tight = unit.starts_with('°') || unit.starts_with('%') || unit.contains('\'') || unit.contains('"');
+        if self.suppress_spaces || tight { format!("{number}{unit}") } else { format!("{number} {unit}") }
+    }
+}
+
+/// How numbers write their decimal point and group thousands.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DecimalStyle {
+    /// `123,456,789.00`
+    #[default]
+    #[serde(rename = "dot-comma")]
+    DotComma,
+    /// `123.456.789,00`
+    #[serde(rename = "comma-dot")]
+    CommaDot,
+    /// `123 456 789.00`
+    #[serde(rename = "space-dot")]
+    SpaceDot,
+    /// `123456789.00`
+    #[serde(rename = "none-dot")]
+    NoneDot,
+}
+
+impl DecimalStyle {
+    pub const ALL: [DecimalStyle; 4] = [DecimalStyle::DotComma, DecimalStyle::CommaDot, DecimalStyle::SpaceDot, DecimalStyle::NoneDot];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            DecimalStyle::DotComma => "dot-comma",
+            DecimalStyle::CommaDot => "comma-dot",
+            DecimalStyle::SpaceDot => "space-dot",
+            DecimalStyle::NoneDot => "none-dot",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<DecimalStyle> {
+        DecimalStyle::ALL.into_iter().find(|s| s.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    /// The sample the list writes it as: `123,456,789.00`.
+    pub fn label(self) -> &'static str {
+        match self {
+            DecimalStyle::DotComma => "123,456,789.00",
+            DecimalStyle::CommaDot => "123.456.789,00",
+            DecimalStyle::SpaceDot => "123 456 789.00",
+            DecimalStyle::NoneDot => "123456789.00",
+        }
+    }
+
+    pub fn decimal(self) -> char {
+        match self {
+            DecimalStyle::CommaDot => ',',
+            _ => '.',
+        }
+    }
+
+    pub fn group(self) -> Option<char> {
+        match self {
+            DecimalStyle::DotComma => Some(','),
+            DecimalStyle::CommaDot => Some('.'),
+            DecimalStyle::SpaceDot => Some(' '),
+            DecimalStyle::NoneDot => None,
+        }
+    }
+
+    /// `number`, which writes its decimal point as `.`, with this style's point and, when `group`, grouped thousands.
+    pub fn apply(self, number: String, group: bool) -> String {
+        let (whole, point) = number.split_once('.').map_or((number.as_str(), ""), |(w, p)| (w, p));
+        let (sign, whole) = match whole.strip_prefix('-') {
+            Some(rest) => ("-", rest),
+            None => ("", whole),
+        };
+        let grouped = match self.group() {
+            Some(group_char) if group && !whole.is_empty() => {
+                let mut out = String::new();
+                for (i, c) in whole.chars().enumerate() {
+                    if i > 0 && (whole.len() - i) % 3 == 0 {
+                        out.push(group_char);
+                    }
+                    out.push(c);
+                }
+                out
+            }
+            _ => whole.to_string(),
+        };
+        if point.is_empty() { format!("{sign}{grouped}") } else { format!("{sign}{grouped}{}{point}", self.decimal()) }
+    }
+}
+
+/// A format with nothing set, for a quantity that has none.
+const EMPTY_FORMAT: FormatOptions = FormatOptions {
+    show_units: None,
+    positive: None,
+    zero: None,
+    suppress_trailing_zeros: false,
+    suppress_zero_feet: false,
+    digit_grouping: false,
+    suppress_spaces: false,
+    rounding: None,
+    decimals: None,
+    symbol: None,
+};
+
+/// The units each kind of value is shown in, apart from a length's; none, the one its project's length units imply.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DisplayUnits {
+    pub area: Option<AreaUnit>,
+    pub volume: Option<VolumeUnit>,
+    pub slope: Option<SlopeUnit>,
+    pub mass_density: Option<MassDensityUnit>,
+    pub time: Option<TimeUnit>,
+    pub speed: Option<SpeedUnit>,
+    /// The symbol money is shown in, such as `$` or `€`; none, `$`.
+    pub currency: Option<String>,
+    /// How numbers write their decimal point and grouped thousands; none, `123,456,789.00`.
+    pub decimal_style: DecimalStyle,
+    /// Each kind's format options, by [`Quantity::name`].
+    pub formats: BTreeMap<String, FormatOptions>,
+}
+
+impl DisplayUnits {
+    pub fn is_default(&self) -> bool {
+        self == &DisplayUnits::default()
+    }
+
+    /// The format options of `quantity`; none, everything default.
+    pub fn options(&self, quantity: Quantity) -> &FormatOptions {
+        self.formats.get(quantity.name()).unwrap_or(&EMPTY_FORMAT)
+    }
+
+    /// The format options of `quantity`, made when it has none.
+    pub fn options_mut(&mut self, quantity: Quantity) -> &mut FormatOptions {
+        self.formats.entry(quantity.name().to_string()).or_default()
+    }
+
+    /// An area in mm² as the project shows it: its own unit, else m² or ft² by the project's length units.
+    pub fn area(&self, length: Units, mm2: f64) -> (f64, &'static str) {
+        self.area.unwrap_or(if length.imperial() { AreaUnit::SquareFeet } else { AreaUnit::SquareMetres }).convert(mm2)
+    }
+
+    /// A volume in mm³ as the project shows it: its own unit, else m³ or ft³ by the project's length units.
+    pub fn volume(&self, length: Units, mm3: f64) -> (f64, &'static str) {
+        self.volume.unwrap_or(if length.imperial() { VolumeUnit::CubicFeet } else { VolumeUnit::CubicMetres }).convert(mm3)
+    }
+
+    pub fn angle(&self, degrees: f64) -> (f64, &'static str) {
+        (degrees, "°")
+    }
+
+    pub fn slope(&self, degrees: f64) -> (f64, &'static str) {
+        self.slope.unwrap_or_default().convert(degrees)
+    }
+
+    pub fn mass_density(&self, kg_m3: f64) -> (f64, &'static str) {
+        self.mass_density.unwrap_or_default().convert(kg_m3)
+    }
+
+    pub fn time(&self, seconds: f64) -> (f64, &'static str) {
+        self.time.unwrap_or_default().convert(seconds)
+    }
+
+    pub fn speed(&self, m_s: f64) -> (f64, &'static str) {
+        self.speed.unwrap_or_default().convert(m_s)
+    }
+
+    pub fn currency(&self) -> &str {
+        self.currency.as_deref().filter(|c| !c.trim().is_empty()).unwrap_or("$")
+    }
+}
+
 const METRIC_SCALES: [f64; 13] = [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 75.0, 100.0, 150.0, 200.0, 250.0, 500.0, 1000.0];
 /// The scales a project in inches or feet offers: 12" to 1/32" to the foot, then 1" to 10' to 1" to 200'.
 const IMPERIAL_SCALES: [f64; 22] = [
@@ -364,17 +1052,25 @@ mod tests {
 
     #[test]
     fn lengths_show_to_the_decimals_a_project_asks_for() {
-        assert_eq!(Units::Metres.decimals(), Some(2..=5));
-        assert_eq!(Units::Centimetres.decimals(), Some(1..=4));
+        assert_eq!(Units::Metres.decimals(), Some(0..=5));
+        assert_eq!(Units::Centimetres.decimals(), Some(0..=4));
         assert_eq!(Units::Millimetres.decimals(), Some(0..=3));
-        assert_eq!(Units::Feet.decimals(), Some(2..=5));
-        assert_eq!((Units::Inches.decimals(), Units::FeetInches.decimals()), (None, None));
+        assert_eq!(Units::Feet.decimals(), Some(0..=5));
+        assert_eq!((Units::Inches.decimals(), Units::FeetInches.decimals()), (Some(0..=4), Some(0..=4)));
         // None, and the fewest places, are what drawings show; inches and feet-inches keep their sixteenths.
         for u in Units::ALL {
             assert_eq!(u.length_to(2955.5, None), u.length(2955.5), "{u:?}");
-            assert_eq!(u.length_to(2955.5, u.decimals().map(|r| *r.start())), u.length(2955.5), "{u:?}");
+            assert_eq!(u.length_to(2955.5, u.fewest()), u.length(2955.5), "{u:?}");
+        }
+        for u in [Units::Millimetres, Units::Centimetres, Units::Metres, Units::Feet] {
             assert_eq!(u.length_to(2955.5, Some(3)) == u.length(2955.5), u.decimals().is_none(), "{u:?}");
         }
+        // A count asked for is shown exactly, trailing zeros too: a centimetre's whole and tenth are 100 and 100.0.
+        assert_eq!(Units::Centimetres.length_to(3173.0, Some(0)), "317");
+        assert_eq!(Units::Centimetres.length_to(3173.0, Some(1)), "317.3");
+        assert_eq!(Units::Centimetres.length_to(1000.0, Some(1)), "100.0");
+        assert_eq!(Units::Centimetres.length_to(1000.0, Some(2)), "100.00");
+        assert_eq!(Units::Centimetres.length_to(1000.0, None), "100");
         assert_eq!(Units::Metres.length_to(3.0, Some(3)), "0.003");
         assert_eq!(Units::Metres.length_to(55.0, Some(3)), "0.055");
         assert_eq!(Units::Metres.length_to(2950.0, Some(5)), "2.95000");
@@ -385,7 +1081,7 @@ mod tests {
         assert_eq!(Units::FeetInches.with_unit_to(3000.0, Some(3)), "9'-10 1/8\"");
         // More than the most is the most, and fewer than the fewest the fewest.
         assert_eq!(Units::Metres.length_to(3.0, Some(9)), "0.00300");
-        assert_eq!(Units::Metres.length_to(2955.0, Some(0)), Units::Metres.length(2955.0));
+        assert_eq!(Units::Metres.length_to(2955.0, Some(0)), "3");
         // A field says what it holds to those places, and in mm when they would not.
         assert_eq!(Units::Metres.field_to(3.0, Some(3)), "0.003");
         assert_eq!(Units::Metres.field_to(3.4, Some(3)), "3.4 mm");
@@ -416,5 +1112,20 @@ mod tests {
             let shown = u.length(3213.1);
             assert!((u.parse(&shown).unwrap() - 3213.1).abs() <= 5.0, "{u:?} {shown}");
         }
+    }
+}
+
+#[cfg(test)]
+mod more_quantity_tests {
+    use super::*;
+
+    #[test]
+    fn angle_weight_and_ratio_name_their_units() {
+        assert_eq!(Units::Metres.angle(30.0), (30.0, "°"));
+        assert_eq!(Units::Millimetres.weight(2.5), (2.5, "kg"));
+        assert_eq!(Units::Millimetres.ratio(2400.0), (2400.0, "kg/m³"));
+        assert_eq!(Units::FeetInches.weight(0.453_592_37).1, "lb");
+        assert_eq!(Units::FeetInches.ratio(1.0).1, "lb/ft³");
+        assert_eq!(Units::Metres.length_with_unit(3000.0), "3.00 m");
     }
 }

@@ -423,7 +423,8 @@ impl BimApp {
             }
             Some(Act::Select(id)) => self.selection = vec![id],
             Some(Act::EditType(category, name)) => {
-                self.type_dialog = Some(crate::properties::TypeDialog::new(&self.session.model, category, name, Vec::new()));
+                self.type_dialog =
+                    Some(crate::properties::TypeDialog::new(&self.session.model, category, name, Vec::new(), self.show_units));
             }
             Some(Act::SelectInstances(params, scope)) => self.select_instances(params, scope),
             _ => {}

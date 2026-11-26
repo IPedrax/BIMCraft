@@ -11,6 +11,7 @@ use bimcraft_i18n::msg;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
+use bimcraft_core::dims::{self, Signs};
 use bimcraft_core::element_json_with;
 use bimcraft_core::family::{Kind as Holds, Under, Val};
 use bimcraft_core::library::Kind as LibKind;
@@ -18,7 +19,7 @@ use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, 
 use bimcraft_core::rooms::Rooms;
 use bimcraft_core::schedule::{self, Field, Filter, Op, Sort};
 use bimcraft_core::snap::Kind as Snap;
-use bimcraft_core::units::Units;
+use bimcraft_core::units::{AreaUnit, Units, VolumeUnit};
 use egui::{
     Align, Align2, Button, Checkbox, ComboBox, Context, FontId, Frame, Grid, Id as UiId, Key, Layout, Margin, Popup, Rect, RichText,
     ScrollArea, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui, WidgetInfo, WidgetType, pos2, vec2,
@@ -76,8 +77,16 @@ enum Kind {
     Mm2Shown,
     /// A volume in m³, read only: shown in m³ or ft³.
     VolumeShown,
+    /// A family's volume in mm³: shown in m³ or ft³.
+    Mm3Shown,
+    /// A mass in kg, read only: shown in kg or lb.
+    Weight,
+    /// A density in kg/m³, read only: shown in kg/m³ or lb/ft³.
+    Ratio,
     /// An angle in degrees, typed as a number, shown with °.
     Angle,
+    /// A slope, in degrees or percent as the project shows slopes.
+    Slope,
     /// A length in m, read only.
     MetresShown,
     /// A dimension's values: lengths, or an angle's degrees.
@@ -114,7 +123,7 @@ type Row = (&'static str, &'static str, &'static str, Kind);
 fn field_of(e: &Value, key: &str, kind: Kind) -> Value {
     match key.split('.').try_fold(e, |v, k| v.get(k)) {
         Some(v) => v.clone(),
-        None if matches!(kind, Length | Number | Angle) => json!(0.0),
+        None if matches!(kind, Length | Number | Angle | Slope) => json!(0.0),
         None => Value::Null,
     }
 }
@@ -164,7 +173,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "height", msg!("Unconnected Height"), Height),
             ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
-            ("Constraints", "slant", msg!("Angle From Vertical (°)"), Number),
+            ("Constraints", "slant", msg!("Angle From Vertical"), Number),
             ("Structural", "framing", msg!("Framing"), Framing),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "thickness", "Thickness", LengthShown),
@@ -218,19 +227,19 @@ fn rows(category: &str) -> &'static [Row] {
         "floor" => &[
             ("Constraints", "level", "Level", Level),
             ("Constraints", "offset", msg!("Height Offset From Level"), Length),
-            ("Dimensions", "slope", "Slope", Angle),
+            ("Dimensions", "slope", "Slope", Slope),
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Dimensions", "plan_area_m2", msg!("Plan Area"), AreaShown),
             ("Dimensions", "openings_area_m2", msg!("Openings Area"), AreaShown),
             ("Dimensions", "thickness", "Thickness", LengthShown),
             ("Structural", "structural", "Structural", Flag),
             ("Structural", "framing", "Framing", Framing),
-            ("Structural", "framing_angle", msg!("Joist Direction (°)"), NumberOr(msg!("Automatic"))),
+            ("Structural", "framing_angle", msg!("Joist Direction"), NumberOr(msg!("Automatic"))),
             ("Graphics", "pattern_angle", "Pattern Angle", Angle),
             ("Dimensions", "volume_m3", "Volume", VolumeShown),
             ("Dimensions", "formwork_m2", msg!("Formwork Area"), AreaShown),
-            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
-            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Weight),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Ratio),
         ],
         "ceiling" => &[
             ("Constraints", "level", "Level", Level),
@@ -387,8 +396,8 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "angle", "Rotation", Angle),
             ("Dimensions", "volume_m3", "Volume", VolumeShown),
             ("Dimensions", "formwork_m2", msg!("Formwork Area"), AreaShown),
-            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
-            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Weight),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Ratio),
         ],
         // A bar's mark among its host's, the host's mark and its shape, worked out and not stored: read only.
         "rebar" => &[
@@ -406,8 +415,8 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "angle", "Rotation", Angle),
             ("Dimensions", "volume_m3", "Volume", VolumeShown),
             ("Dimensions", "formwork_m2", msg!("Formwork Area"), AreaShown),
-            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
-            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Weight),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Ratio),
         ],
         // A beam and a strip footing are runs with their quantities too, which a pipe has none of.
         "beam" | "stripfooting" => &[
@@ -421,8 +430,8 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "end", "End", Point),
             ("Dimensions", "volume_m3", "Volume", VolumeShown),
             ("Dimensions", "formwork_m2", msg!("Formwork Area"), AreaShown),
-            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Shown),
-            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Shown),
+            ("Quantities", "rebar_kg", msg!("Rebar Weight"), Weight),
+            ("Quantities", "rebar_ratio", msg!("Rebar Ratio"), Ratio),
         ],
         run if bimcraft_core::model::RUN_CATEGORIES.contains(&run) => &[
             ("Constraints", "level", msg!("Reference Level"), Level),
@@ -486,7 +495,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "extrusion.from", msg!("Extrusion Start"), LengthIf),
             ("Constraints", "extrusion.to", msg!("Extrusion End"), LengthIf),
             ("Structural", "framing", "Framing", Framing),
-            ("Dimensions", "slope", "Slope", Angle),
+            ("Dimensions", "slope", "Slope", Slope),
             ("Dimensions", "thickness", "Thickness", LengthShown),
             ("Dimensions", "ridge", msg!("Max Ridge Height"), LengthShown),
             ("Dimensions", "area_m2", "Area", AreaShown),
@@ -780,30 +789,222 @@ pub(crate) fn text(v: &Value) -> String {
 }
 
 pub(crate) fn number(s: &str) -> Option<f64> {
-    s.trim().parse::<f64>().ok().filter(|x| x.is_finite())
+    let t = s.trim();
+    let t = t.strip_prefix('±').unwrap_or(t);
+    t.parse::<f64>().ok().filter(|x| x.is_finite())
 }
 
-/// A value of `kind` as the palette shows it, lengths and areas in `units`.
-/// An area parameter's value, m² in the model, in the project's units.
-fn area_shown(v: &Value, units: Units) -> String {
-    v.as_f64().map_or_else(String::new, |x| format!("{:.2}", units.area(x * 1e6).0))
+/// How the palette writes a value: the project's units and decimals, the user's unit switch, and the project's signs.
+#[derive(Clone)]
+pub(crate) struct Format {
+    pub units: Units,
+    pub display: bimcraft_core::units::DisplayUnits,
+    pub decimals: Option<u8>,
+    pub show_units: bool,
+    pub rounding: Option<u8>,
+}
+
+impl Format {
+    pub(crate) fn of(m: &Model, show_units: bool) -> Format {
+        Format { units: m.units, display: m.display.clone(), decimals: m.decimals, show_units, rounding: m.rounding }
+    }
+
+    /// A length rounded as the project rounds, before the point.
+    fn rounded(&self, mm: f64) -> f64 {
+        self.rounding.map_or(mm, |digits| self.units.round_before(mm, digits))
+    }
+
+    /// The format options of `quantity`.
+    fn options(&self, quantity: bimcraft_core::units::Quantity) -> &bimcraft_core::units::FormatOptions {
+        self.display.options(quantity)
+    }
+
+    /// Whether `quantity` writes its unit: its own setting, else the user's.
+    fn shows_units(&self, quantity: bimcraft_core::units::Quantity) -> bool {
+        self.options(quantity).show_units.unwrap_or(self.show_units)
+    }
+
+    /// The signs `quantity` writes: its own, or none.
+    fn signs_for(&self, quantity: bimcraft_core::units::Quantity) -> Option<Signs> {
+        let o = self.options(quantity);
+        if o.positive.is_none() && o.zero.is_none() {
+            return None;
+        }
+        Some(Signs {
+            positive: o.positive.unwrap_or(dims::PositiveSign::Never),
+            zero: o.zero.unwrap_or(if o.positive == Some(dims::PositiveSign::Always) {
+                dims::ZeroSign::Signed
+            } else {
+                dims::ZeroSign::Plain
+            }),
+        })
+    }
+
+    /// The places after the point `quantity` shows.
+    fn places(&self, quantity: bimcraft_core::units::Quantity) -> usize {
+        usize::from(self.options(quantity).decimals.unwrap_or_else(|| quantity.default_decimals()))
+    }
+
+    /// `value` rounded as `quantity` rounds it.
+    fn round_for(&self, quantity: bimcraft_core::units::Quantity, value: f64) -> f64 {
+        self.options(quantity).round_value(value)
+    }
+
+    /// `number` and `unit` as `quantity` writes them: its sign, trailing zeros, grouping, symbol and spaces.
+    fn render(&self, quantity: bimcraft_core::units::Quantity, number: String, zero: &str, unit: &str) -> String {
+        let o = self.options(quantity);
+        let number = o.without_trailing_zeros(number);
+        let number = if o.suppress_zero_feet {
+            let short = number.strip_prefix("0'-").or_else(|| number.strip_prefix("-0'-")).map(str::to_string);
+            short.unwrap_or(number)
+        } else {
+            number
+        };
+        let number = self.display.decimal_style.apply(number, o.digit_grouping);
+        let zero = self.display.decimal_style.apply(o.without_trailing_zeros(zero.to_string()), o.digit_grouping);
+        let show = self.shows_units(quantity);
+        let number = match self.signs_for(quantity) {
+            Some(signs) => dims::signed_text(number, &zero, signs),
+            _ => number,
+        };
+        if show && !unit.is_empty() { o.with_unit(number, unit) } else { number }
+    }
+}
+
+/// `text` with `unit` after it, when the user's setting shows units in values.
+fn with_unit(text: String, unit: &str, show_units: bool) -> String {
+    if show_units { format!("{text} {unit}") } else { text }
+}
+
+/// An area typed with any area unit, or none, as mm².
+fn area_mm2(s: &str, units: Units) -> Option<f64> {
+    let t = s.trim();
+    let fallback = if units.imperial() { AreaUnit::SquareFeet } else { AreaUnit::SquareMetres };
+    AreaUnit::ALL.into_iter().find_map(|u| {
+        let v = t.strip_suffix(u.symbol()).or(if u == fallback { Some(t) } else { None })?;
+        number(v).map(|x| x * u.mm2_per())
+    })
 }
 
 /// An area typed in the project's units, as the m² it is in the model.
 fn area_parsed(s: &str, units: Units) -> Result<Value, String> {
-    let per_m2 = units.area(1e6).0;
-    number(s).map(|x| json!(x / per_m2)).ok_or_else(|| tf("`{}` is not a number", &[s]))
+    area_mm2(s, units).map(|mm2| json!(mm2 / 1e6)).ok_or_else(|| tf("`{}` is not an area", &[s.trim()]))
+}
+
+/// An area typed in the project's units, as the mm² a family's value is.
+fn area_mm2_parsed(s: &str, units: Units) -> Result<Value, String> {
+    area_mm2(s, units).map(|mm2| json!(mm2)).ok_or_else(|| tf("`{}` is not an area", &[s.trim()]))
+}
+
+/// A volume typed with any volume unit, or none, as mm³.
+fn volume_mm3(s: &str, units: Units) -> Option<f64> {
+    let t = s.trim();
+    let fallback = if units.imperial() { VolumeUnit::CubicFeet } else { VolumeUnit::CubicMetres };
+    VolumeUnit::ALL.into_iter().find_map(|u| {
+        let v = t.strip_suffix(u.symbol()).or(if u == fallback { Some(t) } else { None })?;
+        number(v).map(|x| x * u.mm3_per())
+    })
+}
+
+/// A volume typed in the project's units, as the m³ it is in the model.
+fn volume_parsed(s: &str, units: Units) -> Result<Value, String> {
+    volume_mm3(s, units).map(|mm3| json!(mm3 / 1e9)).ok_or_else(|| tf("`{}` is not a volume", &[s.trim()]))
+}
+
+/// A volume typed in the project's units, as the mm³ a family's value is.
+fn volume_mm3_parsed(s: &str, units: Units) -> Result<Value, String> {
+    volume_mm3(s, units).map(|mm3| json!(mm3)).ok_or_else(|| tf("`{}` is not a volume", &[s.trim()]))
+}
+
+/// An angle typed, in degrees: `30`, `30°`.
+fn angle_parsed(s: &str) -> Result<Value, String> {
+    number(s.trim().trim_end_matches('°').trim()).map(|x| json!(x)).ok_or_else(|| tf("`{}` is not an angle", &[s.trim()]))
+}
+
+/// A number as a family's value is stored, in mm, mm² or mm³: a plain string of it.
+fn plain(x: f64) -> String {
+    format!("{}", (x * 1e6).round() / 1e6 + 0.0)
+}
+
+/// Whether `text` already names a length's unit.
+fn has_length_unit(text: &str) -> bool {
+    text.ends_with("mm") || text.ends_with("cm") || text.ends_with('m') || text.contains('\'') || text.ends_with('"')
+}
+
+/// A family's value as Family Types shows it: a length in the project's units, an area in m² or ft², a volume in m³ or ft³.
+pub(crate) fn family_shown(kind: Holds, raw: &str, units: Units, show_units: bool, display: &bimcraft_core::units::DisplayUnits) -> String {
+    let Ok(x) = raw.trim().parse::<f64>() else {
+        return raw.to_string();
+    };
+    let q = match kind {
+        Holds::Length => bimcraft_core::units::Quantity::Length,
+        Holds::Area => bimcraft_core::units::Quantity::Area,
+        Holds::Volume => bimcraft_core::units::Quantity::Volume,
+        Holds::Angle => bimcraft_core::units::Quantity::Angle,
+        _ => return raw.to_string(),
+    };
+    let o = display.options(q);
+    let show = o.show_units.unwrap_or(show_units);
+    match kind {
+        Holds::Length => {
+            let text = o.without_trailing_zeros(units.field(x));
+            if show && !units.imperial() { o.with_unit(text, units.name()) } else { text }
+        }
+        Holds::Area => {
+            let (area, unit) = display.area(units, x);
+            let places = usize::from(o.decimals.unwrap_or_else(|| q.default_decimals()));
+            let number = o.without_trailing_zeros(format!("{:.*}", places, o.round_value(area)));
+            if show { o.with_unit(number, unit) } else { number }
+        }
+        Holds::Volume => {
+            let (volume, unit) = display.volume(units, x);
+            let places = usize::from(o.decimals.unwrap_or_else(|| q.default_decimals()));
+            let number = o.without_trailing_zeros(format!("{:.*}", places, o.round_value(volume)));
+            if show { o.with_unit(number, unit) } else { number }
+        }
+        Holds::Angle => {
+            let places = usize::from(o.decimals.unwrap_or_else(|| q.default_decimals()));
+            let number = o.without_trailing_zeros(format!("{:.*}", places, o.round_value(x)));
+            if show { o.with_unit(number, "°") } else { number }
+        }
+        _ => raw.to_string(),
+    }
+}
+
+/// What was typed for a family's value of `kind`, as the mm, mm² or mm³ the family stores: a plain number.
+pub(crate) fn family_typed(kind: Holds, text: &str, units: Units) -> Result<String, String> {
+    let typed = text.trim();
+    if typed.is_empty() {
+        return Ok(String::new());
+    }
+    match kind {
+        Holds::Length => units.parse(typed).map(plain).ok_or_else(|| tf("`{}` is not a length", &[typed])),
+        Holds::Area => area_mm2(typed, units).map(plain).ok_or_else(|| tf("`{}` is not an area", &[typed])),
+        Holds::Volume => volume_mm3(typed, units).map(plain).ok_or_else(|| tf("`{}` is not a volume", &[typed])),
+        Holds::Angle => number(typed.trim_end_matches('°').trim()).map(plain).ok_or_else(|| tf("`{}` is not an angle", &[typed])),
+        _ => Ok(typed.to_string()),
+    }
+}
+
+/// An area parameter's value, m² in the model, in the project's units.
+fn area_shown(v: &Value, f: &Format) -> String {
+    v.as_f64().map_or_else(String::new, |x| {
+        let (area, unit) = f.display.area(f.units, x * 1e6);
+        f.render(bimcraft_core::units::Quantity::Area, format!("{area:.2}"), "0.00", unit)
+    })
 }
 
 /// A project parameter's value of `kind` as a field shows it: lengths and areas in `units`. Not for yes or no, a checkbox.
-pub(crate) fn parameter_shown(kind: ParameterKind, v: &Value, m: &Model) -> String {
-    let units = m.units;
+pub(crate) fn parameter_shown(kind: ParameterKind, v: &Value, m: &Model, show_units: bool) -> String {
+    let f = Format::of(m, show_units);
     match kind {
-        ParameterKind::Area => area_shown(v, units),
+        ParameterKind::Area => area_shown(v, &f),
         // Read whole by the dialog's OK: what the units round away is said in mm, so a value left alone keeps itself.
-        ParameterKind::Length => v.as_f64().map_or_else(String::new, |x| m.field(x)),
-        ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => shown(Number, v, units),
-        ParameterKind::Text | ParameterKind::YesNo => shown(Text, v, units),
+        ParameterKind::Length => v.as_f64().map_or_else(String::new, |x| shown(Length, &json!(x), &f)),
+        ParameterKind::Volume => shown(VolumeShown, v, &f),
+        ParameterKind::Angle => shown(Angle, v, &f),
+        ParameterKind::Number | ParameterKind::Integer => shown(Number, v, &f),
+        ParameterKind::Text | ParameterKind::YesNo => shown(Text, v, &f),
     }
 }
 
@@ -814,41 +1015,95 @@ pub(crate) fn parameter_parsed(kind: ParameterKind, typed: &str, units: Units) -
     }
     match kind {
         ParameterKind::Area => area_parsed(typed, units),
+        ParameterKind::Volume => volume_parsed(typed, units),
+        ParameterKind::Angle => angle_parsed(typed),
         ParameterKind::Length => parse(Length, typed, units),
-        ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => parse(Number, typed, units),
+        ParameterKind::Number | ParameterKind::Integer => parse(Number, typed, units),
         ParameterKind::Text | ParameterKind::YesNo => parse(Text, typed, units),
     }
 }
 
-fn shown(kind: Kind, v: &Value, units: Units) -> String {
-    let each = |f: &dyn Fn(f64) -> String| match v {
-        Value::Array(a) => a.iter().filter_map(Value::as_f64).map(f).collect::<Vec<_>>().join(", "),
-        v => v.as_f64().map_or_else(String::new, f),
+/// A slope typed, as the degrees the model stores: `30°`, `5%`, or in the project's slope unit.
+fn parse_slope(s: &str, f: &Format) -> Result<Value, String> {
+    let typed = s.trim();
+    let percent = typed.ends_with('%');
+    let degrees = typed.ends_with('°') || (!percent && f.display.slope.unwrap_or_default() == bimcraft_core::units::SlopeUnit::Degrees);
+    let value = number(typed.trim_end_matches(['°', '%']).trim()).ok_or_else(|| tf("`{}` is not a slope", &[typed]))?;
+    Ok(json!(if degrees { value } else { (value / 100.0).atan().to_degrees() }))
+}
+
+fn shown(kind: Kind, v: &Value, f: &Format) -> String {
+    let each = |g: &dyn Fn(f64) -> String| match v {
+        Value::Array(a) => a.iter().filter_map(Value::as_f64).map(g).collect::<Vec<_>>().join(", "),
+        v => v.as_f64().map_or_else(String::new, g),
     };
+    let q = bimcraft_core::units::Quantity::Length;
+    let unit = if f.units.imperial() { "" } else { f.units.name() };
+    let zero_length = f.units.length_to(0.0, f.decimals);
+    // A length: what the project's places show and the format asks for.
+    let length = |x: f64| {
+        let x = f.rounded(x);
+        f.render(q, f.units.length_to(x, f.decimals), &zero_length, unit)
+    };
+    let read_length = length;
     match kind {
         Outline => match v {
             Value::Array(corners) => {
-                let corner = |p: &Value| Some(format!("{}, {}", units.length(p.get(0)?.as_f64()?), units.length(p.get(1)?.as_f64()?)));
+                let corner = |p: &Value| Some(format!("{}, {}", length(p.get(0)?.as_f64()?), length(p.get(1)?.as_f64()?)));
                 corners.iter().filter_map(corner).collect::<Vec<_>>().join("; ")
             }
             _ => String::new(),
         },
-        Length | LengthIf | Height | Limit(_) | LengthShown | Point => each(&|x| units.with_unit(x)),
-        MetresShown => each(&|x| units.with_unit(x * 1000.0)),
+        Length | LengthIf | Height | Limit(_) | Point => each(&length),
+        LengthShown => each(&read_length),
+        MetresShown => each(&|x| read_length(x * 1000.0)),
         AreaShown => each(&|x| {
-            let (area, unit) = units.area(x * 1e6);
-            format!("{area:.2} {unit}")
+            let q = bimcraft_core::units::Quantity::Area;
+            let (area, unit) = f.display.area(f.units, x * 1e6);
+            let number = format!("{:.*}", f.places(q), f.round_for(q, area));
+            f.render(q, number, &format!("{:.*}", f.places(q), 0.0), unit)
         }),
         Mm2Shown => each(&|x| {
-            let (area, unit) = units.area(x);
-            format!("{area:.2} {unit}")
+            let q = bimcraft_core::units::Quantity::Area;
+            let (area, unit) = f.display.area(f.units, x);
+            let number = format!("{:.*}", f.places(q), f.round_for(q, area));
+            f.render(q, number, &format!("{:.*}", f.places(q), 0.0), unit)
         }),
         VolumeShown => each(&|x| {
-            let (volume, unit) = units.volume(x * 1e9);
-            format!("{volume:.3} {unit}")
+            let q = bimcraft_core::units::Quantity::Volume;
+            let (volume, unit) = f.display.volume(f.units, x * 1e9);
+            let number = format!("{:.*}", f.places(q), f.round_for(q, volume));
+            f.render(q, number, &format!("{:.*}", f.places(q), 0.0), unit)
         }),
-        Angle => each(&|x| format!("{x}°")),
-        Values => each(&|x| units.length(x)),
+        Mm3Shown => each(&|x| {
+            let q = bimcraft_core::units::Quantity::Volume;
+            let (volume, unit) = f.display.volume(f.units, x);
+            let number = format!("{:.*}", f.places(q), f.round_for(q, volume));
+            f.render(q, number, &format!("{:.*}", f.places(q), 0.0), unit)
+        }),
+        Weight => each(&|x| {
+            let (weight, unit) = f.units.weight(x);
+            with_unit(format!("{}", (weight * 100.0).round() / 100.0 + 0.0), unit, f.show_units)
+        }),
+        Ratio => each(&|x| {
+            let q = bimcraft_core::units::Quantity::MassDensity;
+            let (ratio, unit) = f.display.mass_density(x);
+            let number = format!("{:.*}", f.places(q), f.round_for(q, ratio));
+            f.render(q, number, &format!("{:.*}", f.places(q), 0.0), unit)
+        }),
+        Angle => each(&|x| {
+            let q = bimcraft_core::units::Quantity::Angle;
+            let (degrees, unit) = f.display.angle(x);
+            let number = format!("{:.*}", f.places(q), f.round_for(q, degrees));
+            f.render(q, number, &format!("{:.*}", f.places(q), 0.0), unit)
+        }),
+        Slope => each(&|x| {
+            let q = bimcraft_core::units::Quantity::Slope;
+            let (value, unit) = f.display.slope(x);
+            let number = format!("{:.*}", f.places(q), f.round_for(q, value));
+            f.render(q, number, &format!("{:.*}", f.places(q), 0.0), unit)
+        }),
+        Values => each(&read_length),
         _ => text(v),
     }
 }
@@ -858,12 +1113,16 @@ fn parse(kind: Kind, s: &str, units: Units) -> Result<Value, String> {
     let length = |typed: &str| units.parse(typed).ok_or_else(|| tf("`{}` is not a length", &[typed.trim()]));
     match kind {
         Number => number(s).map(|x| json!(x)).ok_or_else(|| tf("`{}` is not a number", &[s])),
-        Angle => number(s.trim().trim_end_matches('°').trim()).map(|x| json!(x)).ok_or_else(|| tf("`{}` is not an angle", &[s])),
+        Angle => angle_parsed(s),
         Length | LengthIf | Height => length(s).map(|x| json!(x)),
         Limit(_) if s.trim().is_empty() => Ok(Value::Null),
         Limit(_) => length(s).map(|x| json!(x)),
         NumberOr(_) if s.trim().is_empty() => Ok(Value::Null),
         NumberOr(_) => parse(Number, s, units),
+        AreaShown => area_parsed(s, units),
+        Mm2Shown => area_mm2_parsed(s, units),
+        VolumeShown => volume_parsed(s, units),
+        Mm3Shown => volume_mm3_parsed(s, units),
         Outline if s.trim().is_empty() => Ok(Value::Null),
         Outline => s.split(';').map(|corner| parse(Point, corner, units)).collect::<Result<Vec<_>, _>>().map(Value::Array),
         // Lengths with feet and inches hold spaces: a comma parts x from y.
@@ -1008,19 +1267,22 @@ pub(crate) struct TypeValue {
 
 /// The palette's groups for what a family's parameter holds, by the names [`BimApp::component_parameters`] lists.
 /// A parameter's value as the palette and Type Properties show it.
-fn value_shown(kind: ParameterKind, v: &Value, units: Units) -> String {
+fn value_shown(kind: ParameterKind, v: &Value, f: &Format) -> String {
     match kind {
         ParameterKind::YesNo if v.as_bool().unwrap_or(false) => t("Yes").to_string(),
         ParameterKind::YesNo => t("No").to_string(),
-        ParameterKind::Length => shown(Length, v, units),
-        ParameterKind::Area => area_shown(v, units),
-        ParameterKind::Text => shown(Text, v, units),
-        _ => shown(Number, v, units),
+        ParameterKind::Length => shown(Length, v, f),
+        ParameterKind::Area => area_shown(v, f),
+        ParameterKind::Volume => shown(VolumeShown, v, f),
+        ParameterKind::Angle => shown(Angle, v, f),
+        ParameterKind::Text => shown(Text, v, f),
+        ParameterKind::Number | ParameterKind::Integer => shown(Number, v, f),
     }
 }
 
 /// The project's type parameters for types of `category`, with what the type `guid` holds of each.
-fn type_values(m: &Model, category: &str, guid: Option<Guid>) -> Vec<TypeValue> {
+fn type_values(m: &Model, category: &str, guid: Option<Guid>, show_units: bool) -> Vec<TypeValue> {
+    let f = Format::of(m, show_units);
     m.parameters
         .iter()
         .filter(|(_, p)| p.scope == Scope::Type && p.categories.iter().any(|c| c == category))
@@ -1028,10 +1290,8 @@ fn type_values(m: &Model, category: &str, guid: Option<Guid>) -> Vec<TypeValue> 
             let v = guid.and_then(|g| p.type_values.get(&g)).cloned().unwrap_or(Value::Null);
             let typed = match p.kind {
                 ParameterKind::YesNo => (if v.as_bool().unwrap_or(false) { "1" } else { "0" }).to_string(),
-                ParameterKind::Area => area_shown(&v, m.units),
-                ParameterKind::Length => shown(Length, &v, m.units),
-                ParameterKind::Text => shown(Text, &v, m.units),
-                _ => shown(Number, &v, m.units),
+                ParameterKind::Text => shown(Text, &v, &f),
+                _ => value_shown(p.kind, &v, &f),
             };
             TypeValue {
                 name: n.clone(),
@@ -1046,7 +1306,7 @@ fn type_values(m: &Model, category: &str, guid: Option<Guid>) -> Vec<TypeValue> 
 }
 
 /// The rows of a Type Properties table for `values`, each under its group, or Project Parameters.
-fn type_value_rows(tb: &mut typeprops::Table, values: &mut [TypeValue], units: Units) {
+fn type_value_rows(tb: &mut typeprops::Table, values: &mut [TypeValue], f: &Format) {
     let mut groups: Vec<String> = values.iter().map(|v| v.group.clone()).collect();
     groups.sort();
     groups.dedup();
@@ -1061,7 +1321,10 @@ fn type_value_rows(tb: &mut typeprops::Table, values: &mut [TypeValue], units: U
                     tb.check(&v.name, &mut on);
                     v.typed = (if on { "1" } else { "0" }).to_string();
                 }
-                ParameterKind::Length => tb.text(&v.name, &mut v.typed, units.name()),
+                ParameterKind::Length => tb.text(&v.name, &mut v.typed, if f.show_units { f.units.name() } else { "" }),
+                ParameterKind::Area => tb.text(&v.name, &mut v.typed, if f.show_units { f.display.area(f.units, 0.0).1 } else { "" }),
+                ParameterKind::Volume => tb.text(&v.name, &mut v.typed, if f.show_units { f.display.volume(f.units, 0.0).1 } else { "" }),
+                ParameterKind::Angle => tb.text(&v.name, &mut v.typed, if f.show_units { "°" } else { "" }),
                 _ => tb.text(&v.name, &mut v.typed, ""),
             }
         }
@@ -1069,13 +1332,16 @@ fn type_value_rows(tb: &mut typeprops::Table, values: &mut [TypeValue], units: U
 }
 
 /// A value of a parameter of `kind` as a field shows it to be typed over.
-pub(crate) fn parameter_text(kind: ParameterKind, v: &Value, units: Units) -> String {
+pub(crate) fn parameter_text(kind: ParameterKind, v: &Value, m: &Model, show_units: bool) -> String {
+    let f = Format::of(m, show_units);
     match kind {
         ParameterKind::YesNo => (if v.as_bool().unwrap_or(false) { "1" } else { "0" }).to_string(),
-        ParameterKind::Area => area_shown(v, units),
-        ParameterKind::Length => shown(Length, v, units),
-        ParameterKind::Text => shown(Text, v, units),
-        _ => shown(Number, v, units),
+        ParameterKind::Area => area_shown(v, &f),
+        ParameterKind::Volume => shown(VolumeShown, v, &f),
+        ParameterKind::Angle => shown(Angle, v, &f),
+        ParameterKind::Length => shown(Length, v, &f),
+        ParameterKind::Text => shown(Text, v, &f),
+        ParameterKind::Number | ParameterKind::Integer => shown(Number, v, &f),
     }
 }
 
@@ -1085,9 +1351,11 @@ pub(crate) fn parameter_value(kind: ParameterKind, typed: &str, units: Units) ->
         _ if typed.trim().is_empty() => Ok(Value::Null),
         ParameterKind::YesNo => Ok(json!(typed == "1")),
         ParameterKind::Area => area_parsed(typed, units),
+        ParameterKind::Volume => volume_parsed(typed, units),
+        ParameterKind::Angle => angle_parsed(typed),
         ParameterKind::Length => parse(Length, typed, units),
         ParameterKind::Text => Ok(json!(typed)),
-        _ => parse(Number, typed, units),
+        ParameterKind::Number | ParameterKind::Integer => parse(Number, typed, units),
     }
 }
 
@@ -1099,6 +1367,8 @@ fn type_value_changes(values: &[TypeValue], units: Units) -> Result<serde_json::
             _ if v.typed.trim().is_empty() => Value::Null,
             ParameterKind::YesNo => json!(v.typed == "1"),
             ParameterKind::Area => area_parsed(&v.typed, units).map_err(|e| format!("{}: {e}", v.name))?,
+            ParameterKind::Volume => volume_parsed(&v.typed, units).map_err(|e| format!("{}: {e}", v.name))?,
+            ParameterKind::Angle => angle_parsed(&v.typed).map_err(|e| format!("{}: {e}", v.name))?,
             ParameterKind::Length => parse(Length, &v.typed, units).map_err(|e| format!("{}: {e}", v.name))?,
             ParameterKind::Text => json!(v.typed),
             _ => parse(Number, &v.typed, units).map_err(|e| format!("{}: {e}", v.name))?,
@@ -1135,6 +1405,8 @@ impl BimApp {
 pub(crate) struct TypeDialog {
     category: &'static str,
     name: String,
+    /// Whether the user's setting shows units in values when this dialog was opened.
+    show_units: bool,
     /// The elements that were on the type when the dialog opened; OK puts them on the type shown.
     elements: Vec<Id>,
     fields: Vec<TypeField>,
@@ -1452,8 +1724,8 @@ const ROOM_FINISHES: &str = msg!("Floor and Ceiling");
 const GRAPHICS: &str = msg!("Graphics");
 
 impl TypeDialog {
-    pub(crate) fn new(m: &Model, category: &'static str, name: String, elements: Vec<Id>) -> TypeDialog {
-        let (fields, layers) = (TypeDialog::fields(m, category, &name), TypeDialog::layers(m, category, &name));
+    pub(crate) fn new(m: &Model, category: &'static str, name: String, elements: Vec<Id>, show_units: bool) -> TypeDialog {
+        let (fields, layers) = (TypeDialog::fields(m, category, &name, show_units), TypeDialog::layers(m, category, &name));
         let auto_rotation = (category == "cornermullion").then(|| m.types.corner_mullion.get(&name).is_some_and(|t| t.auto_rotation));
         let shape = bimcraft_core::model::RUN_CATEGORIES.contains(&category).then(|| {
             let t = m.types.runs.get(category).and_then(|t| t.get(&name));
@@ -1469,11 +1741,12 @@ impl TypeDialog {
             (category == "wall").then(|| m.types.wall.get(&name)).flatten().and_then(|t| t.curtain.clone().map(|l| (l, t.thickness)));
         let fields = if curtain.is_some() { Vec::new() } else { fields };
         let name_of = name.clone();
-        let project = type_values(m, category, m.library.guid(&LibKind::Type(category.to_string()), &name));
+        let project = type_values(m, category, m.library.guid(&LibKind::Type(category.to_string()), &name), show_units);
         let stair = (category == "stair").then(|| crate::stairtype::StairDraft::new(m, &name_of));
         let ramp = (category == "ramp").then(|| crate::stairtype::RampDraft::new(m, &name_of));
         TypeDialog {
             category,
+            show_units,
             auto_rotation,
             name,
             elements,
@@ -1502,7 +1775,8 @@ impl TypeDialog {
 
     /// The dialog showing type `name` as the model has it now.
     fn show(&mut self, m: &Model, name: String) {
-        *self = TypeDialog::new(m, self.category, name, std::mem::take(&mut self.elements));
+        let show_units = self.show_units;
+        *self = TypeDialog::new(m, self.category, name, std::mem::take(&mut self.elements), show_units);
     }
 
     /// The type shown as the model has it now, what Edit Pattern changed among it.
@@ -1518,7 +1792,7 @@ impl TypeDialog {
     }
 
     /// A type's sizes, as typed: lengths in the project's units.
-    fn fields(m: &Model, category: &str, name: &str) -> Vec<TypeField> {
+    fn fields(m: &Model, category: &str, name: &str, show_units: bool) -> Vec<TypeField> {
         let types = serde_json::to_value(&m.types).unwrap_or_default();
         type_rows(category)
             .iter()
@@ -1531,9 +1805,18 @@ impl TypeDialog {
                 };
                 // A rotation is an angle, in degrees whatever the project's units, and none is 0.
                 if *k == "rotation" {
-                    return (*g, *k, *l, format!("{}°", value.as_f64().unwrap_or(0.0)));
+                    let angle = value.as_f64().unwrap_or(0.0);
+                    return (*g, *k, *l, if show_units { format!("{angle}°") } else { format!("{angle}") });
                 }
-                (*g, *k, *l, value.as_f64().map_or_else(String::new, |x| m.field(x)))
+                (
+                    *g,
+                    *k,
+                    *l,
+                    value.as_f64().map_or_else(String::new, |x| {
+                        let text = m.field(x);
+                        if show_units && !has_length_unit(&text) { format!("{text} {}", m.units.name()) } else { text }
+                    }),
+                )
             })
             .collect()
     }
@@ -1827,8 +2110,10 @@ impl BimApp {
                 self.opening_pair(&self.session.model, self.subject(), category)
             };
             match pair {
-                Some((family, ty)) => self.family_dialog = Some(FamilyDialog::new(&self.session.model, family, ty, elements)),
-                None => self.type_dialog = Some(TypeDialog::new(&self.session.model, category, name, elements)),
+                Some((family, ty)) => {
+                    self.family_dialog = Some(FamilyDialog::new(&self.session.model, family, ty, elements, self.show_units))
+                }
+                None => self.type_dialog = Some(TypeDialog::new(&self.session.model, category, name, elements, self.show_units)),
             }
         }
     }
@@ -2574,6 +2859,7 @@ impl BimApp {
         // A framing type whose Type Properties were asked for.
         let mut edit_framing = None;
         let units = model.units;
+        let f = Format::of(model, self.show_units);
         // A note on a sheet sits in paper mm.
         let paper = matches!(model.elements.get(id), Some(Element::Text(n)) if model.sheet(n.view).is_some());
         // A floor or a ceiling that follows a room: its level and offset are the room's, shown and not typed.
@@ -2647,10 +2933,10 @@ impl BimApp {
                         }
                         // An angle's degrees; else lengths.
                         Values if v["kind"] == "angular" => {
-                            ui.label(RichText::new(format!("{}°", text(val))).color(pal().muted));
+                            ui.label(RichText::new(shown(Angle, val, &f)).color(pal().muted));
                         }
-                        LengthShown | AreaShown | Mm2Shown | VolumeShown | MetresShown | Values => {
-                            ui.label(RichText::new(shown(kind, val, units)).color(pal().muted));
+                        LengthShown | AreaShown | Mm2Shown | VolumeShown | Mm3Shown | Weight | Ratio | MetresShown | Values => {
+                            ui.label(RichText::new(shown(kind, val, &f)).color(pal().muted));
                         }
                         LevelName => {
                             ui.label(RichText::new(level_name(val)).color(pal().muted));
@@ -2799,14 +3085,16 @@ impl BimApp {
                                 select = Some(other);
                             }
                         }
-                        Text | Number | Angle | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) | NumberOr(_) => {
+                        Text | Number | Angle | Slope | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_)
+                        | NumberOr(_) => {
                             // Blank across a selection may be values that differ, not nothing.
                             let hint = match kind {
                                 Limit(hint) | NumberOr(hint) if ids.len() == 1 => t(hint),
                                 _ => "",
                             };
-                            if let Some(typed) = self.field(ui, id, key, shown(kind, val, units), name.id, hint) {
-                                change = Some((key, parse(kind, &typed, units)));
+                            if let Some(typed) = self.field(ui, id, key, shown(kind, val, &f), name.id, hint) {
+                                let value = if kind == Slope { parse_slope(&typed, &f) } else { parse(kind, &typed, units) };
+                                change = Some((key, value));
                             }
                         }
                     }
@@ -2824,7 +3112,7 @@ impl BimApp {
             self.open_view_ranges(ids);
         }
         if let Some(name) = edit_framing {
-            self.type_dialog = Some(TypeDialog::new(model, "framing", name, ids.to_vec()));
+            self.type_dialog = Some(TypeDialog::new(model, "framing", name, ids.to_vec(), self.show_units));
         }
         // A view's crop: on to all it shows, or off.
         if let (Some(on), &[view]) = (crop, ids) {
@@ -3291,6 +3579,7 @@ impl BimApp {
             if values.iter().all(|x| &x[k] == v) { v.clone() } else { Value::Null }
         };
         let (units, materials): (Units, Vec<String>) = (model.units, model.materials.keys().cloned().collect());
+        let fmt = Format::of(model, self.show_units);
         let mut change: Option<(String, Result<Value, String>)> = None;
         // Revit's groups, then the family's own headings.
         for g in Under::listed(f.parameters.iter().filter(|p| p.instance).map(|p| p.group())) {
@@ -3315,11 +3604,17 @@ impl BimApp {
                     for p in params {
                         let val = shared(&p.name);
                         let name = ui.label(&p.name);
-                        let kind = if p.kind == Holds::Length { Length } else { Number };
+                        let kind = match p.kind {
+                            Holds::Length => Length,
+                            Holds::Area => Mm2Shown,
+                            Holds::Volume => Mm3Shown,
+                            Holds::Angle => Angle,
+                            _ => Number,
+                        };
                         match p.kind {
                             // What a formula works out, or a reporting parameter reads: shown, not typed.
                             _ if p.formula.is_some() || p.reporting => {
-                                ui.label(RichText::new(shown(kind, &val, units)).color(pal().muted));
+                                ui.label(RichText::new(shown(kind, &val, &fmt)).color(pal().muted));
                             }
                             Holds::FamilyType => {
                                 ui.label(RichText::new(val.as_str().unwrap_or_default()).color(pal().muted));
@@ -3344,7 +3639,7 @@ impl BimApp {
                                 }
                             }
                             Holds::Length | Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
-                                if let Some(typed) = self.field(ui, id, &p.name, shown(kind, &val, units), name.id, "") {
+                                if let Some(typed) = self.field(ui, id, &p.name, shown(kind, &val, &fmt), name.id, "") {
                                     change = Some((p.name.clone(), parse(kind, &typed, units)));
                                 }
                             }
@@ -3576,6 +3871,7 @@ impl BimApp {
             }
         }
         let units = model.units;
+        let f = Format::of(model, self.show_units);
         for (group, params) in groups {
             let key: &'static str = if group == "Project Parameters" { "Project Parameters" } else { self.collapse_key(group) };
             let open = !self.collapsed.contains(key);
@@ -3595,13 +3891,13 @@ impl BimApp {
                     let label = if p.description.is_empty() { label } else { label.on_hover_text(&p.description) };
                     if p.read_only {
                         // Shown, and changed only by a command.
-                        ui.add_enabled(false, egui::Label::new(value_shown(p.kind, &val, units)));
+                        ui.add_enabled(false, egui::Label::new(value_shown(p.kind, &val, &f)));
                         ui.end_row();
                         continue;
                     }
                     if theirs {
                         // Its group type's: changed in Edit Group.
-                        ui.add_enabled(false, egui::Label::new(value_shown(p.kind, &val, units)))
+                        ui.add_enabled(false, egui::Label::new(value_shown(p.kind, &val, &f)))
                             .on_disabled_hover_text(t("Aligned per group type: change it in Edit Group."));
                         ui.end_row();
                         continue;
@@ -3618,7 +3914,7 @@ impl BimApp {
                             continue;
                         }
                         ParameterKind::Area => {
-                            if let Some(typed) = self.field(ui, id, &format!("params.{name}"), area_shown(&val, units), label.id, "") {
+                            if let Some(typed) = self.field(ui, id, &format!("params.{name}"), area_shown(&val, &f), label.id, "") {
                                 let v = if typed.trim().is_empty() { Ok(Value::Null) } else { area_parsed(&typed, units) };
                                 change = Some((name.to_string(), v));
                             }
@@ -3626,10 +3922,12 @@ impl BimApp {
                             continue;
                         }
                         ParameterKind::Length => Length,
-                        ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => Number,
+                        ParameterKind::Volume => VolumeShown,
+                        ParameterKind::Angle => Angle,
+                        ParameterKind::Number | ParameterKind::Integer => Number,
                         ParameterKind::Text => Text,
                     };
-                    if let Some(typed) = self.field(ui, id, &format!("params.{name}"), shown(field, &val, units), label.id, "") {
+                    if let Some(typed) = self.field(ui, id, &format!("params.{name}"), shown(field, &val, &f), label.id, "") {
                         let v = if typed.trim().is_empty() { Ok(Value::Null) } else { parse(field, &typed, units) };
                         change = Some((name.to_string(), v));
                     }
@@ -3901,7 +4199,8 @@ impl BimApp {
                     if let Some(ramp) = &mut d.ramp {
                         ramp.show(tb, &model);
                     }
-                    type_value_rows(tb, &mut d.project, model.units);
+                    let f = Format::of(&model, d.show_units);
+                    type_value_rows(tb, &mut d.project, &f);
                 });
                 typeprops::error(ui, d.error.as_deref());
             });
@@ -4093,6 +4392,8 @@ fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials
 pub(crate) struct FamilyDialog {
     family: String,
     name: String,
+    /// Whether the user's setting shows units in values when this dialog was opened.
+    show_units: bool,
     /// The components that were on the type when the dialog opened; OK puts them on the type shown.
     elements: Vec<Id>,
     /// Each type parameter: its name, what it holds, as typed, and whether a formula works it out.
@@ -4106,14 +4407,16 @@ pub(crate) struct FamilyDialog {
 }
 
 impl FamilyDialog {
-    pub(crate) fn new(m: &Model, family: String, name: String, elements: Vec<Id>) -> FamilyDialog {
+    pub(crate) fn new(m: &Model, family: String, name: String, elements: Vec<Id>, show_units: bool) -> FamilyDialog {
         let fields = m
             .families
             .get(&family)
             .map(|f| {
                 let values = f.values(&name, &Default::default()).unwrap_or_default();
                 let typed = |p: &bimcraft_core::family::Parameter| match values.get(&p.name) {
-                    Some(Val::Number(x)) if p.kind == Holds::Length => m.field(*x),
+                    Some(Val::Number(x)) if matches!(p.kind, Holds::Length | Holds::Area | Holds::Volume | Holds::Angle) => {
+                        family_shown(p.kind, &plain(*x), m.units, show_units, &m.display)
+                    }
                     Some(Val::Number(x)) if p.kind == Holds::YesNo => (if *x != 0.0 { "1" } else { "0" }).to_string(),
                     Some(Val::Number(x)) => format!("{}", (x * 1e6).round() / 1e6),
                     Some(Val::Text(t)) => t.clone(),
@@ -4130,13 +4433,14 @@ impl FamilyDialog {
         let category = m.families.get(&family).map_or("component", |f| bimcraft_core::parameters::family_category(f.category));
         let guid = m.library.guid(&LibKind::FamilyType, &format!("{family}: {name}"));
         let own = |n: &str| m.families.get(&family).is_some_and(|f| f.parameters.iter().any(|q| q.name == n));
-        let project = type_values(m, category, guid).into_iter().filter(|v| !own(&v.name)).collect();
-        FamilyDialog { family, name, elements, fields, naming: Naming::None, error: None, project }
+        let project = type_values(m, category, guid, show_units).into_iter().filter(|v| !own(&v.name)).collect();
+        FamilyDialog { family, name, show_units, elements, fields, naming: Naming::None, error: None, project }
     }
 
     /// The dialog showing type `name` as the model has it now.
     fn show(&mut self, m: &Model, name: String) {
-        *self = FamilyDialog::new(m, self.family.clone(), name, std::mem::take(&mut self.elements));
+        let show_units = self.show_units;
+        *self = FamilyDialog::new(m, self.family.clone(), name, std::mem::take(&mut self.elements), show_units);
     }
 
     /// The `family` command's parameters setting type `name` to the values as typed, or why they
@@ -4145,8 +4449,10 @@ impl FamilyDialog {
         let mut set = serde_json::Map::new();
         for (key, kind, typed, ..) in self.fields.iter().filter(|f| !f.3 && f.1 != Holds::FamilyType) {
             let v = match kind {
-                Holds::Length => json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[key, typed]))?),
-                Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
+                Holds::Length | Holds::Area | Holds::Volume | Holds::Angle => {
+                    json!(number(&family_typed(*kind, typed, units)?).ok_or_else(|| tf("{}: `{}` is not a number", &[key, typed]))?)
+                }
+                Holds::Number | Holds::Integer => {
                     json!(number(typed).ok_or_else(|| tf("{}: `{}` is not a number", &[key, typed]))?)
                 }
                 Holds::YesNo => json!(typed == "1"),
@@ -4185,16 +4491,17 @@ impl BimApp {
                                     *typed = (if on { "1" } else { "0" }).to_string();
                                 }
                                 Holds::Material => tb.pick(key, typed, &materials),
-                                Holds::Length => tb.text(key, typed, model.units.name()),
-                                Holds::Angle => tb.text(key, typed, "°"),
-                                Holds::Area => tb.text(key, typed, "mm²"),
-                                Holds::Volume => tb.text(key, typed, "mm³"),
+                                Holds::Length => tb.text(key, typed, if d.show_units { model.units.name() } else { "" }),
+                                Holds::Angle => tb.text(key, typed, if d.show_units { "°" } else { "" }),
+                                Holds::Area => tb.text(key, typed, if d.show_units { model.units.area(0.0).1 } else { "" }),
+                                Holds::Volume => tb.text(key, typed, if d.show_units { model.units.volume(0.0).1 } else { "" }),
                                 Holds::FamilyType => tb.shown(key, typed),
                                 Holds::Number | Holds::Integer | Holds::Text | Holds::Url => tb.text(key, typed, ""),
                             }
                         }
                     }
-                    type_value_rows(tb, &mut d.project, model.units);
+                    let fmt = Format::of(&model, d.show_units);
+                    type_value_rows(tb, &mut d.project, &fmt);
                 });
                 typeprops::error(ui, d.error.as_deref());
             });

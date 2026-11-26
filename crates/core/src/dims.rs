@@ -15,6 +15,75 @@ use crate::pen::Pen;
 use crate::text::TextType;
 use crate::units::Units;
 
+/// How a project writes the sign of a positive value: `+` before it, or nothing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PositiveSign {
+    #[default]
+    Always,
+    Never,
+}
+
+impl PositiveSign {
+    pub const ALL: [PositiveSign; 2] = [PositiveSign::Always, PositiveSign::Never];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            PositiveSign::Always => "always",
+            PositiveSign::Never => "never",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<PositiveSign> {
+        PositiveSign::ALL.into_iter().find(|s| s.name().eq_ignore_ascii_case(name.trim()))
+    }
+}
+
+/// How a project writes zero: `±0`, or plain `0`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ZeroSign {
+    #[default]
+    Signed,
+    Plain,
+}
+
+impl ZeroSign {
+    pub const ALL: [ZeroSign; 2] = [ZeroSign::Signed, ZeroSign::Plain];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            ZeroSign::Signed => "signed",
+            ZeroSign::Plain => "plain",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<ZeroSign> {
+        ZeroSign::ALL.into_iter().find(|s| s.name().eq_ignore_ascii_case(name.trim()))
+    }
+}
+
+/// The sign a project writes throughout its drawings and fields; none, each kind of value keeps its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Signs {
+    pub positive: PositiveSign,
+    pub zero: ZeroSign,
+}
+
+impl Default for Signs {
+    fn default() -> Signs {
+        Signs { positive: PositiveSign::Always, zero: ZeroSign::Signed }
+    }
+}
+
+impl Signs {
+    /// `always`/`never` and `signed`/`plain`, as a command names them.
+    pub fn from_names(positive: &str, zero: &str) -> Option<Signs> {
+        Some(Signs { positive: PositiveSign::from_name(positive)?, zero: ZeroSign::from_name(zero)? })
+    }
+}
+
 /// The type aligned, linear, angular and arc length dimensions start in.
 pub const DIAGONAL: &str = "Diagonal - 2.5mm Arial";
 /// The type radial and diameter dimensions start in.
@@ -305,6 +374,32 @@ pub fn rounded(units: Units, decimals: Option<u8>, mm: f64) -> String {
     format!("{:.*}{mark}", usize::from(places), (x * k).round() / k + 0.0)
 }
 
+/// A length in `units` to `decimals`, signed as `signs` says. Rounding comes first: -0.0004 m at three places is
+/// `±0.000`, not `-0.000`.
+pub fn signed(units: Units, decimals: Option<u8>, signs: Signs, mm: f64) -> String {
+    let zero = rounded(units, decimals, 0.0);
+    signed_text(rounded(units, decimals, mm), &zero, signs)
+}
+
+/// `shown` with the sign `signs` asks for; `zero` is how zero reads in the same units and precision, so a value that
+/// rounds to nothing is the zero sign. A negative value keeps its `-`.
+pub fn signed_text(shown: String, zero: &str, signs: Signs) -> String {
+    let magnitude = shown.strip_prefix('-').unwrap_or(&shown);
+    if magnitude == zero {
+        match signs.zero {
+            ZeroSign::Signed => format!("±{magnitude}"),
+            ZeroSign::Plain => magnitude.to_string(),
+        }
+    } else if shown.starts_with('-') {
+        shown
+    } else {
+        match signs.positive {
+            PositiveSign::Always => format!("+{shown}"),
+            PositiveSign::Never => shown,
+        }
+    }
+}
+
 /// An error unless `t`, a dimension's or a type's `what`, is up to [`MAX_DIM_TEXT`] characters on one line.
 pub fn dim_text(who: &str, what: &str, t: &str) -> Result<(), String> {
     if t.chars().count() > MAX_DIM_TEXT || t.chars().any(char::is_control) {
@@ -402,4 +497,28 @@ pub fn arc_point(m: &Model, arc: &Reference, id: impl Key, p: P2, near: f64) -> 
     let (r, d) = m.endpoint_at(id, p)?;
     let q = m.reference_point(&r).ok()?;
     (d <= near && (q.dist(c) - radius).abs() <= crate::model::TOL).then_some(r)
+}
+
+#[cfg(test)]
+mod signs_tests {
+    use super::*;
+    use crate::units::Units;
+
+    #[test]
+    fn a_project_sign_writes_positives_and_zero_as_its_two_lists_say() {
+        let m = Units::Metres;
+        let signs = |positive, zero| Signs { positive, zero };
+        assert_eq!(signed(m, Some(3), signs(PositiveSign::Always, ZeroSign::Signed), 3600.0), "+3.600");
+        assert_eq!(signed(m, Some(3), signs(PositiveSign::Never, ZeroSign::Signed), 3600.0), "3.600");
+        assert_eq!(signed(m, Some(3), signs(PositiveSign::Always, ZeroSign::Plain), 0.0), "0.000");
+        assert_eq!(signed(m, Some(3), signs(PositiveSign::Never, ZeroSign::Signed), 0.0), "±0.000");
+        assert_eq!(signed(m, Some(3), signs(PositiveSign::Never, ZeroSign::Plain), -450.0), "-0.450");
+    }
+
+    #[test]
+    fn rounding_comes_before_the_sign_so_almost_nothing_is_zero() {
+        let signs = Signs::default();
+        assert_eq!(signed(Units::Metres, Some(3), signs, -0.0004), "±0.000");
+        assert_eq!(signed(Units::Metres, Some(3), signs, -0.0005), "-0.001");
+    }
 }

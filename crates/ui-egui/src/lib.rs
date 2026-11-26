@@ -86,6 +86,7 @@ mod plugins;
 mod popup;
 mod presets;
 pub mod project_templates;
+mod project_units;
 mod projectinfo;
 mod properties;
 mod purge;
@@ -760,6 +761,9 @@ pub struct BimApp {
     /// never in a drawing that is printed or exported.
     show_origin: bool,
     show_view_name: bool,
+    /// Show units in values (File > Settings > Units): a dimensional value reads `12.34 m²` rather than `12.34`. The user's,
+    /// kept in the settings file and never in the project.
+    pub(crate) show_units: bool,
     ribbon_bottom: Pos2,
     /// The Compact layout (File > Settings): the bars and palettes flush to the edges, not floating cards.
     compact: bool,
@@ -1086,7 +1090,6 @@ pub struct BimApp {
     pub shortcut_presets: Vec<shortcuts::ShortcutPreset>,
     /// The preset the current set came from: `builtin:<code>` or a user's name.
     pub active_shortcut_preset: Option<String>,
-    open_units: bool,
     /// Where the Options Bar was drawn last frame, for a view's navigation bar to keep clear of it (nothing when it isn't there).
     options_rect: Rect,
     canvas: canvas::Canvas,
@@ -1163,6 +1166,7 @@ pub struct BimApp {
     /// Manage > Annotation Settings > Halftone/Underlay, while open.
     halftone_dialog: Option<halftone::HalftoneDialog>,
     project_info_dialog: Option<projectinfo::ProjectInfoDialog>,
+    project_units: Option<project_units::ProjectUnitsDialog>,
     /// Structure > Reinforce, while open, and what was typed in it for each kind of host.
     reinforce_dialog: Option<reinforce::ReinforceDialog>,
     steel_dialog: Option<steel::SteelDialog>,
@@ -1922,6 +1926,7 @@ impl BimApp {
             drag_on_selection: false,
             show_origin: true,
             show_view_name: true,
+            show_units: true,
             ribbon_bottom: Pos2::ZERO,
             settings_page: None,
             find: None,
@@ -2100,7 +2105,6 @@ impl BimApp {
             show_snaps: false,
             snap_once: None,
             measured: None,
-            open_units: false,
             options_rect: Rect::NOTHING,
             canvas: canvas::Canvas::default(),
             bench: None,
@@ -2150,6 +2154,7 @@ impl BimApp {
             view_range_dialog: None,
             halftone_dialog: None,
             project_info_dialog: None,
+            project_units: None,
             reinforce_dialog: None,
             steel_dialog: None,
             detail_dialog: None,
@@ -2906,6 +2911,7 @@ impl BimApp {
             || self.view_range_dialog.is_some()
             || self.halftone_dialog.is_some()
             || self.project_info_dialog.is_some()
+            || self.project_units.is_some()
             || self.reinforce_dialog.is_some()
             || self.steel_dialog.is_some()
             || self.detail_dialog.is_some()
@@ -4613,6 +4619,7 @@ impl BimApp {
         fresh.cut_fills_3d = self.cut_fills_3d;
         (fresh.select_by_face, fresh.drag_on_selection) = (self.select_by_face, self.drag_on_selection);
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
+        fresh.show_units = self.show_units;
         fresh.shortcuts = std::mem::take(&mut self.shortcuts);
         crate::shortcuts::publish(&fresh.shortcuts);
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
@@ -6017,29 +6024,12 @@ impl BimApp {
                 if stacked_button(ui, Icon::Snaps, "Snaps", self.show_snaps, tip).clicked() {
                     self.show_snaps = true;
                 }
-                let now = self.session.model.units;
-                let tip = tf("Project Units (UN): how lengths show and read; now {}", &[&t(now.label()).to_lowercase()]);
-                let r = stacked_button(ui, Icon::Units, msg!("Project Units"), false, &tip);
-                let asked = self.open_units;
-                let places = self.session.model.decimals_shown();
-                let opened = ribbon::choices(ui, &r, asked, |ui| {
-                    for u in Units::ALL {
-                        if ui.selectable_label(u == now, t(u.label())).clicked() {
-                            self.run("units", json!({"length": u.name()}));
-                        }
-                    }
-                    // The places lengths show, each as it writes a metre; inches and feet-inches show sixteenths.
-                    if let Some(range) = now.decimals() {
-                        ui.separator();
-                        ui.weak(t("Decimal places"));
-                        for d in range {
-                            if ui.selectable_label(Some(d) == places, now.with_unit_to(1000.0, Some(d))).clicked() {
-                                self.run("units", json!({"decimals": d}));
-                            }
-                        }
-                    }
-                });
-                self.open_units &= !opened;
+                let tip = msg!(
+                    "Project Units (UN): the units, rounding and places each kind of value is shown in: lengths, areas, volumes, angles, slopes, mass density, time and speed"
+                );
+                if stacked_button(ui, Icon::Units, msg!("Project Units"), self.project_units.is_some(), tip).clicked() {
+                    self.open_project_units();
+                }
             });
             let tip = msg!("Keyboard Shortcuts (KS): customize, edit, and load shortcut keys");
             if big_button(ui, Icon::Keyboard, "Shortcuts", self.show_shortcuts, tip).clicked() {
@@ -7759,9 +7749,21 @@ impl BimApp {
                     ui.label(RichText::new(tf("No rows yet: the {} is empty.", &[&name.to_lowercase()])).color(pal().muted));
                 }
                 Ok(table) => {
-                    let (units, decimals) = (self.session.model.units, self.session.model.decimals);
+                    let (units, decimals, signs) = (self.session.model.units, self.session.model.decimals, self.session.model.signs);
+                    let show_units = self.show_units;
                     let said = |c: &schedule::Column, v: &Value| {
-                        let text = schedule::shown_to(units, decimals, c.kind, v);
+                        let text = schedule::shown_style(
+                            schedule::Show {
+                                units,
+                                display: &self.session.model.display,
+                                decimals,
+                                show_units,
+                                signs,
+                                rounding: self.session.model.rounding,
+                            },
+                            c.kind,
+                            v,
+                        );
                         if v.is_boolean() { t(&text).to_string() } else { text }
                     };
                     // A row is highlighted while what it lists is selected; a click on it picks that.
@@ -7777,7 +7779,10 @@ impl BimApp {
                         Grid::new(("schedule", &sc.name)).with_row_color(row_color).spacing(vec2(28.0, 6.0)).show(ui, |ui| {
                             for c in &table.columns {
                                 let heading = schedule::Column { heading: t(&c.heading).to_string(), kind: c.kind };
-                                ui.label(RichText::new(schedule::heading(units, &heading)).strong());
+                                ui.label(
+                                    RichText::new(schedule::heading_shown(units, &self.session.model.display, show_units, &heading))
+                                        .strong(),
+                                );
                             }
                             ui.end_row();
                             for ((row, ids), &selected) in table.rows.iter().zip(&table.ids).zip(&selected) {
@@ -7903,6 +7908,7 @@ impl BimApp {
             self.preset_editor = None;
         }
         self.settings_window(ctx);
+        self.project_units_window(ctx);
         self.preset_editor_window(ctx);
         self.new_project_window(ctx);
         self.plugins_window(ctx);

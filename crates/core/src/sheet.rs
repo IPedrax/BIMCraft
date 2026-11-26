@@ -443,7 +443,18 @@ fn table_of(m: &Model, view: Option<Id>, sc: &Schedule) -> Table {
     let kept = schedule::table_kept(m, view, sc).ok();
     let t = kept.as_deref().unwrap_or(&empty);
     let said = |c: &schedule::Column, v: &serde_json::Value| {
-        let s = schedule::shown_to(m.units, m.decimals, c.kind, v);
+        let s = schedule::shown_style(
+            schedule::Show {
+                units: m.units,
+                display: &m.display,
+                decimals: m.decimals,
+                show_units: true,
+                signs: m.signs,
+                rounding: m.rounding,
+            },
+            c.kind,
+            v,
+        );
         if v.is_boolean() { m.language.word(&s).to_string() } else { s }
     };
     let mut rows: Vec<Vec<String>> = t.rows.iter().map(|r| r.iter().zip(&t.columns).map(|(v, c)| said(c, v)).collect()).collect();
@@ -457,7 +468,14 @@ fn table_of(m: &Model, view: Option<Id>, sc: &Schedule) -> Table {
     let headings: Vec<String> = t
         .columns
         .iter()
-        .map(|c| schedule::heading(m.units, &schedule::Column { heading: m.language.word(&c.heading).to_string(), kind: c.kind }))
+        .map(|c| {
+            schedule::heading_shown(
+                m.units,
+                &m.display,
+                true,
+                &schedule::Column { heading: m.language.word(&c.heading).to_string(), kind: c.kind },
+            )
+        })
         .collect();
     let widths = (0..headings.len())
         .map(|i| {

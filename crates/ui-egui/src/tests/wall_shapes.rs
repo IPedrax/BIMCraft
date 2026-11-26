@@ -17,11 +17,11 @@ fn a_walls_angle_from_vertical_slants_it_from_properties() {
     let (id, _) = wall(&h);
     h.state_mut().selection = vec![id];
     h.run();
-    type_into(&mut h, "Angle From Vertical (°)", "12");
+    type_into(&mut h, "Angle From Vertical", "12");
     key(&mut h, Key::Enter);
     assert_eq!(wall(&h).1.slant, 12.0, "{}", h.state().status.text);
     // Past what a wall may lean, refused, and the wall as it was.
-    type_into(&mut h, "Angle From Vertical (°)", "75");
+    type_into(&mut h, "Angle From Vertical", "75");
     key(&mut h, Key::Enter);
     assert!(h.state().status.error, "{}", h.state().status.text);
     assert_eq!(wall(&h).1.slant, 12.0);

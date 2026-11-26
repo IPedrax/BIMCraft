@@ -34,7 +34,7 @@ fn framing_type(h: &Harness<BimApp>, name: &str) -> Value {
 }
 
 /// The Joist Direction row of a floor's Properties.
-const DIRECTION: &str = "Joist Direction (°)";
+const DIRECTION: &str = "Joist Direction";
 
 #[test]
 fn frame_and_remove_framing_act_on_the_selected_walls_and_floors_each_as_one_step() {
@@ -212,7 +212,7 @@ fn floor_framing_speaks_portuguese_and_spanish_and_leaves_no_english() {
             .collect()
     };
     for (l, framing, direction) in
-        [(Lang::Spanish, "Entramado", "Dirección de viguetas (°)"), (Lang::Portuguese, "Estrutura de madeira", "Direção das vigotas (°)")]
+        [(Lang::Spanish, "Entramado", "Dirección de viguetas"), (Lang::Portuguese, "Estrutura de madeira", "Direção das vigotas")]
     {
         let mut h = app(&with_type());
         h.state_mut().lang = l;

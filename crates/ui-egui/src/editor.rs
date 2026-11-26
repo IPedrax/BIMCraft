@@ -603,8 +603,6 @@ pub(crate) const PROJECT_NOTE_STYLES: &str =
     msg!("This changes the project's object styles now, not on Load into Project; the project's Undo takes it back.");
 pub(crate) const PROJECT_NOTE_MATERIALS: &str =
     msg!("This changes the project's materials now, not on Load into Project; the project's Undo takes it back.");
-pub(crate) const PROJECT_NOTE_UNITS: &str =
-    msg!("This changes the project's units now, not on Load into Project; the project's Undo takes it back.");
 
 impl DocTab {
     /// Its English name, which its panels' keys carry: `tab:family:<name>/<panel>` (`ТЗ-019`).
@@ -1074,7 +1072,15 @@ fn pick(ui: &mut Ui, label: String, current: &str, options: &[String]) -> Option
 
 /// What a formula works out, shown greyed as Revit's Family Types shows it and taking no typing: a tick, or the value as text;
 /// `label` names it for screen readers and tests.
-fn computed(ui: &mut Ui, label: String, kind: Holds, value: Option<&bimcraft_core::family::Val>, width: f32) {
+fn computed(
+    ui: &mut Ui,
+    label: String,
+    kind: Holds,
+    value: Option<&bimcraft_core::family::Val>,
+    width: f32,
+    f: &crate::properties::Format,
+) {
+    let (units, show_units, display) = (f.units, f.show_units, &f.display);
     use bimcraft_core::family::Val;
     if kind == Holds::YesNo {
         let mut on = matches!(value, Some(Val::Number(x)) if *x != 0.0);
@@ -1083,7 +1089,7 @@ fn computed(ui: &mut Ui, label: String, kind: Holds, value: Option<&bimcraft_cor
         return;
     }
     let mut text = match value {
-        Some(Val::Number(x)) => number_text(*x),
+        Some(Val::Number(x)) => crate::properties::family_shown(kind, &format!("{x}"), units, show_units, display),
         Some(Val::Text(t)) => t.clone(),
         None => "?".into(),
     };
