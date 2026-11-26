@@ -603,3 +603,118 @@ fn a_scan_read_ahead_on_another_session_is_placed_by_point_cloud_without_reading
     };
     assert!(e.contains("box.xyz"), "{e}");
 }
+
+/// A wall face as [`sheet`]'s, red, with an intensity that rises from 0 at its foot to 4000 at its head.
+fn bright_sheet() -> String {
+    let mut text = String::new();
+    for i in 0..=100 {
+        for k in 0..=100 {
+            let (x, z) = (f64::from(i) * 0.02, f64::from(k) * 0.02);
+            text += &format!("{x} 0 {z} {} 255 0 0\n", k * 40);
+        }
+    }
+    text
+}
+
+/// The colours of the pixels of a picture that pick element `id`.
+fn colours_of(img: &Image, id: u64) -> Vec<Rgb> {
+    (0..img.height)
+        .flat_map(|y| (0..img.width).map(move |x| (f64::from(x) + 0.5, f64::from(y) + 0.5)))
+        .filter(|&(x, y)| img.pick(x, y) == Some(id))
+        .map(|(x, y)| img.color(x, y))
+        .collect()
+}
+
+/// Each point the card draws: its height in the model and its colour.
+fn dots(s: &Session) -> Vec<(f64, Rgb)> {
+    let mesh = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap();
+    mesh.dots.iter().map(|d| (d.at[2], Rgb(d.color as u8, (d.color >> 8) as u8, (d.color >> 16) as u8))).collect()
+}
+
+#[test]
+fn a_view_colours_a_scan_by_its_height_from_blue_at_its_foot_to_red_at_its_head() {
+    let mut s = Session::new();
+    let id =
+        run(&mut s, "point_cloud", json!({"path": scan("elevation", "sheet.xyz", &sheet(Some([255, 255, 255])))}))["id"].as_u64().unwrap();
+    run(&mut s, "graphics", json!({"view": "{3D}", "categories": {"pointcloud": {"scan": {"by": "elevation"}}}}));
+    // Each point in the ramp's colour for its height, from the scan's foot to its head.
+    let all = dots(&s);
+    let (foot, head) = all.iter().fold((f64::MAX, f64::MIN), |(lo, hi), d| (lo.min(d.0), hi.max(d.0)));
+    assert!((head - foot - 2000.0).abs() < 1.0, "{foot} {head}");
+    for &(z, c) in &all {
+        assert_eq!(c, crate::graphics::ramp((z - foot) / (head - foot)), "at {z}");
+    }
+    let at = |z: f64| all.iter().find(|d| (d.0 - z).abs() < 1.0).map(|d| d.1);
+    assert_eq!((at(foot), at(foot + 1000.0), at(head)), (Some(Rgb(0, 0, 255)), Some(Rgb(0, 255, 0)), Some(Rgb(255, 0, 0))));
+    // The processor's picture is coloured so too: no white, blue and red both.
+    let scene = Scene::new(&s.model);
+    let img = scene.render_in(&scene.fit(AZIMUTH, ELEVATION, 320, 240), &[], &Look::of_3d(&s.model));
+    let px = colours_of(&img, id);
+    assert!(px.len() > 3000 && !px.contains(&Rgb(255, 255, 255)), "{}", px.len());
+    assert!(px.iter().any(|c| c.2 > 200 && c.0 < 60) && px.iter().any(|c| c.0 > 200 && c.2 < 60));
+    // A range given: below it all blue, above it all red.
+    run(&mut s, "graphics", json!({"view": "{3D}", "categories": {"pointcloud": {"scan": {"by": "elevation", "low": 900, "high": 1100}}}}));
+    for (z, c) in dots(&s) {
+        if z < 900.0 {
+            assert_eq!(c, Rgb(0, 0, 255), "at {z}");
+        } else if z > 1100.0 {
+            assert_eq!(c, Rgb(255, 0, 0), "at {z}");
+        }
+    }
+    // A colour the view fills it with still wins.
+    run(&mut s, "graphics", json!({"view": "{3D}", "categories": {"pointcloud": {"projection": {"fill": [10, 20, 30]}}}}));
+    assert!(dots(&s).iter().all(|d| d.1 == Rgb(10, 20, 30)));
+    // A range upside down, or what isn't a mode, is refused.
+    for bad in [json!({"by": "elevation", "low": 5, "high": 1}), json!({"by": "elevation", "low": 5, "high": 5}), json!({"by": "height"})] {
+        fails(&mut s, "graphics", json!({"view": "{3D}", "categories": {"pointcloud": {"scan": bad}}}));
+    }
+}
+
+#[test]
+fn a_view_colours_a_scan_by_its_intensity_whatever_its_own_colours() {
+    let mut s = Session::new();
+    let r = run(&mut s, "point_cloud", json!({"path": scan("intensity", "bright.xyz", &bright_sheet()), "origin": "file"}));
+    let id = r["id"].as_u64().unwrap();
+    // Its own colours: red.
+    assert!(dots(&s).iter().all(|d| d.1 == Rgb(255, 0, 0)));
+    // By intensity, for this one scan: through the ramp by each one's rank among them, blue at its foot (the weakest) and red
+    // at its head.
+    run(&mut s, "graphics", json!({"view": "{3D}", "elements": {id.to_string(): {"scan": {"by": "intensity"}}}}));
+    let stretch = s.model.clouds.get("bright").unwrap().intensity_levels();
+    // They rise evenly, so their ranks are about what they are.
+    assert!(stretch.iter().enumerate().all(|(v, &r)| (i32::from(r) - v as i32).abs() <= 3), "{stretch:?}");
+    let all = dots(&s);
+    let (foot, head) = all.iter().fold((f64::MAX, f64::MIN), |(lo, hi), d| (lo.min(d.0), hi.max(d.0)));
+    for &(z, c) in &all {
+        let v = ((z - foot) / (head - foot) * 255.0).round() as u8;
+        assert_eq!(c, crate::graphics::intensity_colour(v, &stretch), "at {z}");
+    }
+    assert!(all.iter().any(|d| d.1.2 > 240 && d.1.0 < 10) && all.iter().any(|d| d.1.0 > 240 && d.1.2 < 10));
+    let scene = Scene::new(&s.model);
+    let img = scene.render_in(&scene.fit(AZIMUTH, ELEVATION, 320, 240), &[], &Look::of_3d(&s.model));
+    assert!(colours_of(&img, id).iter().any(|c| c.2 > 200 && c.0 < 60) && colours_of(&img, id).iter().any(|c| red(*c)));
+    // A plan colours it so too.
+    let level = s.model.levels()[0].0;
+    run(&mut s, "graphics", json!({"view": "Level 1", "categories": {"pointcloud": {"scan": {"by": "intensity"}}}}));
+    let d = render::plan(&s.model, level, 600, 600);
+    // Seen from above, the top of what it cuts: at 1200 mm of its 2 m, between the ramp's green and its yellow.
+    assert!(drawn(&d, |c| c.1 > 200 && c.0 > 60 && c.0 < 200 && c.2 < 30) > 50, "yellow-green, past the middle of the ramp");
+    // Its intensity goes with the project and comes back.
+    let file = std::env::temp_dir().join(format!("bimcraft-cloud-{}-intensity.bimc", std::process::id()));
+    run(&mut s, "save", json!({"path": file}));
+    let mut back = Session::new();
+    run(&mut back, "open", json!({"path": file}));
+    let (a, b) = (s.model.clouds.get("bright").unwrap(), back.model.clouds.get("bright").unwrap());
+    assert_eq!(a.intensity(), b.intensity());
+    assert_eq!(a.intensity().map(<[u8]>::len), Some(101 * 101));
+}
+
+#[test]
+fn a_scan_with_no_intensity_keeps_its_colours_when_a_view_asks_for_intensity() {
+    let mut s = Session::new();
+    run(&mut s, "point_cloud", json!({"path": scan("no-intensity", "sheet.xyz", &sheet(Some([255, 0, 0])))}));
+    assert_eq!(s.model.clouds.get("sheet").unwrap().intensity(), None);
+    run(&mut s, "graphics", json!({"view": "{3D}", "categories": {"pointcloud": {"scan": {"by": "intensity"}}}}));
+    let all = dots(&s);
+    assert!(!all.is_empty() && all.iter().all(|d| d.1 == Rgb(255, 0, 0)));
+}

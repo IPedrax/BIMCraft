@@ -118,6 +118,8 @@ pub struct Scan {
     pub points: Vec<[f32; 3]>,
     /// Each point's colour, or its intensity as grey; none when the file holds neither.
     pub colours: Option<Vec<[u8; 3]>>,
+    /// Each point's intensity, from the least in the file (0) to the most (255); none when the file holds none, or all alike.
+    pub intensity: Option<Vec<u8>>,
     /// The points the file holds, before thinning.
     pub read: usize,
 }
@@ -166,8 +168,9 @@ pub fn merge(scans: Vec<(String, Scan)>, spacing: f64) -> Result<(Scan, Vec<Stat
     }
     let origin = [0, 1, 2].map(|k| (lo[k] + hi[k]) / 2.0);
     let coloured = scans.iter().any(|(_, scan)| scan.colours.is_some());
+    let bright = scans.iter().any(|(_, scan)| scan.intensity.is_some());
     let mut cells = HashSet::new();
-    let (mut points, mut colours, mut stations, mut read) = (Vec::new(), Vec::new(), Vec::new(), 0_usize);
+    let (mut points, mut colours, mut levels, mut stations, mut read) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0_usize);
     for (source, scan) in scans {
         let before = points.len();
         for (i, p) in scan.points.iter().enumerate() {
@@ -179,11 +182,15 @@ pub fn merge(scans: Vec<(String, Scan)>, spacing: f64) -> Result<(Scan, Vec<Stat
             if coloured {
                 colours.push(scan.colours.as_ref().and_then(|c| c.get(i).copied()).unwrap_or([GREY; 3]));
             }
+            // Among files with an intensity, one without is in the middle of the range.
+            if bright {
+                levels.push(scan.intensity.as_ref().and_then(|l| l.get(i).copied()).unwrap_or(128));
+            }
         }
         read = read.saturating_add(scan.read);
         stations.push(Station { source, points: points.len() - before });
     }
-    Ok((Scan { origin, points, colours: coloured.then_some(colours), read }, stations))
+    Ok((Scan { origin, points, colours: coloured.then_some(colours), intensity: bright.then_some(levels), read }, stations))
 }
 
 /// A scan as a project holds it: its points about their middle, mm, their colours if the file had any, and where it came
@@ -197,12 +204,16 @@ pub struct Cloud {
     read: usize,
     points: Arc<Vec<[f32; 3]>>,
     colours: Option<Arc<Vec<[u8; 3]>>>,
+    /// Each point's intensity, 0 to 255 over the file's range, if the file had one.
+    intensity: Option<Arc<Vec<u8>>>,
     lo: [f32; 3],
     hi: [f32; 3],
     /// What a project file holds of it, made the first time it's saved.
     packed: Arc<OnceLock<CloudFile>>,
     /// Where its points are from above, made the first time something snaps to it.
     grid: Arc<OnceLock<Grid>>,
+    /// Each intensity's place among its points', worked out the first time a view colours by them.
+    stretch: Arc<OnceLock<Arc<[u8; 256]>>>,
 }
 
 /// A cloud's points by the square [`CELL`] mm wide they lie in, seen from above.
@@ -228,6 +239,7 @@ impl PartialEq for Cloud {
             && self.read == other.read
             && (Arc::ptr_eq(&self.points, &other.points) || self.points == other.points)
             && self.colours == other.colours
+            && self.intensity == other.intensity
     }
 }
 
@@ -241,15 +253,15 @@ thread_local! {
 impl Cloud {
     /// A scan read from the file `source` (its name, for people to know it by), or why it can't be held.
     pub fn new(source: &str, scan: Scan) -> Result<Cloud, String> {
-        let Scan { origin, points, colours, read } = scan;
-        Cloud::checked(source.chars().take(crate::model::MAX_TEXT).collect(), Vec::new(), origin, read, points, colours)
+        let Scan { origin, points, colours, intensity, read } = scan;
+        Cloud::checked(source.chars().take(crate::model::MAX_TEXT).collect(), Vec::new(), origin, read, points, colours, intensity)
     }
 
     /// A scan brought in from several files, `stations`, or why it can't be held. It's known by the first.
     pub fn of_stations(scan: Scan, stations: Vec<Station>) -> Result<Cloud, String> {
-        let Scan { origin, points, colours, read } = scan;
+        let Scan { origin, points, colours, intensity, read } = scan;
         let source = stations.first().map(|t| t.source.clone()).unwrap_or_default();
-        Cloud::checked(source, stations, origin, read, points, colours)
+        Cloud::checked(source, stations, origin, read, points, colours, intensity)
     }
 
     fn checked(
@@ -259,6 +271,7 @@ impl Cloud {
         read: usize,
         points: Vec<[f32; 3]>,
         colours: Option<Vec<[u8; 3]>>,
+        intensity: Option<Vec<u8>>,
     ) -> Result<Cloud, String> {
         if points.is_empty() || points.len() > MAX_CLOUD_POINTS {
             return Err(format!("a cloud holds 1 to {MAX_CLOUD_POINTS} points, not {}", points.len()));
@@ -271,6 +284,9 @@ impl Cloud {
         }
         if colours.as_ref().is_some_and(|c| c.len() != points.len()) {
             return Err("a cloud has a colour for each point or none".into());
+        }
+        if intensity.as_ref().is_some_and(|l| l.len() != points.len()) {
+            return Err("a cloud has an intensity for each point or none".into());
         }
         if stations.len() == 1 {
             stations.clear();
@@ -305,10 +321,12 @@ impl Cloud {
             read,
             points: Arc::new(points),
             colours: colours.map(Arc::new),
+            intensity: intensity.map(Arc::new),
             lo,
             hi,
             packed: Arc::default(),
             grid: Arc::default(),
+            stretch: Arc::default(),
         })
     }
 
@@ -356,6 +374,37 @@ impl Cloud {
 
     pub(crate) fn shared_colours(&self) -> Option<Arc<Vec<[u8; 3]>>> {
         self.colours.clone()
+    }
+
+    /// Each point's intensity, 0 to 255 over the file's range, if the file had one: what a view colours by intensity.
+    pub fn intensity(&self) -> Option<&[u8]> {
+        self.intensity.as_deref().map(Vec::as_slice)
+    }
+
+    pub(crate) fn shared_intensity(&self) -> Option<Arc<Vec<u8>>> {
+        self.intensity.clone()
+    }
+
+    /// Each intensity's place among its points', 0 to 255: how many are weaker, and half those as strong, of them all. A view
+    /// colours by intensity through it (histogram equalization), so its colours spread over the whole ramp however the
+    /// returns crowd, as a surveyor's viewer does.
+    pub fn intensity_levels(&self) -> Arc<[u8; 256]> {
+        Arc::clone(self.stretch.get_or_init(|| {
+            let Some(l) = self.intensity.as_deref().filter(|l| !l.is_empty()) else {
+                return Arc::new(std::array::from_fn(|v| v as u8));
+            };
+            let mut count = [0_u64; 256];
+            for &v in l.iter() {
+                count[usize::from(v)] += 1;
+            }
+            let n = l.len() as f64;
+            let mut below = 0_u64;
+            Arc::new(std::array::from_fn(|v| {
+                let at = (below as f64 + count[v] as f64 / 2.0) / n;
+                below += count[v];
+                (at * 255.0).round().clamp(0.0, 255.0) as u8
+            }))
+        }))
     }
 
     /// Of its points whose height from its middle lies within `z`, the nearest to `at` (from its middle, mm) seen from above and
@@ -411,6 +460,7 @@ impl Cloud {
                 read: self.read,
                 points: crate::commands::base64(&deflate(&points)),
                 colours: colours.map(|c| crate::commands::base64(&deflate(&c))),
+                intensity: self.intensity.as_ref().map(|l| crate::commands::base64(&deflate(l))),
             }
         })
     }
@@ -429,6 +479,9 @@ struct CloudFile {
     points: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     colours: Option<String>,
+    /// Each point's intensity as a byte, deflated and in base64; an older file has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    intensity: Option<String>,
 }
 
 pub(crate) fn deflate(bytes: &[u8]) -> Vec<u8> {
@@ -471,8 +524,12 @@ impl TryFrom<CloudFile> for Cloud {
             Some(text) => Some(inflate(text, MAX_CLOUD_POINTS * 3)?.as_chunks::<3>().0.to_vec()),
             None => None,
         };
+        let intensity = match &f.intensity {
+            Some(text) => Some(inflate(text, MAX_CLOUD_POINTS)?),
+            None => None,
+        };
         let source = f.source.chars().take(crate::model::MAX_TEXT).collect();
-        let cloud = Cloud::checked(source, f.stations.clone(), f.origin, f.read, points, colours)?;
+        let cloud = Cloud::checked(source, f.stations.clone(), f.origin, f.read, points, colours, intensity)?;
         let _ = cloud.packed.set(f);
         Ok(cloud)
     }
@@ -630,7 +687,8 @@ pub fn read_from(src: &mut dyn Source, format: Format, o: &Options, budget: Opti
     }
     // Every so many, so the cap is never passed, and then one in each cube of the spacing.
     let stride = stats.count.div_ceil(o.cap).max(1);
-    let mut keep = Keep { scale: o.scale, spacing: o.spacing, min: stats.min, origin, colour: stats.colour(), ..Keep::default() };
+    let bright = stats.intensity.filter(|(lo, hi)| hi > lo);
+    let mut keep = Keep { scale: o.scale, spacing: o.spacing, min: stats.min, origin, colour: stats.colour(), bright, ..Keep::default() };
     if let Some(count) = known {
         if stats.count as u64 != count {
             return Err(format!("it holds {} points, and its header says {count}", stats.count));
@@ -652,7 +710,8 @@ pub fn read_from(src: &mut dyn Source, format: Format, o: &Options, budget: Opti
         })?;
     }
     let colours = keep.colour.as_ref().map(|_| keep.colours);
-    Ok(Scan { origin, points: keep.points, colours, read: stats.count })
+    let intensity = keep.bright.map(|_| keep.levels);
+    Ok(Scan { origin, points: keep.points, colours, intensity, read: stats.count })
 }
 
 /// How many points a file holds, when that's known before it's read and reading it once is what's wanted: a LAZ file's, from
@@ -699,9 +758,12 @@ struct Keep {
     min: [f64; 3],
     origin: [f64; 3],
     colour: Option<Shade>,
+    /// The file's range of intensity, when its points have one that varies.
+    bright: Option<(f64, f64)>,
     cells: HashSet<[i64; 3]>,
     points: Vec<[f32; 3]>,
     colours: Vec<[u8; 3]>,
+    levels: Vec<u8>,
 }
 
 impl Keep {
@@ -716,6 +778,10 @@ impl Keep {
         self.points.push([0, 1, 2].map(|k| (p[k] - self.origin[k]) as f32));
         if let Some(c) = &self.colour {
             self.colours.push(c.of(raw));
+        }
+        if let Some((lo, hi)) = self.bright {
+            let v = raw.intensity.filter(|v| v.is_finite()).map_or(0.0, |v| (v - lo) / (hi - lo));
+            self.levels.push((v * 255.0).round().clamp(0.0, 255.0) as u8);
         }
     }
 }

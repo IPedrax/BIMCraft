@@ -2663,11 +2663,15 @@ struct Scan {
     owner: Id,
     points: Arc<Vec<[f32; 3]>>,
     colours: Option<Arc<Vec<[u8; 3]>>>,
+    /// Each point's intensity, 0 to 255, if its file had one.
+    intensity: Option<Arc<Vec<u8>>>,
     /// Its middle in the model, and the cosine and sine of its turn.
     at: P3,
     turn: (f64, f64),
     /// The corners of the box round its points in the model, for fitting the view to it.
     corners: [P3; 8],
+    /// Its intensities' ranks ([`crate::cloud::Cloud::intensity_levels`]).
+    stretch: Arc<[u8; 256]>,
 }
 
 impl Scan {
@@ -2678,11 +2682,44 @@ impl Scan {
 }
 
 impl Scan {
-    /// Point `i`'s colour: its own, or the grey of one with none; the view's, unless it gives none.
-    fn colour(&self, i: usize, plain: bool, look: &Look) -> Rgb {
+    /// How `look` colours this scan's points, worked out once for a picture.
+    fn paint<'a>(&'a self, plain: bool, look: &'a Look) -> Paint<'a> {
+        let colour = if plain { crate::graphics::ScanColour::default() } else { look.scan_colour(self.owner) };
+        let (foot, head) = self.corners.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), c| (lo.min(c[2]), hi.max(c[2])));
+        Paint { scan: self, by: colour.by, low: colour.low.unwrap_or(foot), high: colour.high.unwrap_or(head), plain, look }
+    }
+}
+
+/// How a view colours one scan's points ([`crate::graphics::ScanColour`]): what it colours them by, the heights its ramp runs
+/// between, and the view's own colour over them.
+pub(crate) struct Paint<'a> {
+    scan: &'a Scan,
+    by: crate::graphics::ScanBy,
+    low: f64,
+    high: f64,
+    plain: bool,
+    look: &'a Look,
+}
+
+impl Paint<'_> {
+    /// Point `i`'s colour, placed at `at`: by its height, its intensity or its own (the grey of one with none); the view's,
+    /// unless it gives none.
+    fn colour(&self, i: usize, at: P3) -> Rgb {
+        use crate::graphics::ScanBy;
         let grey = Rgb(crate::cloud::GREY, crate::cloud::GREY, crate::cloud::GREY);
-        let base = self.colours.as_ref().and_then(|c| c.get(i)).map_or(grey, |c| Rgb(c[0], c[1], c[2]));
-        if plain { base } else { look.surface(self.owner, base) }
+        let own = || self.scan.colours.as_ref().and_then(|c| c.get(i)).map_or(grey, |c| Rgb(c[0], c[1], c[2]));
+        let base = match self.by {
+            ScanBy::Elevation if self.high > self.low => crate::graphics::ramp((at[2] - self.low) / (self.high - self.low)),
+            ScanBy::Elevation => crate::graphics::ramp(0.5),
+            ScanBy::Intensity => self
+                .scan
+                .intensity
+                .as_ref()
+                .and_then(|l| l.get(i))
+                .map_or_else(own, |&v| crate::graphics::intensity_colour(v, &self.scan.stretch)),
+            ScanBy::Normal => own(),
+        };
+        if self.plain { base } else { self.look.surface(self.scan.owner, base) }
     }
 }
 
@@ -3372,12 +3409,12 @@ fn scans_of(m: &Model) -> Vec<Scan> {
         .filter_map(|id| {
             let Some(Element::PointCloud(pc)) = m.elements.get(*id) else { return None };
             let cloud = m.clouds.get(&pc.cloud)?;
-            let (points, colours) = (cloud.shared_points(), cloud.shared_colours());
+            let (points, colours, intensity) = (cloud.shared_points(), cloud.shared_colours(), cloud.shared_intensity());
             let (lo, hi) = m.cloud_box(*id)?;
             let corners = std::array::from_fn(|k| std::array::from_fn(|axis| if k >> axis & 1 == 0 { lo[axis] } else { hi[axis] }));
             let (sin, cos) = pc.angle.to_radians().sin_cos();
             let at = [pc.at.0, pc.at.1, m.elevation(pc.level) + pc.offset];
-            Some(Scan { owner: *id, points, colours, at, turn: (cos, sin), corners })
+            Some(Scan { owner: *id, points, colours, intensity, at, turn: (cos, sin), corners, stretch: cloud.intensity_levels() })
         })
         .collect()
 }
@@ -3958,6 +3995,7 @@ impl Scene {
         let step = every(kept.iter().map(|(_, s)| s.points.len()).sum());
         for (n, scan) in kept {
             let slot = (self.tris.len() + n) as u32;
+            let paint = scan.paint(plain, look);
             for (i, p) in scan.points.iter().enumerate().step_by(step) {
                 let at = scan.place(*p);
                 if cut.is_some_and(|k| !k.holds(at)) {
@@ -3970,7 +4008,7 @@ impl Scene {
                     continue;
                 }
                 let Some((x0, y0)) = dot_at((x, y, z), (w, h)) else { continue };
-                let colour = scan.colour(i, plain, look);
+                let colour = paint.colour(i, at);
                 let z = z as f32;
                 for py in y0.max(0)..(y0 + DOT as i64).min(h as i64) {
                     for px in x0.max(0)..(x0 + DOT as i64).min(w as i64) {

@@ -3363,7 +3363,7 @@ other_files(
         &[],
         "{view?: a level's, section's or elevation's name or id, or {3D} (the lowest level's plan unless given), hide?: [category, \
          …], show?: […], hide_elements?: [id, …], show_elements?: […], categories?: {category: override | null, …}, elements?: \
-         {id: override | null, …}, filters?: [{filter, hidden?, projection?, cut?, halftone?, transparency?}, …], phase?: name \
+         {id: override | null, …}, filters?: [{filter, hidden?, projection?, cut?, halftone?, transparency?, scan?}, …], phase?: name \
          | null, phase_filter?: name | null, options?: {set: option | null, …}, layers?: {drawing: [layer, …] | null, …}, template?: name | null, \
          background_grid?: {visible?, main?: {enabled?, color?: [r,g,b], pen?: 0..16}, sub?: {enabled?, color?, pen?}, \
          spacing?: [X,Y] (mm), divisions?: [X,Y] (1..1000), rotation?: degrees (-360..360)} | null, \
@@ -3382,7 +3382,7 @@ other_files(
          framing plan does); under roofs, `roofframing` (a framed roof's rafters, ridge boards, rims, trimmers, headers and \
          blocking in 3D and sections: hidden, its structure layer is drawn whole) and `roofframingline` (their outlines, \
          dashed, in a plan of the roof's level: hidden unless the plan shows them). An \
-         override is {hidden?, projection?: style, cut?: style, halftone?, transparency?}, a style {color?, weight? (a pen, \
+         override is {hidden?, projection?: style, cut?: style, halftone?, transparency?, scan?}, a style {color?, weight? (a pen, \
          0 to 16: 0 a hairline, the thinnest line the screen or printer draws at any scale; 1 to 16 widths on paper from 0.10 to \
          4 mm, 4 being 0.18 mm and 10 0.35 mm, a cut wall's outline), dash? (solid, dashed, dotted), fill?, foreground?, background?}, a colour [r, g, b] or \"#rrggbb\". \
          Foreground and background override independent pattern layers: {pattern: a fill pattern's name | null, color?: [r,g,b]}; \
@@ -3391,7 +3391,12 @@ other_files(
          Projection is what a plan sees below its cut plane, a section beyond its line and the annotation; cut is what the view \
          cuts; `fill` is the cut's poché, or a 3D view's surface; in a 3D view, and in what a section sees beyond its line, a \
          projection's `color` is the colour of the edges (weight and dash draw lines, and those are vectors). Halftone draws it \
-         halfway to the paper; transparency (percent) sees through it in a 3D view. Halftone and transparency only add: a \
+         halfway to the paper; transparency (percent) sees through it in a 3D view. `scan` is what a point cloud's points are \
+         coloured by (Revit's Color Mode): {by: normal | elevation | intensity, low?, high?}, `normal` their own colours, \
+         `elevation` their height from blue through green to red between `low` and `high` (mm in the model; the scan's own foot \
+         and head where not given), `intensity` through the same colours by each point's rank among the scan's intensities, \
+         weakest blue and strongest red (a scan whose file had none keeps its colours); a projection `fill` still colours them \
+         all one colour over it. Halftone and transparency only add: a \
          filter or an element can lighten what its category doesn't, not take its category's away. Overrides merge into the last (null takes a field or the override away); an element's own \
          beats the filters applied (the first prevailing), which beat the category's. `filters` replaces the list applied; \
          `template` follows a view template; `reset` takes away all of the view's own settings. `phase` is the phase the view \
