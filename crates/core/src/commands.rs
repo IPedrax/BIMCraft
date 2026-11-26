@@ -6674,11 +6674,9 @@ fn takeoff(s: &mut Session, p: &Value) -> R {
     let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
     let mut sc = match &found {
         Some((_, sc)) => sc.clone(),
-        None => Schedule {
-            name: name.clone().unwrap_or_else(|| m.language.word("Material Takeoff").to_string()),
-            of: "takeoff".into(),
-            ..Schedule::default()
-        },
+        None => {
+            Schedule { name: name.clone().unwrap_or_else(|| crate::takeoff::free_name(m)), of: "takeoff".into(), ..Schedule::default() }
+        }
     };
     if let Some(name) = name {
         sc.name = name;

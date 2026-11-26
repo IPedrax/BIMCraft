@@ -22,7 +22,7 @@ msgstr ""
 
 #: crates/core/src/schedule.rs:207
 #: crates/core/src/schedule.rs:264
-#: crates/core/src/takeoff.rs:312
+#: crates/core/src/takeoff.rs:322
 msgid "Area"
 msgstr "Powierzchnia"
 
@@ -54,7 +54,7 @@ msgstr "Cegła"
 msgid "Brick 225 x 75"
 msgstr "Cegła 225 × 75"
 
-#: crates/core/src/commands.rs:7303
+#: crates/core/src/commands.rs:7301
 msgid "Camera"
 msgstr "Kamera"
 
@@ -63,7 +63,7 @@ msgid "Casement Window"
 msgstr "Okno rozwierane"
 
 #: crates/core/src/schedule.rs:255
-#: crates/core/src/takeoff.rs:307
+#: crates/core/src/takeoff.rs:317
 msgid "Category"
 msgstr "Kategoria"
 
@@ -182,7 +182,7 @@ msgstr ""
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:16846
+#: crates/core/src/commands.rs:16844
 msgid "Dependent"
 msgstr "Zależny"
 
@@ -200,7 +200,7 @@ msgid "Desk"
 msgstr "Biurko"
 
 #: crates/core/src/commands/rebar_detail.rs:163
-#: crates/core/src/commands.rs:16636
+#: crates/core/src/commands.rs:16634
 msgid "Detail"
 msgstr ""
 
@@ -277,9 +277,9 @@ msgstr "Instalacja oświetleniowa"
 msgid "Electrical Power"
 msgstr "Instalacja elektryczna – zasilanie"
 
-#: crates/core/src/commands.rs:16501
-#: crates/core/src/commands.rs:16517
-#: crates/core/src/commands.rs:21901
+#: crates/core/src/commands.rs:16499
+#: crates/core/src/commands.rs:16515
+#: crates/core/src/commands.rs:21899
 msgid "Elevation"
 msgstr "Widok elewacji"
 
@@ -352,7 +352,7 @@ msgstr "Szerokość ościeżnicy"
 msgid "Framing Type"
 msgstr ""
 
-#: crates/core/src/takeoff.rs:311
+#: crates/core/src/takeoff.rs:321
 msgid "Function"
 msgstr ""
 
@@ -503,9 +503,9 @@ msgstr "Szerokość nogi"
 msgid "Length"
 msgstr "Długość"
 
-#: crates/core/src/commands.rs:10436
+#: crates/core/src/commands.rs:10434
 #: crates/core/src/model.rs:5115
-#: crates/core/src/takeoff.rs:304
+#: crates/core/src/takeoff.rs:314
 msgid "Level"
 msgstr "Poziom"
 
@@ -545,20 +545,20 @@ msgstr "Oznaczenie"
 msgid "Masking"
 msgstr "Maskowanie"
 
-#: crates/core/src/commands.rs:13441
+#: crates/core/src/commands.rs:13439
 msgid "Mass"
 msgstr "Bryła"
 
-#: crates/core/src/takeoff.rs:314
+#: crates/core/src/takeoff.rs:324
 msgid "Mass (kg)"
 msgstr ""
 
 #: crates/core/src/schedule.rs:266
-#: crates/core/src/takeoff.rs:309
+#: crates/core/src/takeoff.rs:319
 msgid "Material"
 msgstr "Materiał"
 
-#: crates/core/src/commands.rs:6678
+#: crates/core/src/takeoff.rs:89
 msgid "Material Takeoff"
 msgstr ""
 
@@ -575,7 +575,7 @@ msgid "Membrane"
 msgstr "Membrana"
 
 #: crates/core/src/commands.rs:4918
-#: crates/core/src/commands.rs:20398
+#: crates/core/src/commands.rs:20396
 #: crates/core/src/curtain.rs:133
 #: crates/core/src/family.rs:3515
 #: crates/core/src/model.rs:6947
@@ -607,7 +607,7 @@ msgstr "Nie"
 msgid "North"
 msgstr "Północ"
 
-#: crates/core/src/takeoff.rs:317
+#: crates/core/src/takeoff.rs:327
 msgid "Note"
 msgstr ""
 
@@ -715,7 +715,7 @@ msgstr "Projekt"
 msgid "Project no."
 msgstr ""
 
-#: crates/core/src/commands.rs:11413
+#: crates/core/src/commands.rs:11411
 msgid "Property Line"
 msgstr ""
 
@@ -765,7 +765,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Dachówki"
 
-#: crates/core/src/commands.rs:13971
+#: crates/core/src/commands.rs:13969
 msgid "Room"
 msgstr "Pomieszczenie"
 
@@ -807,8 +807,8 @@ msgstr "Jastrych"
 msgid "Seat Height"
 msgstr "Wysokość siedziska"
 
-#: crates/core/src/commands.rs:16435
-#: crates/core/src/commands.rs:21900
+#: crates/core/src/commands.rs:16433
+#: crates/core/src/commands.rs:21898
 #: crates/core/src/schedule.rs:704
 msgid "Section"
 msgstr "Przekrój"
@@ -960,7 +960,7 @@ msgid "Tee"
 msgstr "Trójnik"
 
 #: crates/core/src/family.rs:3287
-#: crates/core/src/takeoff.rs:310
+#: crates/core/src/takeoff.rs:320
 msgid "Thickness"
 msgstr "Grubość"
 
@@ -985,12 +985,12 @@ msgstr "Drewno"
 msgid "Title"
 msgstr ""
 
-#: crates/core/src/commands.rs:11455
+#: crates/core/src/commands.rs:11453
 msgid "Toposolid"
 msgstr ""
 
 #: crates/core/src/sheet.rs:453
-#: crates/core/src/takeoff.rs:316
+#: crates/core/src/takeoff.rs:326
 msgid "Total"
 msgstr "Razem"
 
@@ -1008,7 +1008,7 @@ msgid "Trip"
 msgstr ""
 
 #: crates/core/src/model.rs:2108
-#: crates/core/src/takeoff.rs:308
+#: crates/core/src/takeoff.rs:318
 msgid "Type"
 msgstr "Typ"
 
@@ -1025,7 +1025,7 @@ msgstr "Wysokość nieograniczona"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:17194
+#: crates/core/src/commands.rs:17192
 msgid "Unnamed"
 msgstr "Bez nazwy"
 
@@ -1050,7 +1050,7 @@ msgstr ""
 msgid "Volume"
 msgstr "Objętość"
 
-#: crates/core/src/takeoff.rs:313
+#: crates/core/src/takeoff.rs:323
 msgid "Volume (m³)"
 msgstr ""
 
@@ -1074,7 +1074,7 @@ msgstr "Szafa"
 msgid "Washbasin"
 msgstr "Umywalka"
 
-#: crates/core/src/takeoff.rs:315
+#: crates/core/src/takeoff.rs:325
 msgid "Waste (%)"
 msgstr ""
 

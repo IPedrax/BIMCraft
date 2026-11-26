@@ -22,7 +22,7 @@ msgstr "Aprovado por"
 
 #: crates/core/src/schedule.rs:207
 #: crates/core/src/schedule.rs:264
-#: crates/core/src/takeoff.rs:312
+#: crates/core/src/takeoff.rs:322
 msgid "Area"
 msgstr "Área"
 
@@ -54,7 +54,7 @@ msgstr "Tijolo"
 msgid "Brick 225 x 75"
 msgstr "Tijolo 225 x 75"
 
-#: crates/core/src/commands.rs:7303
+#: crates/core/src/commands.rs:7301
 msgid "Camera"
 msgstr "Câmera"
 
@@ -63,7 +63,7 @@ msgid "Casement Window"
 msgstr "Janela de abrir"
 
 #: crates/core/src/schedule.rs:255
-#: crates/core/src/takeoff.rs:307
+#: crates/core/src/takeoff.rs:317
 msgid "Category"
 msgstr ""
 
@@ -182,7 +182,7 @@ msgstr "Data"
 msgid "Demand Factor"
 msgstr "Fator de demanda"
 
-#: crates/core/src/commands.rs:16846
+#: crates/core/src/commands.rs:16844
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -200,7 +200,7 @@ msgid "Desk"
 msgstr "Escrivaninha"
 
 #: crates/core/src/commands/rebar_detail.rs:163
-#: crates/core/src/commands.rs:16636
+#: crates/core/src/commands.rs:16634
 msgid "Detail"
 msgstr "Detalhe"
 
@@ -277,9 +277,9 @@ msgstr "Elétrica - Iluminação"
 msgid "Electrical Power"
 msgstr "Elétrica - Força"
 
-#: crates/core/src/commands.rs:16501
-#: crates/core/src/commands.rs:16517
-#: crates/core/src/commands.rs:21901
+#: crates/core/src/commands.rs:16499
+#: crates/core/src/commands.rs:16515
+#: crates/core/src/commands.rs:21899
 msgid "Elevation"
 msgstr "Elevação"
 
@@ -352,7 +352,7 @@ msgstr "Largura do batente"
 msgid "Framing Type"
 msgstr "Tipo de estrutura de madeira"
 
-#: crates/core/src/takeoff.rs:311
+#: crates/core/src/takeoff.rs:321
 msgid "Function"
 msgstr ""
 
@@ -503,9 +503,9 @@ msgstr "Largura da perna"
 msgid "Length"
 msgstr "Comprimento"
 
-#: crates/core/src/commands.rs:10436
+#: crates/core/src/commands.rs:10434
 #: crates/core/src/model.rs:5115
-#: crates/core/src/takeoff.rs:304
+#: crates/core/src/takeoff.rs:314
 msgid "Level"
 msgstr "Nível"
 
@@ -545,20 +545,20 @@ msgstr "Marca"
 msgid "Masking"
 msgstr "Máscara"
 
-#: crates/core/src/commands.rs:13441
+#: crates/core/src/commands.rs:13439
 msgid "Mass"
 msgstr "Massa"
 
-#: crates/core/src/takeoff.rs:314
+#: crates/core/src/takeoff.rs:324
 msgid "Mass (kg)"
 msgstr ""
 
 #: crates/core/src/schedule.rs:266
-#: crates/core/src/takeoff.rs:309
+#: crates/core/src/takeoff.rs:319
 msgid "Material"
 msgstr ""
 
-#: crates/core/src/commands.rs:6678
+#: crates/core/src/takeoff.rs:89
 msgid "Material Takeoff"
 msgstr ""
 
@@ -575,7 +575,7 @@ msgid "Membrane"
 msgstr "Manta impermeável"
 
 #: crates/core/src/commands.rs:4918
-#: crates/core/src/commands.rs:20398
+#: crates/core/src/commands.rs:20396
 #: crates/core/src/curtain.rs:133
 #: crates/core/src/family.rs:3515
 #: crates/core/src/model.rs:6947
@@ -607,7 +607,7 @@ msgstr "Não"
 msgid "North"
 msgstr "Norte"
 
-#: crates/core/src/takeoff.rs:317
+#: crates/core/src/takeoff.rs:327
 msgid "Note"
 msgstr ""
 
@@ -715,7 +715,7 @@ msgstr "Projeto"
 msgid "Project no."
 msgstr "Nº do projeto"
 
-#: crates/core/src/commands.rs:11413
+#: crates/core/src/commands.rs:11411
 msgid "Property Line"
 msgstr ""
 
@@ -765,7 +765,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Telhas"
 
-#: crates/core/src/commands.rs:13971
+#: crates/core/src/commands.rs:13969
 msgid "Room"
 msgstr "Ambiente"
 
@@ -807,8 +807,8 @@ msgstr "Contrapiso"
 msgid "Seat Height"
 msgstr "Altura do assento"
 
-#: crates/core/src/commands.rs:16435
-#: crates/core/src/commands.rs:21900
+#: crates/core/src/commands.rs:16433
+#: crates/core/src/commands.rs:21898
 #: crates/core/src/schedule.rs:704
 msgid "Section"
 msgstr "Corte"
@@ -960,7 +960,7 @@ msgid "Tee"
 msgstr "Tê"
 
 #: crates/core/src/family.rs:3287
-#: crates/core/src/takeoff.rs:310
+#: crates/core/src/takeoff.rs:320
 msgid "Thickness"
 msgstr "Espessura"
 
@@ -985,12 +985,12 @@ msgstr "Madeira"
 msgid "Title"
 msgstr "Título"
 
-#: crates/core/src/commands.rs:11455
+#: crates/core/src/commands.rs:11453
 msgid "Toposolid"
 msgstr ""
 
 #: crates/core/src/sheet.rs:453
-#: crates/core/src/takeoff.rs:316
+#: crates/core/src/takeoff.rs:326
 msgid "Total"
 msgstr "Total"
 
@@ -1008,7 +1008,7 @@ msgid "Trip"
 msgstr "Disjuntor"
 
 #: crates/core/src/model.rs:2108
-#: crates/core/src/takeoff.rs:308
+#: crates/core/src/takeoff.rs:318
 msgid "Type"
 msgstr "Tipo"
 
@@ -1025,7 +1025,7 @@ msgstr "Altura não delimitada"
 msgid "Unclassified"
 msgstr "Sem classificação"
 
-#: crates/core/src/commands.rs:17194
+#: crates/core/src/commands.rs:17192
 msgid "Unnamed"
 msgstr "Sem nome"
 
@@ -1050,7 +1050,7 @@ msgstr "Tensão"
 msgid "Volume"
 msgstr "Volume"
 
-#: crates/core/src/takeoff.rs:313
+#: crates/core/src/takeoff.rs:323
 msgid "Volume (m³)"
 msgstr ""
 
@@ -1074,7 +1074,7 @@ msgstr "Guarda-roupa"
 msgid "Washbasin"
 msgstr "Lavatório"
 
-#: crates/core/src/takeoff.rs:315
+#: crates/core/src/takeoff.rs:325
 msgid "Waste (%)"
 msgstr ""
 

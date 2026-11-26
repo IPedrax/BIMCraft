@@ -27,7 +27,7 @@ impl NewTakeoff {
     /// A takeoff of every category, by material, with no waste, over the whole project, named as the project's
     /// language names it and as no view is yet.
     pub(crate) fn new(m: &Model) -> NewTakeoff {
-        NewTakeoff { categories: [true; 4], by: By::Material, waste: 0.0, level: None, name: free_name(m) }
+        NewTakeoff { categories: [true; 4], by: By::Material, waste: 0.0, level: None, name: bimcraft_core::takeoff::free_name(m) }
     }
 }
 
@@ -38,15 +38,6 @@ fn by_label(by: By) -> &'static str {
         By::Layer => "Layer",
         By::Type => "Type",
     }
-}
-
-/// `Material Takeoff` in the project's language, numbered if a view has that name already.
-fn free_name(m: &Model) -> String {
-    let base = m.language.word("Material Takeoff").to_string();
-    std::iter::once(base.clone())
-        .chain((2..).map(|n| format!("{base} {n}")))
-        .find(|n| !m.elements.keys().any(|id| m.view_name(*id) == Some(n.as_str())))
-        .unwrap_or(base)
 }
 
 impl BimApp {

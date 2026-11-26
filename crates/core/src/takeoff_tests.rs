@@ -106,7 +106,7 @@ fn a_door_takes_its_area_from_the_takeoff_once() {
     materials(&mut s);
     frame_type(&mut s, "Timber frame");
     let wall =
-        s.execute("wall", &serde_json::json!({"type": "Timber frame", "points": [[0, 0], [10000, 0]], "height": 3000})).unwrap()["id"]
+        s.execute("wall", &serde_json::json!({"type": "Timber frame", "points": [[0, 0], [10000, 0]], "height": 3000})).unwrap()["ids"][0]
             .as_u64()
             .unwrap();
     s.execute("door", &serde_json::json!({"at": [5000, 0], "width": 900, "height": 2100})).unwrap();
@@ -154,7 +154,9 @@ fn by_material_layer_and_type_sum_the_same() {
     s.execute("floor", &serde_json::json!({"type": "Pitched", "boundary": [[0, 0], [4000, 0], [4000, 4000], [0, 4000]]})).unwrap();
     let mut volumes = Vec::new();
     for by in ["material", "layer", "type"] {
-        let out = s.execute("takeoff", &serde_json::json!({"categories": ["walls", "floors"], "by": by})).unwrap();
+        // Each grouping its own view: a takeoff named as one already made is refused.
+        let out =
+            s.execute("takeoff", &serde_json::json!({"name": format!("By {by}"), "categories": ["walls", "floors"], "by": by})).unwrap();
         volumes.push(out["totals"]["volume_m3"].as_f64().unwrap());
         assert!(!out["rows"].as_array().unwrap().is_empty(), "{by}: {out}");
     }
@@ -197,7 +199,7 @@ fn a_framed_wall_counts_its_studs_as_timber_by_their_sections() {
     )
     .unwrap();
     s.execute("type", &serde_json::json!({"category": "framing", "name": "Test framing", "material": "Timber"})).unwrap();
-    let wall = s.execute("wall", &serde_json::json!({"type": "Framed", "points": [[0, 0], [10000, 0]], "height": 3000})).unwrap()["id"]
+    let wall = s.execute("wall", &serde_json::json!({"type": "Framed", "points": [[0, 0], [10000, 0]], "height": 3000})).unwrap()["ids"][0]
         .as_u64()
         .unwrap();
     s.execute("frame", &serde_json::json!({"id": wall, "type": "Test framing"})).unwrap();

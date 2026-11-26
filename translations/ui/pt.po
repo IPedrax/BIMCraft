@@ -1608,7 +1608,7 @@ msgstr ""
 
 #: crates/core/src/schedule.rs:207
 #: crates/core/src/schedule.rs:264
-#: crates/core/src/takeoff.rs:312
+#: crates/core/src/takeoff.rs:322
 #: crates/ui-egui/src/editor.rs:288
 #: crates/ui-egui/src/parameters.rs:32
 msgid "Area"
@@ -2599,7 +2599,7 @@ msgstr "Câmera: clique onde fica o olho e depois no ponto para onde ela olha: u
 #: crates/ui-egui/src/shortcuts.rs:3712
 #: crates/ui-egui/src/shortcuts.rs:3798
 #: crates/ui-egui/src/standards.rs:334
-#: crates/ui-egui/src/takeoff.rs:105
+#: crates/ui-egui/src/takeoff.rs:96
 #: crates/ui-egui/src/templates.rs:749
 #: crates/ui-egui/src/titleblocks.rs:756
 #: crates/ui-egui/src/typeprops.rs:347
@@ -2708,12 +2708,12 @@ msgstr "Categorias dos Marcados"
 msgid "Categories of {}"
 msgstr "Categorias de {}"
 
-#: crates/ui-egui/src/takeoff.rs:62
+#: crates/ui-egui/src/takeoff.rs:53
 msgid "Categories:"
 msgstr ""
 
 #: crates/core/src/schedule.rs:255
-#: crates/core/src/takeoff.rs:307
+#: crates/core/src/takeoff.rs:317
 #: crates/ui-egui/src/editor/document.rs:2365
 #: crates/ui-egui/src/editor/selection.rs:200
 #: crates/ui-egui/src/objectstyles.rs:76
@@ -5499,7 +5499,7 @@ msgstr "Demolido"
 msgid "Demolition"
 msgstr "Demolição"
 
-#: crates/core/src/commands.rs:16846
+#: crates/core/src/commands.rs:16844
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -5576,7 +5576,7 @@ msgstr "Desanexar topo/base"
 msgid "Detach Top/Base: the tops and bases of the walls and columns their own again"
 msgstr ""
 
-#: crates/core/src/commands.rs:16636
+#: crates/core/src/commands.rs:16634
 #: crates/ui-egui/src/draw.rs:693
 #: crates/ui-egui/src/editor/document.rs:645
 #: crates/ui-egui/src/structure.rs:111
@@ -8020,7 +8020,7 @@ msgstr "Congelado"
 msgid "Full"
 msgstr "Total"
 
-#: crates/core/src/takeoff.rs:311
+#: crates/core/src/takeoff.rs:321
 #: crates/ui-egui/src/properties.rs:4018
 msgid "Function"
 msgstr "Função"
@@ -8291,7 +8291,7 @@ msgstr "Agrupar em"
 msgid "Group Values"
 msgstr "Valores em Grupos"
 
-#: crates/ui-egui/src/takeoff.rs:68
+#: crates/ui-egui/src/takeoff.rs:59
 msgid "Group by:"
 msgstr ""
 
@@ -9785,7 +9785,7 @@ msgid "Let this session's chat use your AI key for others who have none? What th
 msgstr "Deixar o chat desta sessão usar a sua chave de IA para os outros que não têm uma? O que eles pedirem será cobrado na sua conta."
 
 #: crates/core/src/commands.rs:361
-#: crates/core/src/takeoff.rs:304
+#: crates/core/src/takeoff.rs:314
 #: crates/ui-egui/src/lib.rs:7067
 #: crates/ui-egui/src/shape.rs:101
 #: crates/ui-egui/src/steel.rs:331
@@ -9817,7 +9817,7 @@ msgid "Level Schedule"
 msgstr "Tabela de níveis"
 
 #: crates/ui-egui/src/steel.rs:404
-#: crates/ui-egui/src/takeoff.rs:82
+#: crates/ui-egui/src/takeoff.rs:73
 msgid "Level:"
 msgstr "Nível:"
 
@@ -10588,7 +10588,7 @@ msgstr "Massa"
 msgid "Mass (MS): click the corners of the footprint; Enter, or the first corner again, finishes; Esc cancels"
 msgstr "Massa (MS): clique nos cantos da projeção; Enter, ou o primeiro canto de novo, termina; Esc cancela"
 
-#: crates/core/src/takeoff.rs:314
+#: crates/core/src/takeoff.rs:324
 msgid "Mass (kg)"
 msgstr ""
 
@@ -10617,7 +10617,7 @@ msgid "Matched properties: applied type '{}' to {} element(s)"
 msgstr "Propriedades igualadas: tipo '{}' aplicado a {} elemento(s)"
 
 #: crates/core/src/schedule.rs:266
-#: crates/core/src/takeoff.rs:309
+#: crates/core/src/takeoff.rs:319
 #: crates/ui-egui/src/adaptive_editor.rs:494
 #: crates/ui-egui/src/adaptive_editor.rs:555
 #: crates/ui-egui/src/editor/extrusion.rs:234
@@ -10631,7 +10631,6 @@ msgid "Material"
 msgstr "Material"
 
 #: crates/core/src/commands.rs:984
-#: crates/ui-egui/src/takeoff.rs:45
 msgid "Material Takeoff"
 msgstr ""
 
@@ -11477,7 +11476,7 @@ msgstr "Nome de {}"
 #: crates/ui-egui/src/phasing.rs:350
 #: crates/ui-egui/src/phasing.rs:536
 #: crates/ui-egui/src/properties.rs:4569
-#: crates/ui-egui/src/takeoff.rs:100
+#: crates/ui-egui/src/takeoff.rs:91
 #: crates/ui-egui/src/templates.rs:503
 #: crates/ui-egui/src/typeprops.rs:100
 #: crates/ui-egui/src/typeprops.rs:101
@@ -11552,7 +11551,7 @@ msgstr "Novo filtro"
 msgid "New Location"
 msgstr "Novo Local"
 
-#: crates/ui-egui/src/takeoff.rs:59
+#: crates/ui-egui/src/takeoff.rs:50
 msgid "New Material Takeoff"
 msgstr ""
 
@@ -12024,7 +12023,7 @@ msgstr ""
 msgid "Not visible on this network: another session on this machine has the port"
 msgstr "Não visível nesta rede: outra sessão nesta máquina está usando a porta"
 
-#: crates/core/src/takeoff.rs:317
+#: crates/core/src/takeoff.rs:327
 #: crates/ui-egui/src/lib.rs:7592
 msgid "Note"
 msgstr "Nota"
@@ -12225,7 +12224,7 @@ msgstr ""
 #: crates/ui-egui/src/scale.rs:137
 #: crates/ui-egui/src/scale.rs:196
 #: crates/ui-egui/src/standards.rs:335
-#: crates/ui-egui/src/takeoff.rs:106
+#: crates/ui-egui/src/takeoff.rs:97
 #: crates/ui-egui/src/templates.rs:750
 #: crates/ui-egui/src/titleblocks.rs:757
 #: crates/ui-egui/src/typeprops.rs:348
@@ -14425,7 +14424,7 @@ msgid "Properties over the Project Browser on the left, every panel and tool sho
 msgstr ""
 
 #: crates/core/src/commands.rs:846
-#: crates/core/src/commands.rs:11413
+#: crates/core/src/commands.rs:11411
 msgid "Property Line"
 msgstr ""
 
@@ -19233,7 +19232,7 @@ msgid "They follow the cursor over the view's work plane; click where they go"
 msgstr "Seguem o cursor sobre o plano de trabalho da vista; clique onde ficam"
 
 #: crates/core/src/family.rs:3287
-#: crates/core/src/takeoff.rs:310
+#: crates/core/src/takeoff.rs:320
 #: crates/ui-egui/src/properties.rs:683
 #: crates/ui-egui/src/properties.rs:684
 #: crates/ui-egui/src/properties.rs:686
@@ -19657,11 +19656,11 @@ msgid "Topology: {} ({} triangles)"
 msgstr ""
 
 #: crates/core/src/commands.rs:858
-#: crates/core/src/commands.rs:11455
+#: crates/core/src/commands.rs:11453
 msgid "Toposolid"
 msgstr ""
 
-#: crates/core/src/takeoff.rs:316
+#: crates/core/src/takeoff.rs:326
 #: crates/ui-egui/src/lib.rs:7808
 msgid "Total"
 msgstr "Total"
@@ -19897,7 +19896,7 @@ msgid "Two- and three-key shortcuts are typed plainly, W then A for Wall. A comb
 msgstr ""
 
 #: crates/core/src/model.rs:2108
-#: crates/core/src/takeoff.rs:308
+#: crates/core/src/takeoff.rs:318
 #: crates/ui-egui/src/adaptive_editor.rs:724
 #: crates/ui-egui/src/editor/dimensions.rs:1049
 #: crates/ui-egui/src/editor/nested.rs:278
@@ -20214,7 +20213,7 @@ msgstr "Desbloquear"
 msgid "Unlock alignment"
 msgstr "Desbloquear alinhamento"
 
-#: crates/core/src/commands.rs:17194
+#: crates/core/src/commands.rs:17192
 msgid "Unnamed"
 msgstr "Sem nome"
 
@@ -20727,7 +20726,7 @@ msgstr "Tensões"
 msgid "Volume"
 msgstr "Volume"
 
-#: crates/core/src/takeoff.rs:313
+#: crates/core/src/takeoff.rs:323
 #: crates/ui-egui/src/steel.rs:337
 msgid "Volume (m³)"
 msgstr "Volume (m³)"
@@ -20854,11 +20853,11 @@ msgstr "Lavatório"
 msgid "Waste"
 msgstr "Perda"
 
-#: crates/core/src/takeoff.rs:315
+#: crates/core/src/takeoff.rs:325
 msgid "Waste (%)"
 msgstr ""
 
-#: crates/ui-egui/src/takeoff.rs:77
+#: crates/ui-egui/src/takeoff.rs:68
 msgid "Waste:"
 msgstr ""
 
@@ -21008,8 +21007,8 @@ msgstr "Quem tem uma chave própria sempre a usa. Desativado, quem não tem usa 
 
 #: crates/ui-egui/src/steel.rs:405
 #: crates/ui-egui/src/steel.rs:407
-#: crates/ui-egui/src/takeoff.rs:86
-#: crates/ui-egui/src/takeoff.rs:88
+#: crates/ui-egui/src/takeoff.rs:77
+#: crates/ui-egui/src/takeoff.rs:79
 msgid "Whole project"
 msgstr "Projeto inteiro"
 

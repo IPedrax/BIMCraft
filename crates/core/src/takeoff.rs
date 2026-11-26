@@ -83,6 +83,16 @@ fn is_zero(x: &f64) -> bool {
     *x == 0.0
 }
 
+/// `Material Takeoff` in the project's language, numbered if a view has that name already: what a takeoff
+/// made without a name is called.
+pub fn free_name(m: &Model) -> String {
+    let base = m.language.word("Material Takeoff").to_string();
+    std::iter::once(base.clone())
+        .chain((2..).map(|n| format!("{base} {n}")))
+        .find(|n| !m.elements.keys().any(|id| m.view_name(*id) == Some(n.as_str())))
+        .unwrap_or(base)
+}
+
 /// A material's mass, kg per m³ of it and, for a sheet (a membrane, a housewrap), kg per m² of it: a sheet
 /// may be weighed either way, and one that is said in kg/m² is weighed by its area.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
