@@ -3079,7 +3079,7 @@ fn section_base_cancellable(
         plane_name_px(&mut d, [(pa, short), (pb, short_a)], &rp.name, &mut lettered);
     }
     d.owner = None;
-    cut_traces(&mut d, &lettered);
+    cut_traces(&mut d, &lettered.boxes);
     if cancelled() {
         return None;
     }
@@ -3113,6 +3113,12 @@ pub(crate) fn reference_lines(d: &mut Drawing, lines: &[(P2, P2)]) {
 struct Lettered {
     boxes: Vec<[f32; 4]>,
     traces: Vec<Trace>,
+    /// What else a name keeps off, which cuts no trace: the elevation marks.
+    marks: Vec<[f32; 4]>,
+    /// Of `boxes`, the names lettered on their own trace (beyond an end, or slid in along it), which a plan cuts it under.
+    on_trace: Vec<[f32; 4]>,
+    /// The lines a name keeps off as it keeps off a mark: a plan's forms' outlines, in pixels.
+    lines: Vec<((f32, f32), (f32, f32))>,
 }
 
 /// A reference plane's trace in a drawing: the plane, and its ends in pixels.
@@ -3120,6 +3126,8 @@ type Trace = (Id, (f32, f32), (f32, f32));
 
 /// How many steps along its trace a crowded reference plane's name is tried at, beside it, by each end and on each side.
 const NAME_STEPS: usize = 3;
+/// How many steps in along its trace a reference plane's name is slid from beyond an end an elevation mark stands at.
+const SLIDE_STEPS: usize = 8;
 
 /// A reference plane's name, in the planes' green, lettered just beyond the end of its trace (pixels): `ends[0]` the end it
 /// goes by alone, `ends[1]` the other, each as (from, to), lettered beyond `to`. Where it would overlap a name `lettered`
@@ -3158,43 +3166,70 @@ fn plane_name_px(d: &mut Drawing, ends: [((f32, f32), (f32, f32)); 2], name: &st
         let back = along + (2.0 * along + gap) * n as f32;
         boxed((b.0 - dir.0 * back + across.0 * off, b.1 - dir.1 * back + across.1 * off))
     };
-    let mut places = vec![beyond(0), beyond(1)];
+    // On the trace by end `e`, slid `n` steps back along it from beyond the end (in from an elevation mark beyond it);
+    // the trace is cut under it, as beyond its end.
+    let slid = |e: usize, n: usize| {
+        let ((at, _), dir) = (beyond(e), axes(e).1);
+        let step = (w / 4.0 + gap) * dir.0.abs() + (h / 2.0 + gap) * dir.1.abs();
+        boxed((at.0 - dir.0 * step * n as f32, at.1 - dir.1 * step * n as f32))
+    };
+    let marked = |r: &[f32; 4]| lettered.marks.iter().any(|o| !(r[2] <= o[0] || o[2] <= r[0] || r[3] <= o[1] || o[3] <= r[1]));
+    // Slid no further in than its trace is long.
+    let slides = |e: usize| {
+        let (a, b) = ends[e];
+        let (len, dir) = ((b.0 - a.0).hypot(b.1 - a.1), axes(e).1);
+        let step = (w / 4.0 + gap) * dir.0.abs() + (h / 2.0 + gap) * dir.1.abs();
+        (1..=SLIDE_STEPS).take_while(move |n| step * *n as f32 <= len)
+    };
+    let mut places = vec![beyond(0)];
+    // Only a mark in the way beyond the end: in from it along the trace, before the other end.
+    if marked(&beyond(0).1) {
+        places.extend(slides(0).map(|n| slid(0, n)));
+    }
+    places.push(beyond(1));
+    if marked(&beyond(1).1) {
+        places.extend(slides(1).map(|n| slid(1, n)));
+    }
+    // Those so far are on the trace, or beyond its end; the rest, beside it.
+    let on = places.len();
     for n in 0..NAME_STEPS {
         for e in 0..2 {
             places.extend([beside(e, 1.0, n), beside(e, -1.0, n)]);
         }
     }
-    let clear = |r: &[f32; 4]| lettered.boxes.iter().all(|o| r[2] <= o[0] || o[2] <= r[0] || r[3] <= o[1] || o[3] <= r[1]);
+    let clear = |r: &[f32; 4]| {
+        lettered.boxes.iter().chain(&lettered.marks).all(|o| r[2] <= o[0] || o[2] <= r[0] || r[3] <= o[1] || o[3] <= r[1])
+            && !lettered.lines.iter().any(|(a, b)| clips(*a, *b, (r[0], r[1]), (r[2], r[3])))
+    };
     // Moved, a name also keeps off every other plane's trace, so it can't be read as that one's.
     let own = d.owner;
     let apart =
         |r: &[f32; 4]| clear(r) && !lettered.traces.iter().any(|(id, a, b)| Some(*id) != own && clips(*a, *b, (r[0], r[1]), (r[2], r[3])));
     let (width, height) = (d.view.width as f32, d.view.height as f32);
     let inside = |r: &[f32; 4]| r[0] >= 0.0 && r[1] >= 0.0 && r[2] <= width && r[3] <= height;
-    let (at, r) = if clear(&places[0].1) {
-        places[0]
+    let (k, (at, r)) = if clear(&places[0].1) {
+        (0, places[0])
     } else {
-        places
-            .iter()
-            .find(|(_, r)| apart(r) && inside(r))
-            .or_else(|| places.iter().find(|(_, r)| clear(r) && inside(r)))
-            .or_else(|| places.iter().find(|(_, r)| clear(r)))
-            .copied()
-            .unwrap_or(places[0])
+        let find = |ok: &dyn Fn(&[f32; 4]) -> bool| places.iter().position(|(_, r)| ok(r));
+        let k = find(&|r| apart(r) && inside(r)).or_else(|| find(&|r| clear(r) && inside(r))).or_else(|| find(&|r| clear(r))).unwrap_or(0);
+        (k, places[k])
     };
     lettered.boxes.push(r);
+    if k < on {
+        lettered.on_trace.push(r);
+    }
     d.text(name, at, h, REFERENCE_PLANE);
 }
 
 /// Every reference plane's trace of `d` cut where a name `lettered` lies on it, a gap round the name: a trace stops short of
 /// its own name, as Revit's runs up to it, and passes under no other plane's.
-fn cut_traces(d: &mut Drawing, lettered: &Lettered) {
-    if lettered.boxes.is_empty() {
+fn cut_traces(d: &mut Drawing, names: &[[f32; 4]]) {
+    if names.is_empty() {
         return;
     }
     // A gap round the name, however small the view letters it.
     let gap = d.px(3.0).max(4.0);
-    let boxes: Vec<[f32; 4]> = lettered.boxes.iter().map(|r| [r[0] - gap, r[1] - gap, r[2] + gap, r[3] + gap]).collect();
+    let boxes: Vec<[f32; 4]> = names.iter().map(|r| [r[0] - gap, r[1] - gap, r[2] + gap, r[3] + gap]).collect();
     for i in 0..d.prims.len() {
         let Prim::Line { pts, dash: Some(_), color, .. } = &d.prims[i] else { continue };
         if *color != REFERENCE_PLANE || pts.len() != 2 || d.parts.get(i) == Some(&Part::Text) {
@@ -4158,12 +4193,36 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     // The reference planes' names lettered so far, among every upright plane's trace: one crowded goes elsewhere.
     let mut lettered = Lettered::default();
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
+        // An elevation mark is in a name's way as another name is.
+        if let Element::Elevation(v) = e
+            && inside(crate::elevation::mark(v))
+        {
+            lettered.marks.push(elevation_mark_box(&d.view, v));
+        }
         if let Element::RefPlane(rp) = e
             && rp.upright()
         {
             let (a, b) = (P2(rp.start[0], rp.start[1]), P2(rp.end[0], rp.end[1]));
             if let Some((a, b)) = crop.map_or(Some((a, b)), |[lo, hi]| clip(a, b, lo, hi)) {
                 lettered.traces.push((id, d.view.px(a), d.view.px(b)));
+            }
+        }
+    }
+    // And the outlines the plan draws of its components' forms: a name never lies over a form's lines. Found only where
+    // a plane is named, and only what the plan draws and its picture shows.
+    let named = lettered.traces.iter().any(|(id, ..)| matches!(m.elements.get(*id), Some(Element::RefPlane(rp)) if !rp.name.is_empty()));
+    if named {
+        let (pw, ph) = (d.view.width as f32, d.view.height as f32);
+        let seen = |a: (f32, f32), b: (f32, f32)| a.0.max(b.0) >= 0.0 && a.0.min(b.0) <= pw && a.1.max(b.1) >= 0.0 && a.1.min(b.1) <= ph;
+        for (_, e) in all().filter(|(id, _)| shown(**id)) {
+            let Element::Component(c) = e else { continue };
+            let (bottom, top) = components.heights(c);
+            if up || bottom >= range.cut || top <= range.depth {
+                continue;
+            }
+            for p in components.pieces(c).iter().filter(|p| plan_draws(p, d.detail, range.cut)) {
+                let px: Vec<(f32, f32)> = p.outline.iter().map(|q| d.view.px(*q)).collect();
+                lettered.lines.extend((0..px.len()).map(|i| (px[i], px[(i + 1) % px.len()])).filter(|(a, b)| seen(*a, *b)));
             }
         }
     }
@@ -4427,6 +4486,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             _ => {}
         }
     }
+    // A name slid in along its own trace cuts it, as an elevation's names do; one beside it leaves it whole.
+    cut_traces(&mut d, &lettered.on_trace);
     // Grids stop at the crop's edge on their own, and annotation is whole or not there: the rest is cut.
     if let Some([lo, hi]) = crop {
         let (a, b) = (d.view.px(lo), d.view.px(hi));
@@ -6968,10 +7029,43 @@ pub fn detail_boundary_point([lo, hi]: [P2; 2], from: P2) -> P2 {
     near.map_or(c, |t| c + d * t)
 }
 
+/// An elevation mark's ring, in pixels across from its centre.
+const MARK_R: f32 = 9.0;
+/// How far an elevation mark's arrow reaches past its ring, in pixels.
+const MARK_ARROW: f32 = 7.0;
+/// How far an elevation mark's name stands behind its ring, in pixels.
+const MARK_NAME_GAP: f32 = 6.0;
+/// The size of an elevation mark's name, in pixels.
+const MARK_NAME_SIZE: f32 = 10.0;
+/// The room kept clear round an elevation mark's box ([`elevation_mark_box`]), in pixels.
+const MARK_CLEAR: f32 = 4.0;
+
+/// How far behind its centre, along the way it looks (`lx`, `ly`), an elevation mark's name `name` stands.
+fn mark_name_back(name: &str, lx: f32, ly: f32) -> f32 {
+    MARK_R + MARK_NAME_GAP + font::width(name, MARK_NAME_SIZE) / 2.0 * lx.abs() + MARK_NAME_GAP * ly.abs()
+}
+
+/// The box an elevation mark takes in pixels (`[left, top, right, bottom]`), its ring, its arrow and its name, a gap round it:
+/// what [`elevation_mark`] draws.
+pub(crate) fn elevation_mark_box(view: &View, v: &Section) -> [f32; 4] {
+    let c = view.px(crate::elevation::mark(v));
+    let (lx, ly) = looking_px(view, v);
+    let (w, h) = (font::width(&v.name, MARK_NAME_SIZE), MARK_NAME_SIZE);
+    let back = mark_name_back(&v.name, lx, ly);
+    let name = (c.0 - lx * back, c.1 - ly * back);
+    let reach = MARK_R + MARK_ARROW;
+    [
+        (c.0 - reach).min(name.0 - w / 2.0) - MARK_CLEAR,
+        (c.1 - reach).min(name.1 - h / 2.0) - MARK_CLEAR,
+        (c.0 + reach).max(name.0 + w / 2.0) + MARK_CLEAR,
+        (c.1 + reach).max(name.1 + h / 2.0) + MARK_CLEAR,
+    ]
+}
+
 /// An elevation's marker in plan, where its mark stands (its line's middle unless it was moved apart): a circle with a flag pointing the way it
 /// looks, and its name behind it.
 fn elevation_mark(d: &mut Drawing, v: &Section) {
-    const R: f32 = 9.0;
+    const R: f32 = MARK_R;
     let c = d.view.px(crate::elevation::mark(v));
     let from = d.prims.len();
     let ring: Vec<(f32, f32)> = (0..32)
@@ -6984,10 +7078,11 @@ fn elevation_mark(d: &mut Drawing, v: &Section) {
     d.stroke(ring, Pen::BUBBLE, INK, None, true);
     let (lx, ly) = looking_px(&d.view, v);
     let side = (-ly * R * 0.8, lx * R * 0.8);
-    let flag = vec![(c.0 + side.0, c.1 + side.1), (c.0 + lx * (R + 7.0), c.1 + ly * (R + 7.0)), (c.0 - side.0, c.1 - side.1)];
+    let tip = R + MARK_ARROW;
+    let flag = vec![(c.0 + side.0, c.1 + side.1), (c.0 + lx * tip, c.1 + ly * tip), (c.0 - side.0, c.1 - side.1)];
     d.push(Prim::Fill { rings: vec![flag], color: INK });
-    let back = R + 6.0 + font::width(&v.name, 10.0) / 2.0 * lx.abs() + 6.0 * ly.abs();
-    d.text(&v.name, (c.0 - lx * back, c.1 - ly * back), 10.0, INK);
+    let back = mark_name_back(&v.name, lx, ly);
+    d.text(&v.name, (c.0 - lx * back, c.1 - ly * back), MARK_NAME_SIZE, INK);
     d.grow(from, c);
 }
 
@@ -7286,8 +7381,9 @@ pub fn rgba(d: &Drawing, under: Option<&view3d::Image>) -> Result<Vec<u8>, Strin
 
 /// A family's floor plan (F4), as Revit's family editor draws it: the project's plan of `level` (`draw`), and over it each
 /// component's forms seen from above whatever their height (a family's plan sees all of it), and where a form crosses the
-/// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut`]). Project plans never cut a component.
-pub(crate) fn family_plan(m: &Model, level: Id, view: View) -> Drawing {
+/// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut`]). Project plans never cut a component. Once
+/// its View Range is set, `seen` the heights it sees, lowest and highest: a form wholly below or above them is left out.
+pub(crate) fn family_plan(m: &Model, level: Id, view: View, seen: Option<(f64, f64)>) -> Drawing {
     let mut d = draw(m, level, view);
     let cut = m.level(level).map_or(crate::model::CUT_HEIGHT, |l| l.view_range.cut);
     let look = Look::of(m, level);
@@ -7299,7 +7395,7 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View) -> Drawing {
             continue;
         }
         let mut pieces = m.component_pieces(c);
-        pieces.retain(|p| plan_draws(p, d.detail, cut));
+        pieces.retain(|p| plan_draws(p, d.detail, cut) && seen.is_none_or(|(lo, hi)| p.top > lo && p.bottom < hi));
         extra.owner = Some(id);
         extra.part(Part::Projection);
         component(&mut extra, m, &pieces);

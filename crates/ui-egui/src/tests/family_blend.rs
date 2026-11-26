@@ -1,6 +1,7 @@
 //! F6: Blend, Sweep and Swept Blend in the family document. Create > Blend sketches a base, Edit Top its top on the plane at
-//! its Second End; Create > Sweep sketches a path, Edit Profile its profile on the plane square to it (in a view that sees
-//! that plane flat); Create > Swept Blend a one-line path and Profile 1 and 2. Finish makes the form, one step of the
+//! its Second End; Create > Sweep's Sketch Path sketches a path, Edit Profile its profile on the plane square to it (in a
+//! view that sees that plane flat), each a mode of its own with its own Finish (`family_sweep_modes.rs`); Create >
+//! Swept Blend a one-line path and Profile 1 and 2. Finish makes the form, one step of the
 //! history; what can't be made is refused, the part at fault put on screen. Edit Blend and the like sketch it again with
 //! every part, and Edit Vertices' twist is kept.
 use super::preview_visibility::Pictures;
@@ -135,10 +136,12 @@ fn a_sweep_is_a_path_in_plan_and_a_profile_in_the_elevation_square_to_it() {
     let mut h = open();
     view(&mut h, Some(Which::Plan));
     button(&mut h, "Sweep");
-    assert_eq!(title(&h), "Modify | Sweep > Sketch Path");
+    assert_eq!(title(&h), "Modify | Sweep");
     // Edit Profile before a path: refused, saying so.
     button(&mut h, "Edit Profile");
     assert!(h.state().status.error && h.state().status.text.contains("path"), "{}", h.state().status.text);
+    button(&mut h, "Sketch Path");
+    assert_eq!(title(&h), "Modify | Sweep > Sketch Path");
     // An L: east 1000, then north 800, chained.
     button(&mut h, "Line");
     for q in [P2(0.0, 0.0), P2(1000.0, 0.0), P2(1000.0, 800.0)] {
@@ -147,12 +150,15 @@ fn a_sweep_is_a_path_in_plan_and_a_profile_in_the_elevation_square_to_it() {
     h.key_press(Key::Escape);
     h.run();
     assert_eq!(editor(&h).sketch.as_ref().unwrap().sketch.lines.len(), 2);
+    button(&mut h, "Finish Edit Mode");
     button(&mut h, "Edit Profile");
+    // The profile's plane faces the path's first line, east: Go To View offers the side elevations, which see it flat.
+    button(&mut h, "Open View");
     assert_eq!(title(&h), "Modify | Sweep > Edit Profile");
-    // The profile's plane faces the path's first line, east: a side elevation sees it flat.
     let shown = editor(&h).views.shown;
     assert!(matches!(shown, Some(Which::Elevation(Side::Left | Side::Right))), "{shown:?}");
     rectangle(&mut h, P2(-100.0, 0.0), P2(100.0, 200.0));
+    button(&mut h, "Finish Edit Mode");
     button(&mut h, "Finish Edit Mode");
     assert!(!editor(&h).sketching(), "{}", h.state().status.text);
     let f = editor(&h).draft_family().unwrap();
@@ -171,6 +177,8 @@ fn a_swept_blend_takes_one_line_and_two_profiles_and_a_void_cuts() {
     assert!(editor(&h).sketch.as_ref().is_some_and(|s| s.void && s.kind == FormKind::SweptBlend));
     button(&mut h, "Cancel Edit Mode");
     button(&mut h, "Swept Blend");
+    assert_eq!(title(&h), "Modify | Swept Blend");
+    button(&mut h, "Sketch Path");
     assert_eq!(title(&h), "Modify | Swept Blend > Sketch Path");
     button(&mut h, "Line");
     click_plane(&mut h, P2(0.0, 0.0));
@@ -178,18 +186,22 @@ fn a_swept_blend_takes_one_line_and_two_profiles_and_a_void_cuts() {
     click_plane(&mut h, P2(500.0, 1000.0));
     h.key_press(Key::Escape);
     h.run();
-    // Two lines: refused, the path put back on screen.
-    button(&mut h, "Profile 1");
-    rectangle(&mut h, P2(-100.0, 0.0), P2(100.0, 200.0));
+    // Two lines: the path's own Finish refuses, still sketching it.
     button(&mut h, "Finish Edit Mode");
-    assert!(editor(&h).sketching());
     assert!(h.state().status.text.contains("one line"), "{}", h.state().status.text);
     assert_eq!(title(&h), "Modify | Swept Blend > Sketch Path");
     let s = editor_mut(&mut h).sketch.as_mut().unwrap();
     s.sketch.lines.truncate(1);
+    button(&mut h, "Finish Edit Mode");
+    assert_eq!(title(&h), "Modify | Swept Blend", "{}", h.state().status.text);
+    button(&mut h, "Profile 1");
+    button(&mut h, "Open View");
+    rectangle(&mut h, P2(-100.0, 0.0), P2(100.0, 200.0));
+    button(&mut h, "Finish Edit Mode");
     button(&mut h, "Profile 2");
     assert_eq!(title(&h), "Modify | Swept Blend > Edit Profile 2");
     rectangle(&mut h, P2(-50.0, 0.0), P2(50.0, 100.0));
+    button(&mut h, "Finish Edit Mode");
     button(&mut h, "Finish Edit Mode");
     assert!(!editor(&h).sketching(), "{}", h.state().status.text);
     let f = editor(&h).draft_family().unwrap();
@@ -234,7 +246,9 @@ fn family_blend_screenshots() {
     h.run();
     save(&mut h, "sweep-path");
     button(&mut h, "Edit Profile");
+    button(&mut h, "Open View");
     save(&mut h, "sweep-profile");
+    button(&mut h, "Cancel Edit Mode");
     button(&mut h, "Cancel Edit Mode");
     // The swept blend: its path, and its second profile in {3D}.
     view(&mut h, Some(Which::Plan));
@@ -245,4 +259,33 @@ fn family_blend_screenshots() {
     button(&mut h, "Profile 2");
     save(&mut h, "swept-profile2");
     button(&mut h, "Cancel Edit Mode");
+    button(&mut h, "Cancel Edit Mode");
+}
+
+/// A Blend says what comes next. Its base not yet closed, the shape's own prompt; closed, Edit Top; on the top, to
+/// draw it at the Second End and Finish; a Finish with no top puts the top on screen, its base drawn grey under it.
+#[test]
+fn a_blend_says_edit_top_once_its_base_closes_and_finish_on_the_top() {
+    let mut h = open();
+    view(&mut h, Some(Which::Plan));
+    button(&mut h, "Blend");
+    let said = |h: &Harness<BimApp>| {
+        let ed = editor(h);
+        crate::editor::sketch::prompt(ed.sketch.as_ref().unwrap(), &ed.views.modify_options).to_string()
+    };
+    assert!(!said(&h).contains("Edit Top"), "nothing drawn yet: {}", said(&h));
+    // A base of three lines, open: not yet.
+    button(&mut h, "Line");
+    for q in [P2(-500.0, -500.0), P2(500.0, -500.0), P2(500.0, 500.0), P2(-500.0, 500.0)] {
+        click_plane(&mut h, q);
+    }
+    assert!(!said(&h).contains("Edit Top"), "open: {}", said(&h));
+    // Closed: Edit Top is next.
+    click_plane(&mut h, P2(-500.0, -500.0));
+    assert!(said(&h).contains("Edit Top"), "closed: {}", said(&h));
+    // A Finish with no top: refused, the top on screen and its prompt, the base waiting grey on its own plane.
+    button(&mut h, "Finish Edit Mode");
+    assert_eq!(title(&h), "Modify | Create Blend Top Boundary");
+    assert!(said(&h).contains("Second End") && said(&h).contains("Finish Edit Mode"), "{}", said(&h));
+    assert_eq!(editor(&h).other_parts().len(), 1, "the base, grey");
 }

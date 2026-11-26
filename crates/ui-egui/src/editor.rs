@@ -11,6 +11,7 @@ pub(crate) mod document;
 mod drag_move;
 pub(crate) mod exists;
 mod extrusion;
+mod find_replace;
 pub(crate) mod handle_params;
 pub(crate) mod handles3d;
 pub(crate) mod lit3d;
@@ -18,7 +19,7 @@ mod measure;
 pub(crate) mod modify;
 mod nested;
 pub(crate) mod options;
-mod origin_mark;
+pub(crate) mod origin_mark;
 mod pivot;
 mod purge;
 pub(crate) mod select_box;
@@ -29,6 +30,7 @@ mod sketch_dims;
 pub(crate) mod tabs;
 mod temp_hide;
 mod types_dialog;
+pub(crate) mod view_graphics;
 pub(crate) mod views;
 pub(crate) mod visibility;
 pub(crate) mod work_plane;
@@ -229,6 +231,20 @@ impl FormText {
             (_, Shape::Profile | Shape::Sketch, false) => t("Extrusion"),
         };
         if self.void { format!("{what} ({})", t("void")) } else { what.to_string() }
+    }
+
+    /// The icon of what it is, the one its tool has in Create > Forms; a mesh's, which no tool there makes, is Create Form's.
+    fn icon(&self) -> crate::icons::Icon {
+        use crate::icons::Icon;
+        use bimcraft_core::family::forms::FormKind;
+        match (self.mesh(), self.original.kind(), self.revolve) {
+            (true, ..) => Icon::CreateForm,
+            (_, FormKind::Blend, _) => Icon::Blend,
+            (_, FormKind::Sweep, _) => Icon::Sweep,
+            (_, FormKind::SweptBlend, _) => Icon::SweptBlend,
+            (_, _, true) => Icon::Revolve,
+            _ => Icon::Extrusion,
+        }
     }
 
     fn form(&self) -> Result<Form, String> {
@@ -553,7 +569,7 @@ pub(crate) struct FamilyEditor {
     pub(crate) zoom: zoom::Zoom,
     pub(crate) scene3d: Option<lit3d::FamilyScene>,
     /// Why the family can't be tried or made: shown under the preview.
-    problem: Option<String>,
+    pub(crate) problem: Option<String>,
     /// The document's own state: its history, its preview's size, an association being made.
     document: document::State,
     /// The family document's ribbon tab, and the one it goes back to when the contextual tab goes.
@@ -571,10 +587,16 @@ pub(crate) struct FamilyEditor {
     pub(crate) sketch: Option<Box<sketch::FormSketch>>,
     /// What a sketch snaps to, as Manage > Snaps says: the window's, given each frame.
     pub(crate) snaps: bimcraft_core::snap::Snaps,
+    /// The last repeatable tool picked in this document, session state outside its draft and undo history.
+    pub(crate) last_tool: Option<&'static str>,
+    /// The Component choice most recently armed or placed, including Options Bar and Create Similar.
+    pub(crate) last_component: Option<(String, String)>,
     /// The families loaded into it and their instances placed in it (T6a, `nested.rs`), as the family holds them.
     pub(crate) nested: Vec<bimcraft_core::family::NestedFamily>,
     /// Manage > Purge Unused, open (FE-19).
     purging: Option<purge::Purging>,
+    /// Annotate > Find/Replace, open.
+    find_replace: Option<find_replace::FindReplace>,
     pub(crate) nested_instances: Vec<bimcraft_core::family::NestedInstance>,
     /// Create > Component, on: the nested family and type a click places.
     pub(crate) placing: Option<(String, String)>,
@@ -724,8 +746,11 @@ impl FamilyEditor {
             views: Default::default(),
             sketch: None,
             snaps: Default::default(),
+            last_tool: None,
+            last_component: None,
             nested: f.nested.clone(),
             purging: None,
+            find_replace: None,
             nested_instances: f.nested_instances.clone(),
             placing: None,
             into_host: false,
@@ -1264,6 +1289,12 @@ impl FamilyEditor {
         self.select_only(select_box::Picked::Symbol(i));
     }
 
+    /// The icon heading each form's Properties, in the family's order: its tool's, as Create > Forms has it.
+    #[cfg(test)]
+    pub(crate) fn form_icons(&self) -> Vec<crate::icons::Icon> {
+        self.forms.iter().map(FormText::icon).collect()
+    }
+
     /// Form `i` alone selected, as the Project Browser selects it: whatever else was selected let go.
     pub(crate) fn select_only_form(&mut self, i: usize) {
         self.select_only(select_box::Picked::Form(i));
@@ -1276,6 +1307,7 @@ impl FamilyEditor {
 
     /// A symbol of `part` added, as the Detail panel draws one, and selected so Properties show its rows.
     pub(crate) fn add_symbol(&mut self, part: Part) {
+        self.last_tool = None;
         self.symbols.push(SymbolText::blank(part));
         self.select_symbol(self.symbols.len() - 1);
     }

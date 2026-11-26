@@ -166,7 +166,15 @@ Blend, Revolve, Sweep, Swept Blend, Void Forms), symbols on Annotate's Detail pa
 each made selected so Properties show its rows, and Manage's Adaptive Component makes the family adaptive (Make Family Adaptive,
 or Four-Point Panel for a ready-made one); Family Types and Family Category and Parameters open dialogs
 (Apply, OK, and Cancel putting back what the dialog began from). Extrusion, Blend, Revolve, Sweep, Swept Blend and Void Forms
-sketch forms (F5 and F6, below). Undo and Redo are the document's own (`Draft`), and never undo the project.
+sketch forms (below). Each of the six has an icon of its own (`icons.rs`: a block rising, a square base under a
+round top, a ring on its axis, a tube, a horn, a solid in dots), and a selected form's Properties are headed by its tool's
+(`FormText::icon`); Model Text, Connector and Show have theirs too, and Reference Plane and Set the project's own tools'.
+On a family's tabs a panel's name lists its tools only while some are out of sight (handed over or folded to make room): with
+every tool on the ribbon it is painted, and no button (`ribbon::panel`, on a `family:` tab only; a project's panels keep theirs).
+Undo and Redo are the document's own (`Draft`), and never undo the project.
+Find/Replace, beside Text on Annotate's Detail panel (`editor/find_replace.rs`), works on the family's text: Find and Replace
+with, Match case, Match whole word only; Find All selects the texts it is found in, Replace All replaces it in every one, the dialog's visit one step of the history. What a text names in braces (`{Width}`, a parameter) is
+neither found nor changed. It has no key in a family yet (the project's FR is Filled Region); Find lists it.
 Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
 shown copied), Rename Type and Delete Type (refused for the last, saying why); Search parameters (by name, case aside); one table,
 Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
@@ -225,7 +233,8 @@ wall with its solids hidden, its parts generic copies at the opening's frame, as
 card's or the processor's, as the project's is, and the card keeps the project's mesh parked beside it (`Gpu::hold_for`), so
 neither is uploaded again when the other view shows. It is moved as the project's 3D view is: a primary drag orbits about the
 point under the pointer, the middle button pans, Shift and the middle button orbit, the wheel zooms toward the point under the
-cursor, the 3D mouse moves it, the triad (left of the ViewCube) and Revit's ViewCube turn it, and Zoom to Fit fits it; while
+cursor, the 3D mouse moves it, the triad (left of the ViewCube) and the ViewCube turn it (a click on a face, an edge or a
+corner of the cube: [adaptive families](adaptive-families.md)), and Zoom to Fit fits it; while
 nothing has moved it, it fits itself again as its pane is resized. It shows what is selected as the project's 3D view does (T11):
 a form, a void or a nested instance selected is tinted halfway in the selection's colour with its edges whole, through the
 project's own tints, so what stands in front of it still hides it; a void, never seen, is drawn see-through while selected
@@ -290,7 +299,10 @@ yes or no; or words: a material, `text`, a `url` (`MAX_URL`, one line) or a `fam
 reads them (`Kind::text`; `family/validate.rs` refuses the formula, a material still where it is worked out). A family type
 parameter names the category of the families whose types it picks (`of`) and holds no value until T24 (a nested family's type chosen by it).
 `group` is the heading it is listed under (`Group`, 14 of them); none, its kind's (`Parameter::group`: Dimensions for lengths,
-areas, volumes and angles, Materials and Finishes for materials, else Other). `shared` is a shared parameter's GUID, the
+areas, volumes and angles, Materials and Finishes for materials, else Other). A component's Properties list its instance
+parameters under these headings, each heading once: one the element's own fields head already (Other, where it is and its
+rotation) takes them in its own grid (`parameters` in `properties.rs`, through `component_rows`), and `component_parameters`
+heads only the rest (`tests/properties_groups.rs`). `shared` is a shared parameter's GUID, the
 same wherever it is used and distinct from the parameter's library-entry GUID (which is per project and per family): two
 families' parameters of one shared GUID are one name and one kind, and one name shared is one GUID
 (`Model::check_shared_parameters`); without it, it is the family's own. Schedules list every family parameter by name either
@@ -355,8 +367,10 @@ step of its history. A void hidden in a type cuts nothing in either.
 
 Temporary Hide/Isolate works in the family document's view as in the project's (`editor/temp_hide.rs`): Hide Element (HH), Hide
 Category (HC), Isolate Element (HI), Isolate Category (IC) and Reset (HR), from the keys (or what Keyboard Shortcuts made them) or
-the view control bar's Temporary Hide/Isolate menu (Apply Hide/Isolate to View greyed: a family's views keep nothing hidden for
-good yet). It acts on what is selected: the form selected in a family that isn't adaptive, the points, lines and forms selected in
+the view control bar's Temporary Hide/Isolate menu. Its Apply Hide/Isolate to View hides the forms and planes hidden for now,
+and Forms as a category, in the view shown for good (*View graphics*, below); what a family's view can't keep (reference planes
+or the wall as a category) stays hidden for now. In an adaptive family, whose views hide for now only, it is greyed. It acts on
+what is selected: the form selected in a family that isn't adaptive, the points, lines and forms selected in
 the modelling view; the selection goes. A family has no categories of elements, so the view's own stand for them, as Revit's
 family editor names them: Forms (solid and void alike: forms have no subcategory), Reference Points, Lines, Reference Planes (the
 datums and the family's planes the modelling view draws) and, in a door's or a window's preview, the wall it stands in. Only forms,
@@ -368,6 +382,55 @@ gives it, so a hidden one stays hidden as forms move in the list. A hidden form 
 document's (`document::State::temp`), as Preview Visibility: not saved, no step of the history, no unsaved change, gone when the
 family closes. While it hides anything the view wears the project's cyan frame (`footer::FRAME`) and the bar says
 "Temporary Hide/Isolate (HR resets)"; Preview Visibility's orange frame is then drawn just inside it, so both show.
+
+### View graphics
+
+Each of the family document's views ({3D}, the two plans and the four elevations) keeps its own graphics
+(`editor/view_graphics.rs`, `Views::kept`), laid over the scratch project it is drawn of, so the project's drawing does what
+they say. They are the session's, as Temporary Hide/Isolate is: not saved, no step of the history, no unsaved change, gone
+when the family closes. Nothing of them is a field of the family or of the project. None of these commands has a key in the
+family yet; Find (Ctrl+K) lists each on a family's tab (`BimApp::family_find_actions`).
+
+- Visibility/Graphics (and the View tab's button): the project's dialog (`VgDialog::for_family`), with only its Model and
+  Annotation Categories tabs, listing what the family's views draw: the family's category (a door's or a window's as Doors or
+  Windows, with Walls for the wall it stands in) and Levels. OK and Apply hand the draft back to the view; no command runs.
+  In {3D} a door's or a window's parts stand as generic families of their own, so its category's override is theirs there.
+  Object Styles… from it is the family's (*Manage in the family document*), with its note.
+- Thin Lines (and the View tab's button): the window's own, shared with the project's tabs; the family's plans and
+  elevations draw every line one pixel wide.
+- Wireframe, Hidden Line and Shaded, and Graphic Display Options: {3D}'s alone, as in the project; the view control bar's
+  Visual Style menu in {3D} sets them too. In a plan or an elevation the status bar says they are {3D}'s.
+- View Range: the floor plan's, typed in the project's units as offsets from Ref. Level (Top empty, unlimited) and checked as
+  a project plan's is (`model::range_ok`). Until it is set the family's floor plan sees every form whatever its height, as
+  before, and OK on the range the dialog first shows sets none; set, a form wholly below its view depth or above its top is
+  left out (`Staged::seen`). The ceiling plan looks up from its own cut, as a project's does, and has none. While one of
+  these dialogs is open it has the keys: neither the document nor its views get them.
+- Selection Box: {3D}'s alone. With forms or nested instances selected, {3D} is cut to a box round what the staged scene
+  draws of them (a solid as its voids cut it, a nested instance whole; `Scene::boxes`), grown by 5% of its longest side and
+  at least 50 mm, and opens (`BimApp::family_selection_box`); the staged {3D}'s section box is that box, so the project's
+  drawing cuts it and fills what it cuts. On nothing it takes the box away, or says what to select; on only what isn't a form
+  or a nested instance (a reference plane) it keeps the box and says so. The box is fixed: it doesn't follow an edit of what
+  it was made round. A door's or a window's is in the frame {3D} stages it in, at its opening. It has no grips: Selection Box
+  on another selection makes another box. It is kept with the view's graphics, so the staged scene is made again when it
+  changes.
+- Hide in View: Hide Element hides the forms and reference planes selected in the view shown, by their GUIDs (the view's own
+  `Graphics::elements`, `hidden`); Hide Category hides the forms' category, Visibility/Graphics' row, which the dialog then
+  shows unticked. Hide Category on a plane alone says it has no category to hide. A hidden form or plane is neither drawn nor
+  picked there, by a click, a box, Dimension or Align (a form hidden for now, HH, alike); the selection goes. An adaptive
+  family's views hide for now only.
+- Reveal Hidden Elements (and the view control bar's button): the view draws what it hides in magenta, a form and a plane's
+  trace alike, inside the project's cyan frame, where it can be picked; Unhide Elements and Unhide Category show what is
+  selected again.
+- Override Graphics by Element: View-Specific Element Graphics, the project's override editor (`graphics::editor`), on the
+  forms selected. It opens on the first's override, and OK sets on each only what was edited there, field by field, keeping
+  the rest of its own and whether it is hidden; OK with nothing edited sets nothing.
+- A form with graphics of its own in a view (an override, or revealed) is drawn as a component of its own beside the family,
+  as the ghost of what its type hides is (`views::apart_family`, `FamilyEditor::apart_forms`), so the project's drawing gives
+  it its element's graphics; the family's voids go with it and cut it as they cut the family. A form its view hides, with its
+  category or by itself, is never drawn apart unless revealed, whatever it overrides (a door's forms drawn apart are a generic
+  family, which the door category's hide wouldn't reach). In {3D} each part already is one.
+
+Tests: `tests/family_view_graphics.rs`, `tests/family_hide_override.rs`, `tests/family_selection_box.rs`.
 
 ### Visibility Settings (F8)
 
@@ -606,6 +669,13 @@ labels, locks and EQ taken off, and what was being done done) or Cancel. An extr
 Properties and the Options Bar's Depth. A reload whose family has dimensions measuring to nothing (`exists.rs`) asks Invalid
 Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Angular dimensions and reference lines that turn
 are F7c's (below).
+Edit Witness Lines (the Options Bar's button on an aligned dimension selected in a plan or an elevation, and Find; no key in a
+family yet, as the project's EW is Wire) adds and takes off a dimension's references: a click on one the Dimension tool takes adds it, in
+order along the dimension, or takes it off where the dimension has it; a click on nothing or Esc ends it; each click is a step
+(`dimensions::witnessed`, then the solve). It refuses the last two references, one not parallel to the others, and a labelled
+dimension (a label measures one segment). A lock is never lost without a word: taking off a reference a locked segment needs
+is refused unless the two segments it parts are both locked (they become one, locked at their sum), adding one inside a
+locked segment drops that lock and says so, and EQ left with one segment ends and says so. No new field: it edits `refs`.
 
 F7b, part of FORMAT 18: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
 "line": guid}` (the plane through it square to the form's plane: Revit's sketch line seen edge on), to a line's end or a
@@ -1036,9 +1106,25 @@ hand the work plane is shown, and over the picture go the tool's marks, its rubb
 the click would put it (`boxed`, from `family::views::form_corners`), worked out once for the draft, the selection and the
 plane and only moved as the pointer moves (`Views::taken_3d`). The tool takes what {3D} draws of the selection, so a form
 hidden in the view stays, and planes and lines selected in a plan before. A tool taken in another view starts again in {3D},
-its points let go, or is put down there, saying why, where {3D} can't work with it. Mirror - Pick Axis, Offset, Scale and
-Align, which pick something of the view or lean on its depth, are greyed in {3D} with that reason. Tests:
-`tests/family_modify_3d.rs`.
+its points let go, or is put down there, saying why, where {3D} can't work with it. Scale, which leans on the view's depth,
+is greyed in {3D}, saying so. Tests: `tests/family_modify_3d.rs`.
+
+{3D} picks references too, though a tool's points there land on the work plane as clicked (no snap yet). Mirror - Pick
+Axis, Offset and Align pick in the picture (`family::views::References3d`, made once for a draft and picked among for each
+camera): a reference plane (a datum too) by the line it was drawn as, a reference line or a form's edge as drawn, near the
+pointer, never one a form or a nested instance stands in front of there, and of a line partly behind the eye what shows.
+The planes and lines, datums included, are drawn over the picture while a tool picks; the first near the pointer the tool
+takes is lit and picked, and where it takes none the nearest says why. Mirror's axis is a plane's trace across the work
+plane, kept to the line it was drawn as, or a line or an edge seen square on to it; a plane parallel to the work plane and a
+line along what it faces are refused, saying why, and a line lying on it, however short, is an axis. Offset takes a
+reference plane or a reference line, its trace on the plane, toward the side clicked, read where the click's ray meets the
+plane through its drawn line and the way it moves (so a plane drawn upright off the work plane is clicked beside itself); a
+datum or a form's edge says why not. Align (and the ribbon's) takes of each pick what a plan or an elevation would see edge
+on through it (`constraints::align_ref_3d`): a plane itself where it stands square to the work plane (one level with it is
+refused), a reference line its face square to the plane, a form's edge the side or end through it square to the plane, so
+the move is the plan's (`align_through`: a side moved stretches the lines joined to it). Its padlock is offered where the
+second pick was while a plan or an elevation sees the work plane flat (none on an oblique one), and locks the two with that
+view's dimension, after Remove Constraints too. Tests: `tests/family_modify_3d_refs.rs`, `family_sketch_tests.rs`.
 
 The Clipboard panel (`editor/clipboard.rs`, `family/clipboard.rs`) in a family that isn't adaptive, on the Modify tab and the
 contextual tab: the project's panel (`crate::clipboard::panel`), Paste with its Aligned options, Cut to Clipboard and Copy to
@@ -1116,7 +1202,7 @@ an elevation, always edge-on there, goes through Go To View, as in Revit. From a
 family of their own in the scratch model, drawn halftone, as {3D} ghosts them (not for a door or a window, whose wall holds one
 opening); on, they are left out. Temporary Hide/Isolate leaves a form hidden for now out of every view; a selected plane can be
 hidden (HH), isolated or hidden with every plane (HC). It keeps **one state for the whole family document**, every view showing
-what it hides, a deliberate limit: Revit keeps it per view, and Apply Hide/Isolate to View stays greyed. An adaptive family's
+what it hides, a deliberate limit; Apply Hide/Isolate to View keeps it in the view shown for good (*View graphics*). An adaptive family's
 plans and elevations show its test placement and nothing more (no selection, no Reference Plane, no drag); its tools stay in
 {3D}, its modelling view. None of this is a field of the family or a step of FORMAT: what a view keeps is the session's.
 
@@ -1315,9 +1401,18 @@ and Void Swept Blend, open sketch mode with every part of the form: `FormSketch:
 `End`) is on screen, the others wait in `parts` and are drawn grey on their own planes (`other_parts`). A Blend's tab is
 "Modify | Create Blend Base Boundary" with Edit Top ("… Top Boundary", drawn on the plane at its Second End) and Edit Base;
 a Sweep's "Modify | Sweep > Sketch Path" with Sketch Path, Pick Path (Pick Lines on the path), Edit Profile and a greyed
-Select Profile showing "<By Sketch>"; a Swept Blend's the same with Profile 1 and Profile 2. A profile can't be edited
-before the path chains (said in the status bar); its plane faces along the path, so a view that doesn't see it flat gives
-way to one that does (an elevation), else {3D} (`show_part`). Edit Vertices' Twist Left and Twist Right step `twist`. The
+Select Profile showing "<By Sketch>"; a Swept Blend's the same with Profile 1 and Profile 2. A Sweep and a Swept Blend are
+made a mode inside a mode (`FormSketch::nested`): Create > Sweep opens "Modify | Sweep" (or
+"Modify | Swept Blend"), which draws nothing itself (no Draw, Modify, Dimension or Work Plane panel; a click in the view adds
+nothing, and Find leaves out Delete, the dimension tools and the Modify panel's tools); Sketch Path and Pick Path open "Modify | Sweep > Sketch Path", Edit Profile (Profile 1, Profile 2) "… > Edit
+Profile", each with the Draw panel and its own Finish Edit Mode (the path checked to chain, a Swept Blend's to be one line
+or one arc; a profile to close into loops) and Cancel Edit Mode (its lines as it began), both back to the sweep's own mode;
+Ctrl+Z inside one never goes back past where it began. The sweep's own Finish makes the form, one step of the history; a part
+at fault is opened in its own mode. A profile can't be edited before the path chains (said in the status bar); its plane
+faces along the path, so where the view shown doesn't see it flat Go To View is asked (`enter_part`, `work_plane::Then::Part`),
+listing only the views that do ({3D} where none does). Each profile's plane is marked where it crosses the path, a red dot
+and its two axes (`profile_planes`), in every view. The profile's source is `ProfileSource`, a sketch alone until profile
+families come. Edit Vertices' Twist Left and Twist Right step `twist`. The
 Options Bar's Depth is a Blend's Second End less its First; Properties show First End and Second End, a sweep no ends.
 Finish checks each part (`finish_f6`), putting the part at fault on screen with its lines red, then builds the form with
 every type as F5 does (`commit_form`); Edit Blend, Edit Sweep and Edit Swept Blend (and a double click) sketch it again,
@@ -1757,6 +1852,45 @@ comes back over the camera it restored. The three new commands have no keys yet:
 are not in `shortcuts::ACTIONS` or `SHORTCUTS`, and their keys (ZR and ZZ, ZO and ZV, ZP and ZC) wait for a family document
 to have keys of its own. Tests: `tests/family_zoom.rs`.
 
+What a fit shows: the document's plan, elevation and {3D} are drawn in the view's pane below the tabs that float over its top
+(`family_central`, from where the tabs were last drawn, on a whole pixel; the canvas above; the window's `view_rect` is that
+pane), so an elevation's plane names, which run along its picture's top, and the top of {3D}'s box are never under them. A plan
+or the ceiling plan keeps the room's frame unless it leaves out an elevation mark or cuts one at its edge, its name with it (a
+narrow view's, the BIMCraft profile's between its palettes): then it shrinks about the room and all four marks until each is
+wholly in (`Staged::fitted`, a few passes, as lettering keeps its size on paper as the frame shrinks), so a default plan shows
+FRONT, BACK, LEFT and RIGHT. An elevation keeps the room's frame, with room for its levels' names, as its planes run from edge
+to edge whatever the frame. That fit draws the view a few times, so the editor works it out again only when the room, the
+view, its size or its graphics change (`Views::room_fit`), and not while a drag keeps the frame anyway; the kept frame
+(*The view stays where it is*, above) is held against it. Tests: `tests/family_canvas_clear.rs`, and
+`a_fitted_view_shows_every_elevation_mark_whole` in `family/views.rs`.
+
+What floats over a view keeps clear. A family view is drawn between the Options Bar's row and its view-control bar: the row
+(`OPTIONS_CARD` and the gap above it) is kept under the tabs whether or not a tool's card is on it, so the view never moves as
+a card comes and goes and a plane's name along an elevation's top is never under one, and the view ends above the bar, by how
+far up it reached when last drawn (`FAMILY_BAR`, one row of it, at first), so {3D}'s box fits clear of it. The Options Bar's
+card is drawn only round something: a tool with no name and no options shows none. The
+Error/Note card at the view's corner stands above the view-control bar, a family's or, where it floats over the view, the
+project's. In a plan an elevation mark is in a reference plane's name's way as another name is: a name it blocks beyond the
+trace's end slides in along its own trace, which is cut under it, before trying the other end or beside it, so CENTER
+(FRONT/BACK) stops short of RIGHT and a plane drawn close to a mark is named clear of it; a form's outline is in its way too,
+so a name never lies over a form's lines in a narrow plan. A project's plan with a named reference plane places that name
+the same way. Tests: `tests/canvas_overlaps.rs` (with screenshots, `BIMCRAFT_CANVAS_OVERLAPS_DUMP`),
+`no_plane_name_runs_into_an_elevation_mark` and `no_plane_name_lies_over_a_forms_lines_in_a_narrow_plan` in `family/views.rs`.
+
+## Window commands
+
+The View tab's Windows panel works on a family's tabs, never on its draft. Close Inactive Views keeps the view in front and one
+tab of every other open family (the view it shows, else its last tab), floating ones included, and closes no document, so
+nothing asks to save (`BimApp::close_inactive_family_views`). Tile Windows shows this family's open views together, the
+document's own layout for the session (`Views::tiled`; Tab Windows goes back to one at a time): the view in front takes its
+input as ever, the others are pictures (`tile_view_2d`, `family_tile_3d`) each with its own cache, drawn again only when the
+draft's revision (`document::State::revision`, a step done, undone or redone) or the tile's size changes and never while a
+button is held or a field typed in, and a click on one brings its tab to the front. An adaptive family's modelling view keeps
+the whole canvas. Repeat Last Command picks the last tool the document picked up again, as it began (Reference Plane and
+Line, the dimension tools, Align, Measure, the Modify tools by their names in Find, Component with the type last placed); it
+never does an edit again, works outside a sketch and a dialog, and says why where the tool can't be used now. None has a key
+in a family yet; Find lists each on a family's tab. Tests: `tests/family_windows.rs`.
+
 ## Where the code lives
 
 Moved from the root `CLAUDE.md`'s module map, which names the files and points here for what each owns.
@@ -1790,6 +1924,9 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/association.rs`: parameter associations. `editor/extrusion.rs`: a selected form's Properties.
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
+  `editor/view_graphics.rs`: each view's graphics for the session: Visibility/Graphics, visual style, Graphic Display
+  Options, View Range, Selection Box, Hide in View and Override Graphics.
+- `editor/find_replace.rs`: Find/Replace on the family's text.
 - `editor/zoom.rs`: the zoom commands in the document's views and their Previous Pan/Zoom history, over the window's `zoom.rs`.
 - `editor/sketch.rs`: sketch mode. `editor/sketch_dims.rs`: the dimensions while a form is sketched. `editor/shape_handles.rs`: a selected form's profile handles; `editor/handles3d.rs`: the same and its ends in {3D}; `editor/handle_params.rs`: a handle's drag through the parameter its place is. `editor/dimensions.rs`: their dimensions and Align.
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.

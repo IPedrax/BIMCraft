@@ -320,7 +320,7 @@ impl BimApp {
         let mesh = f.mesh();
         ribbon::panel(ui, msg!("Work Plane"), |ui| {
             let tip = msg!("Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)");
-            let r = ui.add_enabled_ui(!mesh, |ui| crate::big_button(ui, Icon::PickFaces, msg!("Edit Work Plane"), false, tip)).inner;
+            let r = ui.add_enabled_ui(!mesh, |ui| crate::big_button(ui, Icon::WorkPlane, msg!("Edit Work Plane"), false, tip)).inner;
             if r.clicked() {
                 ed.open_work_plane_dialog(super::work_plane::Target::Form(i));
             }

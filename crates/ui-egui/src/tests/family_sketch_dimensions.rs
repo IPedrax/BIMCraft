@@ -394,7 +394,12 @@ fn sweep_family() -> String {
 fn sweep_profile_dimensioned(h: &mut Harness<BimApp>) -> FamilyDimension {
     ed_mut(h).edit_form_sketch(0).unwrap();
     h.run();
-    ed_mut(h).show_part(crate::editor::sketch::Part::Profile).unwrap();
+    // Edit Profile, in the elevation Go To View opens.
+    ed_mut(h).enter_part(crate::editor::sketch::Part::Profile, false).unwrap();
+    h.run();
+    if editor(h).views.go_to.is_some() {
+        press(h, "Open View");
+    }
     h.run();
     h.run();
     assert!(editor(h).views.shown.is_some_and(|w| w != Which::Plan), "an elevation that sees the profile flat");
@@ -417,6 +422,8 @@ fn a_sweeps_profile_is_dimensioned_and_labelled_while_sketched() {
     let d = sweep_profile_dimensioned(&mut h);
     let (b, t) = (line(&h, BOTTOM), line(&h, TOP));
     assert!(((t.0.1 - b.0.1) - 200.0).abs() < 1e-6, "Large's Depth, at once: {b:?} {t:?}");
+    // The profile's Finish, then the sweep's.
+    press(&mut h, "Finish Edit Mode");
     press(&mut h, "Finish Edit Mode");
     assert!(!editor(&h).sketching(), "{}", status(&h));
     let f = editor(&h).draft_family().unwrap();
@@ -542,6 +549,13 @@ fn revolve() -> String {
 fn a_revolves_axis_drawn_again_keeps_its_dimensions_and_takes_new_ones() {
     let (mut h, _) = open(&revolve(), "Rv");
     view(&mut h, Some(Which::Plan));
+    // Zoomed in (Zoom In Region): the axis at x 50 is 50 from Center (Left/Right), which a default plan, fitting its four
+    // elevation marks, draws a few pixels apart.
+    let (a, b) = (editor(&h).views.screen_of([-700.0, -1200.0, 0.0]).unwrap(), editor(&h).views.screen_of([700.0, 1200.0, 0.0]).unwrap());
+    ed_mut(&mut h).zoom_region_tool();
+    h.run();
+    drag_screen(&mut h, a, b, egui::PointerButton::Primary);
+    h.run();
     ed_mut(&mut h).edit_form_sketch(0).unwrap();
     h.run();
     h.get_by_role_and_label(Role::Button, "Axis Line").click();

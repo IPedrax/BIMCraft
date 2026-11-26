@@ -164,13 +164,40 @@ impl FamilyEditor {
     /// Whether plane `g` (a datum or the family's own) is hidden for now, in a plan or an elevation.
     pub(super) fn temp_hidden_plane(&self, g: bimcraft_core::ids::Guid) -> bool {
         let t = &self.document.temp;
-        t.kinds.contains(&Kind::Planes) || t.planes.contains(&g)
+        t.kinds.contains(&Kind::Planes) || t.planes.contains(&g) || self.kept_hides(self.views.shown, g)
     }
 
     /// Whether form `i` of a family that isn't adaptive is hidden for now.
+    /// Or hidden in the view shown for good (`view_graphics.rs`), unless it reveals what it hides.
     pub(super) fn temp_hidden_form(&self, i: usize) -> bool {
+        self.temp_only_form(i) || self.kept_hides_form(self.views.shown, i)
+    }
+
+    /// Whether form `i` is hidden by Temporary Hide/Isolate alone.
+    pub(super) fn temp_only_form(&self, i: usize) -> bool {
         let t = &self.document.temp;
         t.kinds.contains(&Kind::Forms) || self.forms.get(i).is_some_and(|f| t.forms.contains(&f.tag))
+    }
+
+    /// Apply Hide/Isolate to View: the forms and planes hidden for now, and Forms hidden as a category, hidden in the view
+    /// shown for good, as its Hide in View does; what a family's view has no way to keep (the reference planes, the wall as
+    /// categories) stays hidden for now. Not in an adaptive family, whose views hide for now only.
+    pub(crate) fn apply_temp_to_view(&mut self) {
+        if self.adaptive.is_some() {
+            return;
+        }
+        let which = self.views.shown;
+        let t = std::mem::take(&mut self.document.temp);
+        let mut forms: Vec<bimcraft_core::ids::Guid> =
+            self.forms.iter().filter(|f| t.forms.contains(&f.tag)).map(|f| f.original.guid).collect();
+        forms.extend(t.planes.iter().copied());
+        self.views.kept.hide(which, &forms);
+        if t.kinds.contains(&Kind::Forms) {
+            let cat = self.forms_category();
+            self.views.kept.hide_category(which, cat, true);
+        }
+        let rest = Temp { kinds: t.kinds.into_iter().filter(|k| *k != Kind::Forms).collect(), nodes: t.nodes, ..Temp::default() };
+        self.document.temp = rest;
     }
 
     /// Whether the wall a door's or a window's preview stands in is hidden for now.
@@ -229,8 +256,10 @@ impl BimApp {
                 }
             }
             ui.separator();
-            // A family's views keep nothing hidden for good yet.
-            ui.add_enabled(false, egui::Button::new(t("Apply Hide/Isolate to View"))).on_disabled_hover_text(t("Not in BIMCraft yet"));
+            // What is hidden for now, hidden in the view for good; an adaptive family's views hide for now only.
+            if ui.add_enabled(hides && ed.adaptive.is_none(), egui::Button::new(t("Apply Hide/Isolate to View"))).clicked() {
+                ed.apply_temp_to_view();
+            }
             if ui.add_enabled(hides, egui::Button::new(t("Reset Temporary Hide/Isolate (HR)"))).clicked() {
                 asked = Some(Asked::Reset);
             }

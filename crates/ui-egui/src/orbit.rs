@@ -742,19 +742,96 @@ const CUBE_FACES: [(P3, &str, f64, f64); 6] = [
     ([-1., 0., 0.], msg!("LEFT"), 180., 0.),
 ];
 
-/// What a click on the ViewCube asks for: Home (the house over its corner), or to look from a face's side, the camera's azimuth
-/// and elevation.
+/// What a click on the ViewCube asks for: Home (the house over its corner), or to look from the side of the zone clicked (a
+/// face, an edge or a corner), the camera's azimuth and elevation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Cube {
     Home,
     Look(f64, f64),
 }
 
-/// Whether `p` is inside the convex polygon `poly`.
-fn inside(poly: &[Pos2], p: Pos2) -> bool {
-    let side = |a: Pos2, b: Pos2| (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
-    let sides: Vec<f32> = (0..poly.len()).map(|i| side(poly[i], poly[(i + 1) % poly.len()])).collect();
-    sides.iter().all(|s| *s >= 0.) || sides.iter().all(|s| *s <= 0.)
+/// How far a face's edge and corner zones reach in from its rim, as a part of half its width.
+const CUBE_BAND: f64 = 0.3;
+
+/// A zone of the ViewCube, by the direction it looks at the model from: -1, 0 or 1 along x, y and z. A face has one of them
+/// set, an edge two (those of the two faces it joins), a corner three.
+pub(crate) type Zone = [i8; 3];
+
+/// -1, 0 or 1 as `c` is, of a unit axis.
+fn sign(c: f64) -> i8 {
+    if c > 0.5 {
+        1
+    } else if c < -0.5 {
+        -1
+    } else {
+        0
+    }
+}
+
+/// A face of the ViewCube turned to the eye: its outward normal, the two axes round it, and where it stands on screen, its
+/// centre and half its width along each of those axes; and its name.
+struct Side {
+    normal: P3,
+    axes: (usize, usize),
+    centre: Pos2,
+    along: (egui::Vec2, egui::Vec2),
+    label: &'static str,
+}
+
+impl Side {
+    /// The point of the face at `u` and `v`, each from -1 to 1 across it along its two axes.
+    fn at(&self, u: f64, v: f64) -> Pos2 {
+        self.centre + self.along.0 * u as f32 + self.along.1 * v as f32
+    }
+
+    fn outline(&self) -> Vec<Pos2> {
+        vec![self.at(-1., -1.), self.at(1., -1.), self.at(1., 1.), self.at(-1., 1.)]
+    }
+
+    /// Where `at` is on the face, as `(u, v)`; none off it, or when the face is seen edge on.
+    fn uv(&self, at: Pos2) -> Option<(f64, f64)> {
+        let (a, b, d) = (self.along.0, self.along.1, at - self.centre);
+        let det = f64::from(a.x * b.y - a.y * b.x);
+        if det.abs() < 1e-6 {
+            return None;
+        }
+        let (u, v) = (f64::from(d.x * b.y - d.y * b.x) / det, f64::from(a.x * d.y - a.y * d.x) / det);
+        (u.abs() <= 1.0 && v.abs() <= 1.0).then_some((u, v))
+    }
+
+    /// The zone at `at`: the face's own in its middle, and within the band of its rim the edge's or the corner's there.
+    fn zone(&self, at: Pos2) -> Option<Zone> {
+        let (u, v) = self.uv(at)?;
+        let band = |t: f64| {
+            if t > 1.0 - CUBE_BAND {
+                1
+            } else if t < CUBE_BAND - 1.0 {
+                -1
+            } else {
+                0
+            }
+        };
+        let mut zone = self.normal.map(sign);
+        zone[self.axes.0] = band(u);
+        zone[self.axes.1] = band(v);
+        Some(zone)
+    }
+
+    /// The part of the face that is `zone`'s: its middle for the face's own, a strip along its rim for an edge's, a square
+    /// in its corner for a corner's; none when the zone isn't on this face.
+    fn part(&self, zone: Zone) -> Option<Vec<Pos2>> {
+        let own = self.normal.map(sign);
+        if !(0..3).all(|k| k == self.axes.0 || k == self.axes.1 || zone[k] == own[k]) {
+            return None;
+        }
+        let span = |side: i8| match side {
+            -1 => (-1.0, CUBE_BAND - 1.0),
+            1 => (1.0 - CUBE_BAND, 1.0),
+            _ => (CUBE_BAND - 1.0, 1.0 - CUBE_BAND),
+        };
+        let ((u0, u1), (v0, v1)) = (span(zone[self.axes.0]), span(zone[self.axes.1]));
+        Some(vec![self.at(u0, v0), self.at(u1, v0), self.at(u1, v1), self.at(u0, v1)])
+    }
 }
 
 /// The ViewCube, which turns a view's camera: where it stands, its faces, what a click on it asks for and how it is drawn. It
@@ -781,8 +858,8 @@ impl Orbit {
         Self::cube_rect(rect).contains(at) || Self::home_rect(rect).contains(at)
     }
 
-    /// The ViewCube's faces that face the camera, each on screen with its name and the view it gives.
-    pub(crate) fn cube_faces(cam: &Camera, rect: Rect) -> Vec<(Vec<Pos2>, &'static str, f64, f64)> {
+    /// The ViewCube's faces that face the camera, as they stand on screen.
+    fn cube_sides(cam: &Camera, rect: Rect) -> Vec<Side> {
         let (a, e) = (cam.azimuth.to_radians(), cam.elevation.clamp(-89.0, 89.0).to_radians());
         let back = [e.cos() * a.cos(), e.cos() * a.sin(), e.sin()];
         let right = [-a.sin(), a.cos(), 0.0];
@@ -791,45 +868,98 @@ impl Orbit {
         let box_ = Self::cube_rect(rect);
         let (c, half) = (box_.center(), box_.width() as f64 * 0.27);
         let dot = |p: P3, q: P3| p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
-        let on = |p: P3| c + vec2((dot(p, right) * half) as f32, (-dot(p, up) * half) as f32);
+        // A direction of the cube's own, as it lies on screen.
+        let across = |p: P3| vec2((dot(p, right) * half) as f32, (-dot(p, up) * half) as f32);
         CUBE_FACES
             .iter()
             .filter(|(n, ..)| dot(*n, back) > 0.02)
-            .map(|(n, label, az, el)| {
+            .map(|(n, label, ..)| {
                 // The face's two other axes, round it in turn.
                 let k = n.iter().position(|v| v.abs() > 0.5).unwrap_or(2);
-                let (u, v) = ((k + 1) % 3, (k + 2) % 3);
-                let corner = |su: f64, sv: f64| {
-                    let mut p = *n;
-                    p[u] = su;
-                    p[v] = sv;
-                    on(p)
+                let axes = ((k + 1) % 3, (k + 2) % 3);
+                let axis = |i: usize| {
+                    let mut p = [0.0; 3];
+                    p[i] = 1.0;
+                    across(p)
                 };
-                (vec![corner(-1., -1.), corner(1., -1.), corner(1., 1.), corner(-1., 1.)], *label, *az, *el)
+                Side { normal: *n, axes, centre: c + across(*n), along: (axis(axes.0), axis(axes.1)), label }
             })
             .collect()
     }
 
-    /// What a click at `at` on the ViewCube in view `rect`, seen through `cam`, asks for: Home on the house, else the side of the
-    /// face there; nothing off them.
+    /// The ViewCube's faces that face the camera, each on screen with its name and the view it gives. Tests find a face by it.
+    #[cfg(test)]
+    pub(crate) fn cube_faces(cam: &Camera, rect: Rect) -> Vec<(Vec<Pos2>, &'static str, f64, f64)> {
+        let face = |s: &Side| {
+            let (azimuth, elevation) = Self::cube_look(s.normal.map(sign));
+            (s.outline(), s.label, azimuth, elevation)
+        };
+        Self::cube_sides(cam, rect).iter().map(face).collect()
+    }
+
+    /// The ViewCube's zone at `at` in view `rect`, seen through `cam`: a face's in its middle; within the band of its rim
+    /// the edge's it shares with the face beside it, or the corner's it shares with two. None off the cube.
+    pub(crate) fn cube_zone(cam: &Camera, rect: Rect, at: Pos2) -> Option<Zone> {
+        Self::cube_sides(cam, rect).iter().find_map(|s| s.zone(at))
+    }
+
+    /// The camera's azimuth and elevation that look at the model from `zone`: a face's as the table has them (the top's and
+    /// the bottom's a degree short of straight down and up, facing north), an edge's and a corner's from between their faces
+    /// (45° up over an edge of the top, 35.26° over a corner).
+    pub(crate) fn cube_look(zone: Zone) -> (f64, f64) {
+        if let Some((.., az, el)) = CUBE_FACES.iter().find(|(n, ..)| n.map(sign) == zone) {
+            return (*az, *el);
+        }
+        let d = zone.map(f64::from);
+        let flat = d[0].hypot(d[1]);
+        (if flat > 0.0 { d[1].atan2(d[0]).to_degrees() } else { -90.0 }, d[2].atan2(flat).to_degrees())
+    }
+
+    /// What a click at `at` on the ViewCube in view `rect`, seen through `cam`, asks for: Home on the house, else the side of
+    /// the zone there, a face's, an edge's or a corner's; nothing off them.
     pub(crate) fn cube_click(cam: &Camera, rect: Rect, at: Pos2) -> Option<Cube> {
         if Self::home_rect(rect).contains(at) {
             return Some(Cube::Home);
         }
-        Self::cube_faces(cam, rect).into_iter().find(|(poly, ..)| inside(poly, at)).map(|(_, _, az, el)| Cube::Look(az, el))
+        Self::cube_zone(cam, rect, at).map(|zone| {
+            let (azimuth, elevation) = Self::cube_look(zone);
+            Cube::Look(azimuth, elevation)
+        })
     }
 
-    /// The ViewCube drawn on `p` in view `rect` as `cam` turns it, as Revit's: the faces turned to the eye, named, the one under
-    /// `hover` lit; the house over its corner.
+    /// Where `zone` shows on the ViewCube: the middle of its part on each face that has it (an edge's on two when both show,
+    /// a corner's on three). Tests click and hover there.
+    #[cfg(test)]
+    pub(crate) fn cube_zone_at(cam: &Camera, rect: Rect, zone: Zone) -> Vec<Pos2> {
+        let middle = |part: Vec<Pos2>| part.iter().fold(Pos2::ZERO, |a, q| a + q.to_vec2() / part.len() as f32);
+        Self::cube_sides(cam, rect).iter().filter_map(|s| s.part(zone)).map(middle).collect()
+    }
+
+    /// The ViewCube drawn on `p` in view `rect` as `cam` turns it: the faces turned to the eye, named; the zone
+    /// under `hover` lit on every face that shows it (a face's middle, an edge's strip on both its faces, a corner's square on
+    /// all three); the house over its corner.
     pub(crate) fn draw_cube(p: &egui::Painter, cam: &Camera, rect: Rect, hover: Option<Pos2>) {
         let cp = canvas_pal();
         let face_fill = if crate::style::canvas_dark() { Color32::from_rgb(92, 97, 106) } else { Color32::from_rgb(236, 237, 239) };
         let edge = if crate::style::canvas_dark() { Color32::from_rgb(150, 155, 165) } else { Color32::from_rgb(120, 124, 130) };
-        for (poly, label, ..) in Self::cube_faces(cam, rect) {
-            let lit = hover.is_some_and(|h| inside(&poly, h));
-            let centre = poly.iter().fold(Pos2::ZERO, |a, q| a + q.to_vec2() / poly.len() as f32);
-            p.add(egui::Shape::convex_polygon(poly, if lit { cp.hover.gamma_multiply(0.6) } else { face_fill }, Stroke::new(1.0, edge)));
-            p.text(centre, egui::Align2::CENTER_CENTER, t(label), egui::FontId::proportional(9.5), cp.text.gamma_multiply(0.85));
+        let sides = Self::cube_sides(cam, rect);
+        let lit = hover.and_then(|h| Self::cube_zone(cam, rect, h));
+        for side in &sides {
+            p.add(egui::Shape::convex_polygon(side.outline(), face_fill, Stroke::NONE));
+            if let Some(part) = lit.and_then(|zone| side.part(zone)) {
+                p.add(egui::Shape::convex_polygon(part, cp.hover.gamma_multiply(0.6), Stroke::NONE));
+            }
+        }
+        // The faces' outlines over the fills, so that a lit strip doesn't thin the rim it lies along.
+        for side in &sides {
+            p.add(egui::Shape::closed_line(side.outline(), Stroke::new(1.0, edge)));
+            p.text(
+                side.at(0.0, 0.0),
+                egui::Align2::CENTER_CENTER,
+                t(side.label),
+                egui::FontId::proportional(9.5),
+                cp.text.gamma_multiply(0.85),
+            );
         }
         let home = Self::home_rect(rect);
         let home_lit = hover.is_some_and(|h| home.contains(h));
@@ -1025,7 +1155,7 @@ impl Orbit {
 
     /// The caps of section box `cut` on `model`: those made already, else asked of the worker (with the solids found for a model
     /// they are still the solids of, so a box moved only cuts its faces again); none until they come back.
-    fn caps_for(&mut self, ctx: &egui::Context, model: &Arc<Model>, cut: (P3, P3)) -> Option<Arc<Caps>> {
+    pub(crate) fn caps_for(&mut self, ctx: &egui::Context, model: &Arc<Model>, cut: (P3, P3)) -> Option<Arc<Caps>> {
         if let Some(done) = self.cap_worker.as_ref().and_then(crate::view_worker::Latest::take)
             && done.view == self.view
         {

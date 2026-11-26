@@ -95,8 +95,12 @@ fn draw_box(h: &mut Harness<BimApp>, a: P2, b: P2) -> usize {
     button(h, "Extrusion");
     assert!(editor(h).sketching(), "{}", status(h));
     button(h, "Rectangle");
+    // Each corner as given, snaps off: a default plan fits its four elevation marks, so a pixel is millimetres a snap reaches
+    // over.
+    let snaps = std::mem::replace(&mut h.state_mut().snaps, bimcraft_core::snap::Snaps::none());
     click_plane(h, a);
     click_plane(h, b);
+    h.state_mut().snaps = snaps;
     press(h, "Finish Edit Mode");
     assert_eq!(draft(h).forms.len(), before + 1, "finished: {}", status(h));
     key(h, Key::Escape);

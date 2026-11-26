@@ -130,10 +130,11 @@ fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported(
     // (the opening's size: Family Types refuses deleting them), so the dimensions are labelled with them.
     let width = aligned_dimension(&mut h, &[[-450.0, -1000.0, 0.0], [450.0, -1000.0, 0.0]], [200.0, -1300.0, 0.0]);
     label(&mut h, [200.0, -1300.0, 0.0], width, "Width");
-    let eq = aligned_dimension(&mut h, &[[-450.0, -1000.0, 0.0], [0.0, -1000.0, 0.0], [450.0, -1000.0, 0.0]], [300.0, -1600.0, 0.0]);
-    click_family(&mut h, [-225.0, -1600.0, 0.0]);
+    // Placed clear of the Front elevation's mark, which the plan shows now.
+    let eq = aligned_dimension(&mut h, &[[-450.0, -1000.0, 0.0], [0.0, -1000.0, 0.0], [450.0, -1000.0, 0.0]], [300.0, -1450.0, 0.0]);
+    click_family(&mut h, [-225.0, -1450.0, 0.0]);
     assert_eq!(editor(&h).selected_dimension(), Some(editor(&h).dimensions[eq].guid));
-    click_off(&mut h, [0.0, -1600.0, 0.0], vec2(0.0, -30.0));
+    click_off(&mut h, [0.0, -1450.0, 0.0], vec2(0.0, -30.0));
     assert!(editor(&h).dimensions[eq].equal, "EQ on: {}", status(&h));
     key(&mut h, Key::Escape);
     // In the Front elevation, Head, and Sill to Head labelled Height: the blank window's Sill lies on Ref. Level, locked to it

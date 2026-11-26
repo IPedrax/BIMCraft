@@ -30,7 +30,7 @@ const VOID: &str = "(selected void)";
 pub(crate) struct FamilyScene {
     pub(crate) model: Arc<Model>,
     pub(crate) part: BTreeMap<Id, Part>,
-    key: u64,
+    pub(crate) key: u64,
 }
 
 impl FamilyScene {
@@ -113,6 +113,7 @@ impl FamilyEditor {
                     self.temporary(),
                     self.views.detail,
                     void,
+                    self.views.kept.key(None),
                 )
                     .hash(&mut h);
                 (base.materials.len(), base.images.len()).hash(&mut h);
@@ -187,6 +188,16 @@ impl FamilyEditor {
                 part.insert(id, p);
             }
         }
+        // A part {3D} overrides, or reveals in magenta, drawn so.
+        let apart = self.apart_forms(None, f, &values, &by_view);
+        let parted: Vec<(bimcraft_core::ids::Guid, bimcraft_core::graphics::Override)> = part
+            .iter()
+            .filter_map(|(id, p)| {
+                let Part::Form(i) = p else { return None };
+                let o = apart.iter().find(|(k, _)| k == i)?.1.clone();
+                Some((s.model.elements.guid(*id)?, o))
+            })
+            .collect();
         let m = s.model_mut();
         // The view it is seen in: the document's Detail Level, the scratch project's levels hidden, and the door's or the window's
         // wall while Temporary Hide/Isolate hides it.
@@ -196,15 +207,27 @@ impl FamilyEditor {
         if self.temp_hidden_host() {
             graphics.categories.insert("wall".into(), hidden);
         }
+        // {3D}'s own Visibility/Graphics and visual style. A door's or a window's parts stand as generic families of their
+        // own, so its category's override is theirs.
+        let mut own = self.views.kept.drawn_graphics(None);
+        if hosted {
+            let of = if shown.category == Category::Door { "door" } else { "window" };
+            if let Some(o) = own.categories.get(of).cloned() {
+                own.categories.insert("generic".into(), o);
+            }
+        }
+        super::view_graphics::lay_over(&mut graphics, &own);
+        graphics.elements.extend(parted);
         m.insert(Element::View3D(View3D {
             name: "{3D}".into(),
             azimuth: AZIMUTH,
             elevation: ELEVATION,
             graphics,
-            section_box: None,
+            // Selection Box: the box kept, while there is one.
+            section_box: self.views.kept.section_box.map(|(min, max)| bimcraft_core::model::SectionBox { min, max, on: true }),
             perspective: None,
             camera: None,
-            display: Default::default(),
+            display: self.views.kept.display,
             work_plane: None,
         }));
         Ok(FamilyScene { model: Arc::clone(&s.model), part, key })
@@ -324,5 +347,56 @@ fn datum_mark(cam: &Camera, f: &Family, lit: Lit, c: Color32, extents: ([f64; 3]
             })
         }
         Lit::Part(_) => None,
+    }
+}
+
+/// How much bigger than what it boxes a Selection Box is, each way: a share of its longest side, and at least so many mm.
+const BOX_GROWS: (f64, f64) = (0.05, 50.0);
+
+impl BimApp {
+    /// Selection Box, as the project's: {3D} cut to a box round the forms and nested instances selected, a little
+    /// bigger, and opened. With nothing selected, a box it keeps is taken away; with none, a note says what to select. The
+    /// box is the view's for the session, as its other graphics are (`view_graphics.rs`): not saved, no step of the history.
+    pub(crate) fn family_selection_box(&mut self) {
+        let base = Arc::clone(&self.session.model);
+        let Some(doc) = self.active_doc() else { return };
+        let Some(ed) = self.active_family_mut() else { return };
+        let chosen = !ed.selection.is_empty();
+        ed.stage_3d(&base);
+        let parts: Vec<Part> = ed.selected_3d().into_iter().filter_map(|l| if let Lit::Part(p) = l { Some(p) } else { None }).collect();
+        // Nothing selected: the box goes. Something selected that isn't a form or a nested instance (a reference plane, a
+        // dimension): the box, if there is one, stays as it was.
+        let said = |text: &str| Status { text: format!("{text} {}", t("The box is unchanged.")), error: true };
+        if parts.is_empty() {
+            if chosen {
+                self.status = said(t("Selection Box boxes forms and nested instances:"));
+            } else if ed.views.kept.section_box.take().is_none() {
+                let text = t("Selection Box: select the forms or nested instances to box first").to_string();
+                self.status = Status { text, error: false };
+            }
+            return;
+        }
+        let Some(scene) = ed.scene3d.as_ref() else {
+            let problem = ed.problem.clone().unwrap_or_default();
+            self.status = said(&format!("{} {problem}", t("Selection Box: {3D} can't be drawn.")));
+            return;
+        };
+        // From what the staged scene draws of each part selected: a void's cut, a nested instance, a revolve as drawn.
+        let ids: std::collections::HashSet<Id> = scene.part.iter().filter(|(_, p)| parts.contains(p)).map(|(id, _)| *id).collect();
+        let boxes = bimcraft_core::view3d::Scene::new(&scene.model).boxes(&ids);
+        let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for (a, b) in boxes.values() {
+            for k in 0..3 {
+                (lo[k], hi[k]) = (lo[k].min(a[k]), hi[k].max(b[k]));
+            }
+        }
+        if !(lo.iter().chain(&hi).all(|v| v.is_finite())) {
+            self.status = said(t("Selection Box: what is selected draws nothing in {3D} to box."));
+            return;
+        }
+        let side = (0..3).map(|k| hi[k] - lo[k]).fold(0.0, f64::max);
+        let grow = (side * BOX_GROWS.0).max(BOX_GROWS.1);
+        ed.views.kept.section_box = Some((lo.map(|v| v - grow), hi.map(|v| v + grow)));
+        self.open_sheet(crate::Sheet::Family(doc, None));
     }
 }

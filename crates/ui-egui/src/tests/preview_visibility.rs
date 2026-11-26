@@ -138,7 +138,8 @@ fn a_form_hidden_in_the_type_is_ghosted_and_preview_visibility_shows_the_family_
 fn preview_visibility_frames_the_view_and_names_itself() {
     let (mut h, _) = cabinet();
     let frame = crate::editor::PREVIEW_FRAME;
-    let pane = h.state().view_rect;
+    // The view under its tabs: the Options Bar's row and the drawing below it.
+    let pane = h.state().work;
     let framed = |h: &Harness<BimApp>| {
         outlines(h).iter().any(|(r, c)| *c == frame && r.width() > pane.width() * 0.9 && r.height() > pane.height() * 0.9)
     };

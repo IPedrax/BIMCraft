@@ -66,6 +66,9 @@ pub(crate) struct VgDialog {
     search: String,
     /// The categories whose subcategories are unfolded.
     unfolded: BTreeSet<String>,
+    /// Opened on a family document's view: its Model and Annotation Categories tabs alone, listing what the family's
+    /// views draw, and OK hands the draft back to the document rather than running a command.
+    family: Option<crate::editor::view_graphics::FamilyView>,
 }
 
 /// What the Filters dialog has picked: a filter, and the name typed for it.
@@ -171,6 +174,25 @@ impl VgDialog {
             cell: None,
             search: String::new(),
             unfolded: BTreeSet::new(),
+            family: None,
+        }
+    }
+
+    /// The dialog on a family document's view, titled `title`, its graphics `graphics`.
+    pub(crate) fn for_family(view: crate::editor::view_graphics::FamilyView, title: String, graphics: Graphics) -> VgDialog {
+        VgDialog {
+            view: Value::Null,
+            template: None,
+            title,
+            own: graphics.clone(),
+            draft: graphics,
+            tab: 0,
+            pick: None,
+            listed: BTreeSet::new(),
+            cell: None,
+            search: String::new(),
+            unfolded: BTreeSet::new(),
+            family: Some(view),
         }
     }
 
@@ -262,6 +284,7 @@ impl BimApp {
             cell: None,
             search: String::new(),
             unfolded: BTreeSet::new(),
+            family: None,
         });
     }
 
@@ -377,7 +400,12 @@ impl BimApp {
                     }
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        for (i, label) in TABS.iter().enumerate().filter(|(i, _)| d.template.is_none() || *i != ELEMENTS_TAB) {
+                        // A family's views: the categories' tabs alone.
+                        let shows = |i: usize| match &d.family {
+                            Some(_) => i < 2,
+                            None => d.template.is_none() || i != ELEMENTS_TAB,
+                        };
+                        for (i, label) in TABS.iter().enumerate().filter(|(i, _)| shows(*i)) {
                             if ui.selectable_label(d.tab == i, t(label)).clicked() {
                                 d.tab = i;
                                 d.pick = None;
@@ -390,8 +418,12 @@ impl BimApp {
                     match d.tab {
                         0 | 1 => {
                             // A view's point clouds with its model's categories: Revit gives them a tab of their own.
-                            let names: Vec<&str> =
-                                if d.tab == 0 { MODEL.iter().chain(&SCANS).copied().collect() } else { ANNOTATION.to_vec() };
+                            let names: Vec<&str> = match (&d.family, d.tab) {
+                                (Some(f), 0) => f.model.clone(),
+                                (Some(f), _) => f.annotation.clone(),
+                                (None, 0) => MODEL.iter().chain(&SCANS).copied().collect(),
+                                (None, _) => ANNOTATION.to_vec(),
+                            };
                             styles = categories(ui, &mut d, &model, &shown, &names, !followed.contains(&Group::Categories));
                         }
                         2 => {
@@ -421,11 +453,21 @@ impl BimApp {
             });
         cell_window(ctx, &mut d, &model);
         if styles {
-            self.object_styles_dialog = Some(crate::objectstyles::ObjectStylesDialog::new(&model));
+            // From a family document's view, the family's own: the family's category first, and the note that it changes the project.
+            self.object_styles_dialog = Some(match d.family.as_ref().and_then(|f| f.model.first()) {
+                Some(cat) => crate::objectstyles::ObjectStylesDialog::for_family(&model, cat),
+                None => crate::objectstyles::ObjectStylesDialog::new(&model),
+            });
         }
         // What's different from the project's, as one command; a refusal keeps the dialog open to fix it.
         let mut failed = false;
         if (ok || apply)
+            && let Some(view) = d.family.clone()
+        {
+            // A family document's view: its graphics for the session.
+            self.family_vg_done(&view, &d.draft);
+            d.own = d.draft.clone();
+        } else if (ok || apply)
             && let Some(name) = &d.template
         {
             // A template's: back to the View Templates dialog's draft, sent with its OK.

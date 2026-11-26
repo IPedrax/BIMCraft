@@ -331,10 +331,11 @@ fn trim_split_and_the_selection_tools_with_nothing_selected_say_why_outside_a_sk
         assert!(h.state().status.error);
         assert_eq!(tool(&h), None);
     }
-    // In {3D} Move works, on the work plane; Offset, which picks from the view, is a plan's or an elevation's still.
+    // In {3D} Move works, on the work plane; Scale, which leans on the view's depth, is a plan's or an elevation's
+    // still.
     super::family_views::view(&mut h, None);
     pick(&mut h, &[Picked::Form(0)]);
-    command(&mut h, "Offset");
+    command(&mut h, "Scale");
     assert!(status(&h).contains("plan or an elevation"), "{}", status(&h));
     assert_eq!(tool(&h), None);
     command(&mut h, "Move");

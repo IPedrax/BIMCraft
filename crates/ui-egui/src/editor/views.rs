@@ -52,6 +52,12 @@ pub(super) mod erased {
 pub(crate) struct Views {
     /// The view shown; none, {3D}.
     pub(crate) shown: Option<Which>,
+    /// Tile Windows is a layout of this document's open views for this session.
+    pub(crate) tiled: bool,
+    /// Inactive 2D panes have their own picture and fit; neither replaces the active view's cache.
+    tiles_2d: BTreeMap<Which, Tile2d>,
+    /// The inactive {3D} pane's processor picture, rebuilt only when its model or size changes.
+    pub(super) tile_3d: Option<Tile3d>,
     /// How close each view is, times as fitted, and how far it is moved (mm).
     pub(super) frames: BTreeMap<Which, (f64, (f64, f64))>,
     /// Each view's work plane ({3D}'s under none), once Set; else its own (`default_work_plane`).
@@ -68,6 +74,8 @@ pub(crate) struct Views {
     pub(crate) visibility: Option<super::visibility::Dialog>,
     /// The document's Detail Level, which every one of its views draws at (F8): the session's, Fine when a family opens.
     pub(crate) detail: bimcraft_core::graphics::Detail,
+    /// Each view's graphics for the session: Visibility/Graphics, visual style, Graphic Display Options, View Range.
+    pub(crate) kept: super::view_graphics::Kept,
     /// The Reference Plane tool, on, with its first click once made.
     pub(crate) drawing: Option<Option<P2>>,
     /// The Measure tool, on: its first click and the ruler last laid.
@@ -120,6 +128,8 @@ pub(crate) struct Views {
     /// How many times a cache above was worked out: what a test reads to see it kept as the pointer moves.
     #[cfg(test)]
     pub(crate) cache_builds: u32,
+    /// What {3D} picks references among and the draft flexed as it shows it, and what they were made for.
+    pub(crate) refs_3d: Option<(u64, super::modify::Refs3d, super::modify::Flexed3d)>,
     /// The Modify tools' Options Bar, kept for the session.
     pub(crate) modify_options: super::modify::Options,
     /// Whether the pointer was last over something selected that a drag would move, with no tool in hand: what the status
@@ -134,17 +144,27 @@ pub(crate) struct Views {
     /// Each view's fitted frame, and the size it was fitted for: kept while the family changes, so a drag leaves the frame
     /// where it was, and each view keeps its own while another is shown. Zoom to Fit lets the shown view's go (`refit`).
     fitted: std::collections::HashMap<Which, ([u32; 2], View)>,
+    /// Each view fitted to the room the family takes up and to the marks round it, and what it was fitted for (the room, the
+    /// size, the view's graphics): worked out again only when one of those changes, as the fit draws the view a few times.
+    room_fit: std::collections::HashMap<Which, (u64, View)>,
     /// The picture shown, and what it was drawn of.
     pub(super) cache: Option<Cached>,
     /// Aligned Dimension (DI): on, with the references picked so far; Radial or Diameter Dimension too (`dim_kind`), its
     /// circle picked once it is.
     pub(crate) dimensioning: Option<Vec<DimRef>>,
+    /// Edit Witness Lines: on, on this dimension.
+    pub(crate) witnessing: Option<Guid>,
     /// What the dimension tool on measures: aligned, or a circle's radius or diameter (F7b).
     pub(crate) dim_kind: bimcraft_core::family::DimKind,
     /// Align (AL): on, with the reference picked first once it is.
     pub(crate) aligning: Option<Option<DimRef>>,
     /// The padlock Align leaves until the next click: the two references, where it shows (the view's mm), in which view.
     pub(crate) align_lock: Option<(DimRef, DimRef, P2, Which)>,
+    /// Align's padlock in {3D}: the two references aligned, where the second was picked (the family's axes) and the
+    /// view whose lock it makes, until the next click.
+    pub(crate) align_lock_3d: Option<(DimRef, DimRef, [f64; 3], bimcraft_core::family::constraints::DimView)>,
+    /// Where Align's second pick in {3D} was, for a padlock offered after Remove Constraints.
+    pub(crate) align_point_3d: Option<[f64; 3]>,
     /// Where each Align padlock was last shown on screen, by its dimension's place (the one Align offers, past the last).
     pub(crate) locks_shown: Vec<(usize, egui::Pos2)>,
     /// Where Align's offered padlock was last shown on screen.
@@ -159,6 +179,10 @@ pub(crate) struct Views {
     pub(crate) status: Option<String>,
     /// Where on screen the view was last shown.
     pub(crate) pane: Option<Rect>,
+    /// Where the view shown, a plan, an elevation or {3D}, was last drawn, as `view_2d` and `family_3d` were given it: what a test
+    /// reads to see it clear of the tabs.
+    #[cfg(test)]
+    pub(crate) drawn: Option<Rect>,
     /// Where the pointer was last over {3D} and the camera {3D} was seen through, and the form or nested instance under it
     /// there (T11's hover).
     pub(crate) hover3d: Option<(egui::Pos2, bimcraft_core::view3d::Camera, Option<bimcraft_core::family::views::Part>)>,
@@ -178,6 +202,16 @@ pub(crate) struct Views {
     pub(crate) pasting: Option<super::clipboard::Pasting>,
     /// Paste Aligned to Selected Views' dialog, open.
     pub(crate) paste_views: Option<super::clipboard::PasteViews>,
+}
+
+impl Views {
+    /// Keep pictures only for views whose tabs are still open in this document.
+    pub(crate) fn retain_tiles(&mut self, open: &[Option<Which>]) {
+        self.tiles_2d.retain(|which, _| open.contains(&Some(*which)));
+        if !open.contains(&None) {
+            self.tile_3d = None;
+        }
+    }
 }
 
 /// A selected extrusion's Start or End (`end`) being dragged by its handle: where the pointer was (the view's
@@ -217,6 +251,16 @@ pub(super) struct Cached {
     texture: Option<TextureHandle>,
     #[cfg(test)]
     picture: Option<bimcraft_core::view3d::Image>,
+}
+
+#[derive(Default)]
+struct Tile2d {
+    cache: Option<Cached>,
+}
+
+pub(super) struct Tile3d {
+    pub(super) key: (u64, [u32; 2]),
+    pub(super) texture: TextureHandle,
 }
 
 #[cfg(test)]
@@ -293,9 +337,12 @@ impl Views {
             self.picking = None;
             self.drag = None;
             self.dimensioning = None;
+            self.witnessing = None;
             self.dim_kind = Default::default();
             self.aligning = None;
             self.align_lock = None;
+            self.align_lock_3d = None;
+            self.align_point_3d = None;
         }
     }
 }
@@ -355,6 +402,25 @@ impl Views {
         let (x, y) = self.pixel_of(p)?;
         Some(self.pane?.min + vec2(x, y))
     }
+
+    /// Every point the drawing of the plan or elevation shown paints, its lettering's included, on screen: each elevation mark's
+    /// (with its name) apart, then the rest.
+    pub(crate) fn ink_on_screen(&self) -> (Vec<Vec<egui::Pos2>>, Vec<egui::Pos2>) {
+        let (Some(c), Some(pane)) = (self.cache.as_ref(), self.pane) else { return Default::default() };
+        let mut marks: std::collections::BTreeMap<bimcraft_core::ids::Id, Vec<egui::Pos2>> = Default::default();
+        let mut rest = Vec::new();
+        for (p, o) in c.drawing.prims.iter().zip(&c.drawing.owners) {
+            if matches!(p, bimcraft_core::render::Prim::Image { .. }) {
+                continue;
+            }
+            let pts = p.points().into_iter().map(|(x, y)| pane.min + vec2(x, y));
+            match o.filter(|id| matches!(c.staged.model.elements.get(*id), Some(Element::Elevation(_)))) {
+                Some(id) => marks.entry(id).or_default().extend(pts),
+                None => rest.extend(pts),
+            }
+        }
+        (marks.into_values().collect(), rest)
+    }
 }
 
 #[cfg(test)]
@@ -394,6 +460,7 @@ impl FamilyEditor {
     /// Reference Plane's tool, or Reference Line's (`line`), on; the selection goes.
     fn datum_tool(&mut self, line: bool) {
         if self.editing_2d() {
+            self.last_tool = Some(if line { "Reference Line" } else { "Reference Plane" });
             self.views.drawing = Some(None);
             self.views.drawing_line = line;
             self.views.picking = None;
@@ -433,55 +500,91 @@ impl FamilyEditor {
         let values = self.values();
         // The form being sketched again is left out: its sketch stands for it.
         let editing = self.sketch.as_ref().and_then(|s| s.index);
-        let hidden = |i: usize| self.temp_hidden_form(i) || editing == Some(i);
+        // What the view's Visibility Settings leave out, at the document's Detail Level, drawn halftone too. A plan's cut plane
+        // is its View Range's.
+        let cut = match which {
+            Which::Plan => self.views.kept.range_of(which).cut,
+            // The ceiling plan and the elevations cut at the project's default cut height, not the scratch level's range: a
+            // family view keeps a View Range for its floor plan alone, and the scratch level's is that default.
+            Which::Ceiling | Which::Elevation(_) => bimcraft_core::model::CUT_HEIGHT,
+        };
+        let by_view = fv::hidden_in(&f, &values, Some(which), self.views.detail, cut);
+        // The forms the view draws apart, each a component of its own with graphics of its own (an override, or Reveal
+        // Hidden Elements' magenta), left out of the family's own component.
+        let apart = self.apart_forms(Some(which), &f, &values, &by_view);
+        let hidden = |i: usize| self.temp_hidden_form(i) || editing == Some(i) || apart.iter().any(|(k, _)| *k == i);
         let shown = temp_hide::without(&f, hidden).unwrap_or_else(|| f.clone());
         let mut model = self.scratch(base, &shown)?;
-        let mut ghost_id = None;
-        // F8: what the view's Visibility Settings leave out, at the document's Detail Level, drawn halftone too.
-        let cut = model.levels().first().map_or(bimcraft_core::model::CUT_HEIGHT, |(_, l)| l.view_range.cut);
-        let by_view = fv::hidden_in(&f, &values, Some(which), self.views.detail, cut);
+        let mut extra: Vec<(String, Family, Override)> = Vec::new();
         if !self.document.preview_visibility
             && let Some(g) = ghosts(&f, &values, hidden, &by_view)
         {
+            extra.push((format!("{} {GHOST}", self.name.trim()), g, Override { halftone: true, ..Default::default() }));
+        }
+        for (i, o) in &apart {
+            if let Some(g) = apart_family(&f, &values, |k, _| k == *i) {
+                extra.push((format!("{} (form {})", self.name.trim(), i + 1), g, o.clone()));
+            }
+        }
+        // Each placed beside the family, with its override; a door's or a window's where its family's axes are in the wall: its
+        // opening's frame.
+        let mut overrides: Vec<(bimcraft_core::ids::Guid, Override)> = Vec::new();
+        if !extra.is_empty() {
             let mut s = Session::new();
             s.model = Arc::new(model);
-            let name = format!("{} {GHOST}", self.name.trim());
             let type_name = self.types.get(self.picked).map(|(n, _)| n.clone()).unwrap_or_default();
-            // A door's or a window's ghost stands where its family's axes are in the wall: its opening's frame.
-            let mut place = json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params});
             let frame = s.model.elements.values().find_map(|e| match e {
                 Element::Door(o) | Element::Window(o) => s.model.opening_frame(o),
                 _ => None,
             });
-            if let Some((p, _, z)) = frame {
-                (place["at"], place["offset"]) = (json!([p.0, p.1]), json!(z));
+            for (name, g, o) in extra {
+                let mut place = json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params});
+                if let Some((p, _, z)) = frame {
+                    (place["at"], place["offset"]) = (json!([p.0, p.1]), json!(z));
+                }
+                super::at_origin(&f, &mut place);
+                s.model_mut().families.insert(name.clone(), g);
+                let made = s.execute("component", &place)?;
+                if let Some(guid) = made["id"].as_u64().and_then(|id| s.model.elements.guid(id)) {
+                    overrides.push((guid, o));
+                }
             }
-            super::at_origin(&f, &mut place);
-            s.model_mut().families.insert(name.clone(), g);
-            let made = s.execute("component", &place)?;
-            ghost_id = made["id"].as_u64();
             model = Arc::unwrap_or_clone(s.model);
         }
-        let ghost_guid = ghost_id.and_then(|id| model.elements.guid(id));
         let host_hidden = self.temp_hidden_host();
         // Its planes where the type's dimensions put them.
         let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
         let mut st = fv::stage(model, &flexed, &values, &|g| !self.plane_hidden(g));
-        let mut ids = vec![st.level];
-        ids.extend(Side::ALL.iter().filter_map(|s| st.elevation(*s)));
-        for id in ids {
+        // What the floor plan sees, once its View Range is set.
+        if which == Which::Plan {
+            st.seen = self.views.kept.seen(which);
+        }
+        // Each view drawn of the scratch project: the plan (and the ceiling plan) of its level, and its four elevations.
+        // The level's own: its floor plan's, or its ceiling plan's while that is shown.
+        let level = if which == Which::Ceiling { Which::Ceiling } else { Which::Plan };
+        let mut ids = vec![(st.level, level)];
+        ids.extend(Side::ALL.iter().filter_map(|s| Some((st.elevation(*s)?, Which::Elevation(*s)))));
+        for (id, of) in ids {
             let graphics = match st.model.elements.get_mut(id) {
-                Some(Element::Level(l)) => &mut l.graphics,
+                Some(Element::Level(l)) => {
+                    // The floor plan's View Range; a ceiling plan cuts where a project's does.
+                    if of == Which::Plan {
+                        l.view_range = self.views.kept.range_of(of);
+                    }
+                    &mut l.graphics
+                }
                 Some(Element::Elevation(s)) => &mut s.graphics,
                 _ => continue,
             };
             graphics.detail = self.views.detail;
-            if let Some(g) = ghost_guid {
-                graphics.elements.insert(g, Override { halftone: true, ..Default::default() });
+            for (g, o) in &overrides {
+                graphics.elements.insert(*g, o.clone());
             }
             if host_hidden {
                 graphics.categories.insert("wall".into(), Override { hidden: true, ..Default::default() });
             }
+            // The view's own Visibility/Graphics, under what the document sets for now.
+            super::view_graphics::lay_over(graphics, &self.views.kept.drawn_graphics(Some(of)));
         }
         Ok(st)
     }
@@ -498,28 +601,31 @@ impl FamilyEditor {
     }
 
     /// The view shown, drawn again when what it shows or how it's looked at changes.
-    fn refresh_view(&mut self, ctx: &Context, base: &Model, which: Which, size: [u32; 2]) {
+    fn refresh_view(&mut self, ctx: &Context, base: &Model, which: Which, size: [u32; 2], revision: Option<u64>) {
         let (zoom, pan) = self.views.frames.get(&which).copied().unwrap_or((1.0, (0.0, 0.0)));
         let key = {
             let mut h = DefaultHasher::new();
             (
-                self.family().ok().map(|f| serde_json::to_string(&f).unwrap_or_default()),
                 self.picked,
                 self.name.trim(),
                 which,
                 size,
-                zoom.to_bits(),
-                pan.0.to_bits(),
-                pan.1.to_bits(),
                 self.document.preview_visibility,
                 self.temporary(),
                 self.views.detail,
                 crate::style::canvas_dark(),
             )
                 .hash(&mut h);
+            match revision {
+                Some(generation) => generation.hash(&mut h),
+                None => self.family().ok().map(|f| serde_json::to_string(&f).unwrap_or_default()).hash(&mut h),
+            }
+            // The view's own graphics and range.
+            self.views.kept.key(Some(which)).hash(&mut h);
             (base.materials.len(), base.images.len()).hash(&mut h);
             // The form being sketched again, which the view leaves out.
             self.sketch.as_ref().and_then(|s| s.index).hash(&mut h);
+            (zoom.to_bits(), pan.0.to_bits(), pan.1.to_bits()).hash(&mut h);
             h.finish()
         };
         if self.views.cache.as_ref().is_some_and(|c| c.key == key) {
@@ -532,22 +638,49 @@ impl FamilyEditor {
             || self.views.param_drag.is_some()
             || self.views.drag.is_some()
             || self.views.grip.is_some();
+        let graphics = self.views.kept.key(Some(which));
+        let room_fit = self.views.room_fit.get(&which).copied();
         let drawn = self.staged(base, which).and_then(|mut st| {
             // A view is fitted to the room the family takes up when it is first shown at this size and when Zoom to Fit asks
             // (`refit`), and keeps that frame while the family changes: a drag that takes a form past the room would
             // otherwise zoom the view out under the hand, frame after frame. Once nothing is dragged, a family grown past the
             // frame (a form sketched far off in a family that began empty, a file reloaded) is fitted again.
-            let room = st.fitted(which, size[0], size[1]);
+            // The room's fit (a plan's elevation marks wholly in) draws the view a few times: it is worked out again only when
+            // the room, the view, its size or its graphics change, and not while a drag keeps the frame anyway.
+            let fit_key = {
+                let mut h = DefaultHasher::new();
+                (st.room.0.map(f64::to_bits), st.room.1.map(f64::to_bits), which, size, &graphics).hash(&mut h);
+                h.finish()
+            };
+            let room = match (kept, room_fit) {
+                (Some(v), _) if dragging => (fit_key, v),
+                (_, Some((k, v))) if k == fit_key => (k, v),
+                _ => (fit_key, st.fitted(which, size[0], size[1])),
+            };
             let fitted = match kept {
-                Some(v) if dragging || holds(&v, &room) => v,
-                _ => room,
+                Some(v) if dragging || holds(&v, &room.1) => v,
+                _ => room.1,
             };
             let shown = st.draw_lines_at(which, fitted, zoom, P2(pan.0, pan.1))?;
-            Ok((st, shown, fitted))
+            Ok((st, shown, fitted, room))
         });
         match drawn {
-            Ok((staged, shown, fitted)) => {
+            Ok((staged, mut shown, fitted, room)) => {
                 self.views.fitted.insert(which, (size, fitted));
+                // A drag's frame is the kept one, no fit of the room: what was fitted before stays.
+                if !(dragging && kept.is_some()) {
+                    self.views.room_fit.insert(which, room);
+                }
+                // A plane the view hides, revealed: its trace in magenta, as a form is (the drawing draws every plane in
+                // the one colour, whatever its graphics).
+                for (prim, owner) in shown.drawing.prims.iter_mut().zip(&shown.drawing.owners) {
+                    if let bimcraft_core::render::Prim::Line { color, .. } = prim
+                        && let Some(g) = owner.and_then(|o| staged.plane_of(o))
+                        && let Some(c) = self.views.kept.revealed_plane(Some(which), g)
+                    {
+                        *color = c;
+                    }
+                }
                 // The drawing is painted as vectors, as a project's plan is; an elevation's hidden-line picture goes under it, as a
                 // section's does, dark on a dark canvas as the drawing over it is.
                 let texture = shown.picture.as_ref().map(|image| {
@@ -575,9 +708,31 @@ impl FamilyEditor {
         }
     }
 
+    /// Draw an inactive view as a picture. Its rendering cache and fit belong to this tile, and
+    /// no input handler or view selection is called. The active view keeps its own cached frame.
+    pub(crate) fn tile_view_2d(&mut self, ui: &Ui, base: &Model, which: Which, pane: Rect, thin: bool, freeze: bool) {
+        let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
+        let mut tile = self.views.tiles_2d.remove(&which).unwrap_or_default();
+        std::mem::swap(&mut self.views.cache, &mut tile.cache);
+        if !(freeze && self.views.cache.is_some()) {
+            self.refresh_view(ui.ctx(), base, which, size, Some(self.document.revision));
+        }
+        let painter = ui.painter_at(pane);
+        painter.rect_filled(pane, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+        if let Some(c) = self.views.cache.as_ref().filter(|c| c.which == which) {
+            if let Some(texture) = &c.texture {
+                let at = Rect::from_min_size(pane.min, vec2(c.view.width as f32, c.view.height as f32));
+                painter.image(texture.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            }
+            crate::canvas::paint(&painter, crate::canvas::Place::at(pane.min), &c.drawing, &[], None, thin, &[]);
+        }
+        std::mem::swap(&mut self.views.cache, &mut tile.cache);
+        self.views.tiles_2d.insert(which, tile);
+    }
+
     /// The plan or elevation shown, filling `pane`: its picture, what is selected over it, the work plane tinted while Show is
     /// on, the plane being drawn; and the clicks and drags in it.
-    pub(crate) fn view_2d(&mut self, ui: &mut Ui, base: &Model, which: Which, pane: Rect) -> Option<String> {
+    pub(crate) fn view_2d(&mut self, ui: &mut Ui, base: &Model, which: Which, pane: Rect, thin: bool) -> Option<String> {
         let size = [pane.width().clamp(64.0, 2400.0) as u32, pane.height().clamp(64.0, 1600.0) as u32];
         // A handle's drag begun in another view, or in this one before something else was shown, is given up.
         let pass = ui.ctx().cumulative_pass_nr();
@@ -611,9 +766,13 @@ impl FamilyEditor {
         {
             (m.selection, m.tool) = (self.selection.items().to_vec(), m.tool.fresh());
         }
-        self.refresh_view(ui.ctx(), base, which, size);
+        self.refresh_view(ui.ctx(), base, which, size, None);
         let response = ui.interact(pane, UiId::new("family-view-2d"), Sense::click_and_drag());
         self.views.pane = Some(pane);
+        #[cfg(test)]
+        {
+            self.views.drawn = Some(pane);
+        }
         let c = self.views.cache.as_ref().filter(|c| c.which == which)?;
         let view = c.view;
         let painter = ui.painter_at(pane);
@@ -622,7 +781,7 @@ impl FamilyEditor {
             let at = Rect::from_min_size(pane.min, vec2(view.width as f32, view.height as f32));
             painter.image(t.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
-        crate::canvas::paint(&painter, crate::canvas::Place::at(pane.min), &c.drawing, &[], None, false, &[]);
+        crate::canvas::paint(&painter, crate::canvas::Place::at(pane.min), &c.drawing, &[], None, thin, &[]);
         let screen = |q: P2| {
             let (x, y) = view.px(q);
             pane.min + vec2(x, y)
@@ -683,6 +842,7 @@ impl FamilyEditor {
             // Lock on (F10a), what Align would take there (a plane, a reference line, another form's line), as its lock waits.
             let locking = self.sketch.as_ref().is_some_and(|s| s.lock && s.options().offset == 0.0);
             let own = self.sketch.as_ref().map(|s| s.guid).unwrap_or_default();
+            let gone = self.forms_out_of_view();
             let pick = |p: egui::Pos2| -> Option<super::sketch::PickedInView> {
                 let picked = plane_at(&cache.drawing, &cache.staged, p);
                 let lock = |r: DimRef| FamilyDimension {
@@ -708,8 +868,8 @@ impl FamilyEditor {
                 };
                 if locking && let Some(flexed) = flexed.as_ref() {
                     let screen_of = dims::screen_of(view, pane.min);
-                    if let Some(r) =
-                        dims::reference_at(flexed, &values, &cache.staged, which, picked, p, &screen_of).filter(|r| !r.names(own))
+                    if let Some(r) = dims::reference_at(flexed, &values, &cache.staged, which, picked, p, &screen_of)
+                        .filter(|r| !r.names(own) && !gone.iter().any(|g| r.names(*g)))
                         && let Some((a, b)) = dims::drawn_as(flexed, &values, &cache.staged, which, &r).filter(|(a, b)| a != b)
                     {
                         // A plane's whole trace, as Pick Lines takes it unlocked; else the line the reference is drawn as.
@@ -760,6 +920,7 @@ impl FamilyEditor {
             if !free {
                 self.views.aligning = None;
                 self.views.dimensioning = None;
+                self.views.witnessing = None;
                 if let Some(s) = self.sketch.as_mut() {
                     s.selected_dim = None;
                 }
@@ -788,7 +949,8 @@ impl FamilyEditor {
                         let screen_of = dims::screen_of(view, pane.min);
                         let plane = plane_at(&cache.drawing, &cache.staged, p);
                         let outside = flexed.as_ref().and_then(|f| {
-                            let r = dims::reference_at(f, &values, &cache.staged, which, plane, p, &screen_of).filter(|r| !r.names(own))?;
+                            let r = dims::reference_at(f, &values, &cache.staged, which, plane, p, &screen_of)
+                                .filter(|r| !r.names(own) && !gone.iter().any(|g| r.names(*g)))?;
                             let (a, b) = dims::drawn_as(f, &values, &cache.staged, which, &r)?;
                             (a != b).then_some((r, (a, b)))
                         });
@@ -838,9 +1000,12 @@ impl FamilyEditor {
         let crossing = angular && self.views.dimensioning.is_some();
         // Radial and Diameter Dimension pick a circle or an arc by its edge, Angular Dimension lines, the others references.
         let tool_kind = if circles || crossing { kind } else { bimcraft_core::family::DimKind::Aligned };
+        let gone = self.forms_out_of_view();
         let reference_at = |p: egui::Pos2| -> Option<DimRef> {
             let f = family.as_ref()?;
+            // What the view leaves out is picked by no tool.
             dims::pick_reference(f, &values, &c.staged, which, tool_kind, pick_plane(p), p, &on_screen)
+                .filter(|r| !gone.iter().any(|g| r.names(*g)))
         };
         // Its dimensions, the one being placed with them, over the picture: the selected one, and those that can't hold, picked.
         let placing = match (&self.views.dimensioning, response.hover_pos(), family.as_ref()) {
@@ -1066,7 +1231,7 @@ impl FamilyEditor {
             }
             let mut best: Option<(f64, (P2, P2))> = None;
             // An edge the view draws a form with, as Pick Lines takes: never its hull's chord.
-            for i in 0..f.forms.len() {
+            for i in (0..f.forms.len()).filter(|i| !hidden.get(*i).copied().unwrap_or(false)) {
                 for (a, b) in fv::outline_edges(f, &values, &c.staged, which, i) {
                     let d = bimcraft_core::geom::dist_to_segment(q, a, b);
                     if d <= reach && a.dist(b) > 1e-6 && best.is_none_or(|(e, _)| d < e) {
@@ -1406,6 +1571,7 @@ impl FamilyEditor {
         let mut new_line = None;
         let mut picked_work_plane = None;
         let mut new_dim = None;
+        let mut witness_at: Option<(Guid, Option<DimRef>)> = None;
         let mut align = None;
         let mut on_dims: Option<(Clicked, Vec<f64>)> = None;
         let mut modify_at: Option<super::modify::Click> = None;
@@ -1495,6 +1661,9 @@ impl FamilyEditor {
             } else if align_lock.is_some_and(|at| dims::lock_rect(at).contains(p)) {
                 // Align's padlock, waiting: it locks what was aligned, whatever tool is on.
                 on_dims = Some((Clicked::AlignLock, Vec::new()));
+            } else if let Some(g) = self.views.witnessing {
+                // Edit Witness Lines: the reference clicked added or taken off; a click on nothing ends it.
+                witness_at = Some((g, reference_at(p)));
             } else if let Some(refs) = self.views.dimensioning.as_mut() {
                 // A dimension tool: references picked one after another, then a click where it goes (`dims::dimension_click`).
                 let under = reference_at(p);
@@ -1806,6 +1975,14 @@ impl FamilyEditor {
         if let Some(d) = new_dim {
             self.dimensions.push(d);
         }
+        match witness_at {
+            Some((_, None)) => self.views.witnessing = None,
+            Some((g, Some(r))) => match self.witness(g, r) {
+                Ok(note) => self.views.said = note,
+                Err(e) => problem = Some(e),
+            },
+            None => {}
+        }
         if let Some((a, b, q)) = align {
             self.align_through(a, b, q, which);
         }
@@ -1988,11 +2165,29 @@ fn ghosts(
     hidden: impl Fn(usize) -> bool,
     by_view: &[bool],
 ) -> Option<Family> {
+    apart_family(f, values, |i, form| {
+        let in_type = form.visible.as_ref().is_some_and(|v| crate::adaptive_editor::worth(v, values) == Some(0.0));
+        !hidden(i) && (in_type || by_view.get(i).copied().unwrap_or(false))
+    })
+}
+
+/// Family `f` with only the solid forms `on` takes (by place and as they are) seen, whatever its type or their Visibility
+/// Settings say: what a view draws apart from the family (the ghost of what its type hides; the forms with graphics of
+/// their own). A door's or a window's made a generic family, its wall's thickness a parameter, so it stands beside the
+/// opening rather than as a second opening in the wall. None when it takes none.
+pub(super) fn apart_family(
+    f: &Family,
+    values: &BTreeMap<String, bimcraft_core::family::Val>,
+    on: impl Fn(usize, &bimcraft_core::family::Form) -> bool,
+) -> Option<Family> {
     let mut g = f.clone();
     let mut any = false;
     for (i, form) in g.forms.iter_mut().enumerate() {
-        let in_type = form.visible.as_ref().is_some_and(|v| crate::adaptive_editor::worth(v, values) == Some(0.0));
-        let off = !form.void && !hidden(i) && (in_type || by_view.get(i).copied().unwrap_or(false));
+        // Voids stay as the family has them, cutting what is drawn apart as they cut it in the family.
+        if form.void {
+            continue;
+        }
+        let off = on(i, form);
         form.visible = if off { None } else { Some(Expr::Number(0.0)) };
         form.visibility = None;
         any |= off;

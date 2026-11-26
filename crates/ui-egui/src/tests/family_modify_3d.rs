@@ -14,7 +14,7 @@ use bimcraft_core::family::views::Which;
 const FRONT_BACK: &str = "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2";
 
 /// The Movers family (box A from 100 to 500 square and 300 high, box B west of it) in its {3D}, drawn.
-fn in_3d() -> Harness<'static, BimApp> {
+pub(super) fn in_3d() -> Harness<'static, BimApp> {
     let (mut h, _) = open(&family_with(""), "Movers");
     view(&mut h, None);
     for _ in 0..4 {
@@ -25,12 +25,12 @@ fn in_3d() -> Harness<'static, BimApp> {
 }
 
 /// A click in {3D} where family point `p` shows.
-fn click3(h: &mut Harness<BimApp>, p: [f64; 3]) {
+pub(super) fn click3(h: &mut Harness<BimApp>, p: [f64; 3]) {
     let at = h.state().family_screen3(p).expect("{3D} drawn");
     click_at(h, at);
 }
 
-fn tool(h: &Harness<BimApp>) -> Option<M> {
+pub(super) fn tool(h: &Harness<BimApp>) -> Option<M> {
     editor(h).modify_in_hand()
 }
 
@@ -135,12 +135,11 @@ fn what_picks_from_the_view_stays_greyed_in_3d_and_says_why() {
     // Nothing selected: Move asks for a selection, as in a plan.
     let why = editor(&h).modify_blocked(&M::Move { copy: false, from: None }).expect("nothing selected");
     assert!(why.contains("Select"), "{why}");
-    pick(&mut h, &[Picked::Form(0)]);
-    for t in [M::Mirror { draw: false, start: None }, M::Offset] {
-        let why = editor(&h).modify_blocked(&t).expect("greyed in {3D}");
-        assert!(why.contains("{3D}") && why.contains("plan or an elevation"), "{t:?}: {why}");
-    }
-    assert!(!editor(&h).editing_2d(), "Align is a plan's and an elevation's still");
+    // Scale, which leans on the view's depth, stays greyed.
+    pick(&mut h, &[Picked::Plane(super::family_drag_move::g(super::family_drag_move::EDGE))]);
+    let why = editor(&h).modify_blocked(&M::Scale { origin: None, first: None }).expect("greyed in {3D}");
+    assert!(why.contains("{3D}") && why.contains("plan or an elevation"), "{why}");
+    assert!(!editor(&h).editing_2d() && editor(&h).aligns_in_3d(), "Align works in {{3D}} too");
     // In a plan they all work, as before.
     view(&mut h, Some(Which::Plan));
     pick(&mut h, &[Picked::Form(0)]);
@@ -171,16 +170,17 @@ fn a_tool_in_hand_is_this_views_and_esc_lets_go_of_it() {
     assert_eq!(tool(&h), None);
     // A tool {3D} can't work with, taken in a plan: put down as {3D} opens, saying why; the selection is kept.
     view(&mut h, Some(Which::Plan));
-    pick(&mut h, &[Picked::Form(0)]);
-    command(&mut h, "Mirror - Pick Axis");
-    assert_eq!(tool(&h), Some(M::Mirror { draw: false, start: None }));
+    let edge = Picked::Plane(super::family_drag_move::g(super::family_drag_move::EDGE));
+    pick(&mut h, &[edge]);
+    command(&mut h, "Scale");
+    assert_eq!(tool(&h), Some(M::Scale { origin: None, first: None }));
     view(&mut h, None);
     for _ in 0..4 {
         h.run();
     }
     assert_eq!(tool(&h), None);
     assert!(status(&h).contains("{3D}"), "{}", status(&h));
-    assert_eq!(editor(&h).selection.items(), [Picked::Form(0)]);
+    assert_eq!(editor(&h).selection.items(), [edge]);
 }
 
 #[test]

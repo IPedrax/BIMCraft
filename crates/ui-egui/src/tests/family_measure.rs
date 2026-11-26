@@ -19,7 +19,8 @@ fn measure_lays_a_ruler_by_two_clicks_reads_it_and_changes_nothing() {
     click_family(&mut h, [0.0, 0.0, 0.0]);
     click_family(&mut h, [300.0, -400.0, 0.0]);
     let r = editor(&h).measured().expect("a ruler laid");
-    assert!((r.length - 500.0).abs() < 1e-6 && (r.dx - 300.0).abs() < 1e-6 && (r.dy + 400.0).abs() < 1e-6, "{r:?}");
+    // Within a thousandth of a mm: the second click is where a pixel is, not snapped.
+    assert!((r.length - 500.0).abs() < 1e-3 && (r.dx - 300.0).abs() < 1e-3 && (r.dy + 400.0).abs() < 1e-3, "{r:?}");
     assert!(status(&h).contains("500"), "the status bar reads it: {}", status(&h));
     assert!(untouched(&h), "it changes nothing");
     // Another first click lays another; Escape puts the tool down.
