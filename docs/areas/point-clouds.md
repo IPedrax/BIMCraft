@@ -4,8 +4,21 @@ On the roadmap under 0.9 Interoperability. A project holds scans and places them
 plans snap to them, and the desktop brings them in (Insert > Point Cloud). IFC leaves them out, as Revit's export does: IFC4 has
 no point cloud, and `ifc_leaves_scans_out_as_revit_does` keeps the file what it was without them.
 
-Point clouds (`cloud.rs`) come from public specifications: PTS and XYZ text, PLY (text or either byte order) and ASPRS LAS 1.0
-to 1.4 uncompressed, and ASTM E57 (`Format::from_extension` says why LAZ and ReCap's RCP/RCS don't). `cloud::read_from` reads them.
+Point clouds (`cloud.rs`) come from public specifications: PTS and XYZ text, PLY (text or either byte order), ASPRS LAS 1.0
+to 1.4, LAZ and COPC, and ASTM E57 (`Format::from_extension` says why ReCap's RCP/RCS don't). LAZ (`cloud/laz.rs`) is LAS whose
+points LASzip compressed, and COPC (`.copc.laz`) is LAZ 1.4 with its chunks indexed, so both are `Format::Laz`: the header is
+LAS's (`LasHead`, shared with `las`), LASzip's record of its own ("laszip encoded", 22204) is found among the file's records,
+and the laz crate (Apache-2.0, without its `parallel` feature, whose decompressor trusts the table) gives back the records LAS
+would hold. The crate is Apache-2.0 only, so it sits behind `bimcraft-core`'s `laz` feature, on by default (as `crates/rvt`
+keeps its licence apart): a build without it refuses LAZ and says so, and a binary built with it is Apache-2.0. A file whose point format has LASzip's bit is read as LAZ whatever its name. A chunked file's table of chunks is read
+and checked before anything is held (`chunks`): no more chunks than the points and the file could fill, their points adding up
+to the header's, their bytes fitting between the points and the table. Its chunks are then decompressed side by side
+(`side_by_side`): twice as many at a time as rayon has threads, no more than `PAR_BATCH` of points, each by a decompressor of
+its own over its bytes (`decompressor`, the items' version choosing point by point or layered), and handed on in the file's
+order. A file with no table, or a chunk that decompresses past `MAX_CHUNK`, is decompressed as one stream, a megabyte at a
+time. LASzip can't step within a chunk, so a LAZ file is read once, not twice (`once`): its header says how many points it
+holds, so every `stride`th is held as it was in the file (`Held`, its shades in `f32`, which holds sixteen bits exactly) while
+the bounds and shades are measured, and kept (`Keep`) once they are known, which is what two passes keep.
 
 A file is never held whole, so its size takes no memory and isn't what limits it (`MAX_BYTES` is a terabyte, a sanity cap).
 `cloud::read_from` reads a `Source` (anything that reads and seeks: the file itself in `point_cloud`, unbuffered, or bytes in
@@ -15,9 +28,10 @@ first megabyte and its body after it, LAS's records a megabyte at a time, or, th
 points, which is how a reader that steps over records and one that doesn't thin the same. What a read takes is the points it
 keeps: `point_cloud` asks `memory::Budget` for `KEPT_BYTES` a point of what the project leaves before reading, and the read
 looks at the budget every `LOOK` points, so on a machine without the memory it stops with the budget's message instead of
-running out. The budget carries the command's progress: "Measuring the scan" (uncounted), then "Reading the points"
-(counted), and Cancel stops it there. The reference survey (1.01 billion points, 5 million kept) reads from a 17 GB E57 in four
-and a half minutes in under 140 MB.
+running out. The budget carries the command's progress: "Measuring the scan" (uncounted), then "Reading the points" (counted;
+a LAZ file, read once, has this stage alone), and Cancel stops it there. The reference survey (1.01 billion points, 5 million
+kept) reads from a 17 GB E57 in four and a half minutes in under 140 MB, and from an 8.8 GB LAZ in 72 seconds in about 400 MB
+(nine and a half minutes when it was decompressed twice, one chunk after another; 32 seconds natively on Windows).
 
 `cloud::read_from` parses a file twice, once to measure it (`Stats`: the count, the bounds, the ranges of intensity and colour) and once to keep it: every `stride`th
 point so `Options::cap` is never passed, then one in each cube of `spacing`, the same every time. A `Scan` keeps its points as

@@ -10714,7 +10714,7 @@ msgstr ""
 msgid "Measured from the level of each plan: Associated Level is its own. Top ≥ Cut Plane ≥ Bottom ≥ View Depth."
 msgstr ""
 
-#: crates/core/src/cloud.rs:593
+#: crates/core/src/cloud.rs:609
 msgid "Measuring the scan"
 msgstr ""
 
@@ -13956,8 +13956,8 @@ msgid "Point Cloud"
 msgstr "Nube de puntos"
 
 #: crates/ui-egui/src/lib.rs:5850
-msgid "Point Cloud: laser scans (PTS, XYZ, PLY, LAS or E57) brought into the project, one file or a survey's stations as one scan, drawn in the 3D view, plans and sections and snapped to"
-msgstr "Nube de puntos: escaneos láser (PTS, XYZ, PLY, LAS o E57) traídos al proyecto, un archivo o las estaciones de un levantamiento como un solo escaneo, dibujados en la vista 3D, las plantas y los cortes y usados como referencia"
+msgid "Point Cloud: laser scans (PTS, XYZ, PLY, LAS, LAZ or E57) brought into the project, one file or a survey's stations as one scan, drawn in the 3D view, plans and sections and snapped to"
+msgstr ""
 
 #: crates/ui-egui/src/manage_links.rs:21
 msgid "Point Clouds"
@@ -14623,7 +14623,8 @@ msgstr ""
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/cloud.rs:616
+#: crates/core/src/cloud.rs:608
+#: crates/core/src/cloud.rs:644
 msgid "Reading the points"
 msgstr ""
 
@@ -24503,3 +24504,6 @@ msgstr "Superior"
 #: crates/ui-egui/src/dock.rs:930
 #~ msgid "Plugin panel"
 #~ msgstr ""
+#: crates/ui-egui/src/lib.rs:5850
+#~ msgid "Point Cloud: laser scans (PTS, XYZ, PLY, LAS or E57) brought into the project, one file or a survey's stations as one scan, drawn in the 3D view, plans and sections and snapped to"
+#~ msgstr "Nube de puntos: escaneos láser (PTS, XYZ, PLY, LAS o E57) traídos al proyecto, un archivo o las estaciones de un levantamiento como un solo escaneo, dibujados en la vista 3D, las plantas y los cortes y usados como referencia"
