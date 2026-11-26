@@ -729,6 +729,10 @@ pub struct BimApp {
     ribbon_peek: bool,
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
+    /// What the caches of scans' indexes may take, MB (none: a share of what's free), and how many of their points the 3D view
+    /// draws (none: as many as the card or the processor draws well). Settings > Graphics.
+    pub(crate) scan_memory_mb: Option<u32>,
+    pub(crate) scan_points: Option<u32>,
     background_grid_dialog: Option<background_grid::GridDialog>,
     /// The underlay of the view on screen, made and kept on the card (`underlay.rs`).
     pub(crate) underlay: underlay::Layer,
@@ -1037,7 +1041,11 @@ pub struct BimApp {
     /// Insert > Point Cloud was pressed: its file dialog opens this frame.
     cloud_dialog: bool,
     /// Bringing scan files in: the box, while it's open.
-    cloud_box: Option<clouds::CloudBox>,
+    pub(crate) cloud_box: Option<clouds::CloudBox>,
+    /// Scan files being read on a thread of their own, for Insert > Point Cloud to place.
+    pub(crate) cloud_reading: Option<clouds::CloudReading>,
+    /// The scan whose index Delete Index… asks to delete, while it asks.
+    pub(crate) index_delete: Option<String>,
     /// Insert > Import CAD (false) or Link CAD (true) was pressed: its file dialog opens this frame.
     cad_dialog: Option<bool>,
     /// Bringing a CAD drawing in: the box, while it's open.
@@ -1908,6 +1916,8 @@ impl BimApp {
             palette_json: RefCell::new(None),
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
+            scan_memory_mb: None,
+            scan_points: None,
             background_grid_dialog: None,
             underlay: Default::default(),
             underlay_dialog: None,
@@ -2084,6 +2094,8 @@ impl BimApp {
             link_dialog: false,
             cloud_dialog: false,
             cloud_box: None,
+            cloud_reading: None,
+            index_delete: None,
             cad_dialog: None,
             cad_box: None,
             link_box: None,
@@ -2564,6 +2576,7 @@ impl BimApp {
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
         self.poll_opening(&ctx);
+        self.poll_cloud_reading(&ctx);
         self.poll_swap(&ctx);
         self.poll_export(&ctx);
         self.poll_plugins(&ctx);
@@ -4236,7 +4249,11 @@ impl BimApp {
 
     /// Whether nothing is being made for what the window shows: no plan or 3D scene on a worker, nothing waited for.
     pub(crate) fn settled(&self) -> bool {
-        !self.canvas.drawing.busy() && self.orbit.waiting.is_none() && !self.orbit.busy() && !self.opening_busy()
+        !self.canvas.drawing.busy()
+            && self.orbit.waiting.is_none()
+            && !self.orbit.busy()
+            && !self.opening_busy()
+            && self.cloud_reading.is_none()
     }
 
     /// The first plan in a tab, as the Project Browser opens it.
@@ -4607,6 +4624,7 @@ impl BimApp {
         (fresh.panels_hidden, fresh.panel_keys) = (std::mem::take(&mut self.panels_hidden), std::mem::take(&mut self.panel_keys));
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
+        (fresh.scan_memory_mb, fresh.scan_points) = (self.scan_memory_mb, self.scan_points);
         fresh.grid_snapping = self.grid_snapping;
         fresh.guide_style = self.guide_style;
         fresh.compressed_save = self.compressed_save;
@@ -5839,7 +5857,7 @@ impl BimApp {
                 self.link_dialog = true;
             }
             let tip = msg!(
-                "Point Cloud: laser scans (PTS, XYZ, PLY, LAS or E57) brought into the project, one file or a survey's stations as one scan, drawn in the 3D view, plans and sections and snapped to"
+                "Point Cloud: laser scans (PTS, XYZ, PLY, LAS, LAZ or E57) brought into the project, one file or a survey's stations as one scan, drawn in the 3D view, plans and sections and snapped to"
             );
             if big_button(ui, Icon::PointCloud, "Point Cloud", self.cloud_box.is_some(), tip).clicked() {
                 self.cloud_dialog = true;
@@ -7913,6 +7931,8 @@ impl BimApp {
         self.installing_box(ctx);
         self.importing_box(ctx);
         self.opening_box(ctx);
+        self.cloud_reading_box(ctx);
+        self.index_delete_box(ctx);
         self.report_window(ctx);
         self.export_window(ctx);
         self.publisher_window(ctx);

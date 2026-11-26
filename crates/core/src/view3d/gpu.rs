@@ -750,13 +750,15 @@ impl Mesh {
                 return Ok(None);
             }
             let owner = owner_of(&mut mesh, scan.owner, 0, look.edge(scan.owner, EDGE));
+            let paint = scan.paint(plain, look);
             for (i, p) in scan.points.iter().enumerate().step_by(step) {
                 if i % 8192 == 0 && cancelled() {
                     return Ok(None);
                 }
-                let Rgb(r, g, b) = scan.colour(i, plain, look);
+                let at = scan.place(*p);
+                let Rgb(r, g, b) = paint.colour(i, at);
                 let color = u32::from(r) | u32::from(g) << 8 | u32::from(b) << 16;
-                mesh.dots.push(Dot { at: scan.place(*p), color, owner });
+                mesh.dots.push(Dot { at, color, owner });
             }
         }
         // The cube a box standing in is placed from, its faces' planes numbered past the scene's.

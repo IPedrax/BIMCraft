@@ -3,9 +3,11 @@
 //! field bit-packed in a stream of its own. Read from the public standard; every scan in a file comes in, placed by
 //! its pose. The checksums aren't checked: a page that lies reads as points that lie, never as a crash.
 
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::io::{Read, SeekFrom};
 
-use super::Raw;
+use super::{Raw, Source};
 
 /// Bytes in a page, and of them, the ones that hold data (the last four are its checksum).
 const PAGE: u64 = 1024;
@@ -13,15 +15,20 @@ const DATA: u64 = PAGE - 4;
 /// How deep the XML may nest, and how many elements it may hold.
 const MAX_DEPTH: usize = 64;
 const MAX_NODES: usize = 1 << 20;
+/// Bytes of XML held to be parsed: a scanner's runs to a few megabytes.
+const MAX_XML: usize = 256 << 20;
+/// Bytes read from the file at a time, and served from memory until a read falls outside them; small under test, so the
+/// tests cross from one to the next.
+const WINDOW: usize = if cfg!(test) { 8 << 10 } else { 1 << 20 };
 
 /// What a file may ask before any of it is unpacked. A bit-packed field can take no bits at all (a constant), so a few
-/// megabytes may declare billions of points, and every point costs a step for each field. shortcut: a survey past these
-/// is thinned where it was made; raise them when a pass over a file streams instead of holding it.
+/// megabytes may declare billions of points, and every point costs a step for each field. A file is read a window at a
+/// time and never held, so its size costs no memory; what's kept of its points is the cloud's to thin.
 #[derive(Clone, Copy)]
 struct Caps {
     /// Scans in a file.
     scans: usize,
-    /// Points in all of them: five times what a project keeps, twenty.
+    /// Points in all of them: a sanity cap, past the largest surveys, that keeps a lying count from hours of unpacking.
     points: u64,
     /// Fields a point is made of; scanners write a dozen.
     fields: usize,
@@ -29,7 +36,7 @@ struct Caps {
     ahead: usize,
 }
 
-const CAPS: Caps = Caps { scans: 4096, points: 100_000_000, fields: 32, ahead: 4 << 20 };
+const CAPS: Caps = Caps { scans: 4096, points: 100_000_000_000, fields: 32, ahead: 4 << 20 };
 
 /// What the scans before one have used up: the points left of the file's budget, and the sections they read.
 struct Taken {
@@ -37,12 +44,16 @@ struct Taken {
     sections: HashSet<u64>,
 }
 
-/// Hands each point of every scan in an E57 file to `f`, in metres where the file put it.
-pub(super) fn read(bytes: &[u8], f: &mut impl FnMut(Raw) -> Result<(), String>) -> Result<(), String> {
-    read_within(bytes, f, CAPS)
+/// Hands each point of every scan in an E57 file of `size` bytes to `f`, in metres where the file put it.
+pub(super) fn read(src: &mut dyn Source, size: u64, f: &mut impl FnMut(Raw) -> Result<(), String>) -> Result<(), String> {
+    read_within(src, size, f, CAPS)
 }
 
-fn read_within(bytes: &[u8], f: &mut impl FnMut(Raw) -> Result<(), String>, caps: Caps) -> Result<(), String> {
+fn read_within(src: &mut dyn Source, size: u64, f: &mut impl FnMut(Raw) -> Result<(), String>, caps: Caps) -> Result<(), String> {
+    let mut header = Vec::with_capacity(48);
+    src.seek(SeekFrom::Start(0)).map_err(super::unread)?;
+    src.take(48).read_to_end(&mut header).map_err(super::unread)?;
+    let bytes = header.as_slice();
     if !bytes.starts_with(b"ASTM-E57") {
         return Err("it isn't an E57 file: it doesn't start with ASTM-E57".into());
     }
@@ -57,12 +68,19 @@ fn read_within(bytes: &[u8], f: &mut impl FnMut(Raw) -> Result<(), String>, caps
     if page != PAGE {
         return Err(format!("its pages are {page} bytes; E57's are {PAGE}"));
     }
-    let file = Paged { bytes };
     let (xml_at, xml_len) = (u64_at(24)?, u64_at(32)?);
-    let xml_len = usize::try_from(xml_len).ok().filter(|&n| n <= bytes.len()).ok_or("its XML is longer than the file")?;
+    if xml_len > size {
+        return Err("its XML is longer than the file".into());
+    }
+    let xml_len = usize::try_from(xml_len)
+        .ok()
+        .filter(|&n| n <= MAX_XML)
+        .ok_or_else(|| format!("its XML is {xml_len} bytes; BIMCraft reads up to {MAX_XML}"))?;
+    let file = Paged::new(src, size);
     let mut xml = Vec::new();
     file.take(file.logical(xml_at)?, xml_len, &mut xml)?;
     let root = parse(&String::from_utf8_lossy(&xml))?;
+    drop(xml);
     let Some(data3d) = root.child("data3D") else { return Err("it holds no scans (no data3D)".into()) };
     if data3d.children.len() > caps.scans {
         return Err(format!("it holds {} scans; BIMCraft reads up to {}", data3d.children.len(), caps.scans));
@@ -74,12 +92,27 @@ fn read_within(bytes: &[u8], f: &mut impl FnMut(Raw) -> Result<(), String>, caps
     Ok(())
 }
 
-/// The file as E57 lays it out: logical bytes, 1020 to each page of 1024.
+/// The file as E57 lays it out: logical bytes, 1020 to each page of 1024, read from the source a window of [`WINDOW`]
+/// physical bytes at a time. Reading on from where the last read ended never seeks; a read outside the window fills it anew.
 struct Paged<'a> {
-    bytes: &'a [u8],
+    src: RefCell<&'a mut dyn Source>,
+    size: u64,
+    window: RefCell<Window>,
 }
 
-impl Paged<'_> {
+/// Physical bytes from `start` held, and where the source stands.
+struct Window {
+    start: u64,
+    bytes: Vec<u8>,
+    at: u64,
+}
+
+impl<'a> Paged<'a> {
+    fn new(src: &'a mut dyn Source, size: u64) -> Paged<'a> {
+        // Where the source stands is unknown until the first fill seeks.
+        Paged { src: RefCell::new(src), size, window: RefCell::new(Window { start: 0, bytes: Vec::new(), at: u64::MAX }) }
+    }
+
     /// The logical place of a physical offset, which mustn't fall on a checksum.
     fn logical(&self, physical: u64) -> Result<u64, String> {
         if physical % PAGE >= DATA {
@@ -90,19 +123,50 @@ impl Paged<'_> {
 
     /// Appends `n` logical bytes from logical place `at`.
     fn take(&self, mut at: u64, mut n: usize, out: &mut Vec<u8>) -> Result<(), String> {
+        let mut window = self.window.try_borrow_mut().map_err(|_| "the file is read twice at once".to_string())?;
         while n > 0 {
             let in_page = at % DATA;
-            let physical = at / DATA * PAGE + in_page;
+            let physical = at.checked_div(DATA).and_then(|p| p.checked_mul(PAGE)).and_then(|p| p.checked_add(in_page));
+            let physical = physical.ok_or("an offset past any file")?;
             let here = usize::try_from((DATA - in_page).min(n as u64)).unwrap_or(n);
-            let from = usize::try_from(physical).map_err(|_| "an offset past the file".to_string())?;
-            let part = from
-                .checked_add(here)
-                .and_then(|end| self.bytes.get(from..end))
-                .ok_or_else(|| format!("it's cut short: byte {physical} is past its {} bytes", self.bytes.len()))?;
+            let end = physical.checked_add(here as u64).filter(|&e| e <= self.size);
+            let end = end.ok_or_else(|| format!("it's cut short: byte {physical} is past its {} bytes", self.size))?;
+            let held = window.start + window.bytes.len() as u64;
+            if physical < window.start || end > held {
+                self.fill(&mut window, physical)?;
+            }
+            let from = usize::try_from(physical - window.start).map_err(|_| "an offset past the window".to_string())?;
+            let part = window.bytes.get(from..from + here).ok_or("the window doesn't hold what it was filled with")?;
             out.extend_from_slice(part);
             at += here as u64;
             n -= here;
         }
+        Ok(())
+    }
+
+    /// Fills the window from physical byte `start`, as far as [`WINDOW`] or the end of the file.
+    fn fill(&self, window: &mut Window, start: u64) -> Result<(), String> {
+        let mut src = self.src.try_borrow_mut().map_err(|_| "the file is read twice at once".to_string())?;
+        let len = usize::try_from(self.size.saturating_sub(start)).unwrap_or(WINDOW).min(WINDOW);
+        let held = window.start + window.bytes.len() as u64;
+        // What the window holds from `start` on is kept, and the source reads on from where it stands.
+        let kept = if window.at == held && (window.start..=held).contains(&start) {
+            window.bytes.drain(..usize::try_from(start - window.start).unwrap_or(0));
+            window.bytes.len().min(len)
+        } else {
+            window.at = u64::MAX;
+            window.bytes.clear();
+            src.seek(SeekFrom::Start(start)).map_err(super::unread)?;
+            0
+        };
+        window.start = start;
+        window.bytes.resize(len, 0);
+        if let Err(e) = src.read_exact(&mut window.bytes[kept..]) {
+            window.bytes.clear();
+            window.at = u64::MAX;
+            return Err(super::unread(e));
+        }
+        window.at = start + len as u64;
         Ok(())
     }
 }
@@ -853,7 +917,9 @@ mod tests {
         let xml_at = u64::from_le_bytes(file[24..32].try_into().unwrap());
         let xml_len = u64::from_le_bytes(file[32..40].try_into().unwrap()) as usize;
         let mut raw = Vec::new();
-        Paged { bytes: file }.take(xml_at / PAGE * DATA + xml_at % PAGE, xml_len, &mut raw).unwrap();
+        Paged::new(&mut std::io::Cursor::new(file), file.len() as u64)
+            .take(xml_at / PAGE * DATA + xml_at % PAGE, xml_len, &mut raw)
+            .unwrap();
         String::from_utf8(raw).unwrap()
     }
 
@@ -876,7 +942,8 @@ mod tests {
     fn within(file: &[u8], caps: Caps) -> Result<usize, String> {
         let mut n = 0;
         read_within(
-            file,
+            &mut std::io::Cursor::new(file),
+            file.len() as u64,
             &mut |_| {
                 n += 1;
                 Ok(())
@@ -928,7 +995,8 @@ mod tests {
         let lie = rewritten(&file, &format!("recordCount=\"{n}\""), "recordCount=\"4000000\"");
         let mut handed = 0;
         let e = read_within(
-            &lie,
+            &mut std::io::Cursor::new(&lie),
+            lie.len() as u64,
             &mut |_| {
                 handed += 1;
                 Ok(())
@@ -949,6 +1017,85 @@ mod tests {
         let same = rewritten(&two, &format!("fileOffset=\"{}\"", offsets[1]), &format!("fileOffset=\"{}\"", offsets[0]));
         let e = read(&same).unwrap_err();
         assert!(e.contains("scan 2") && e.contains("another scan"), "{e}");
+    }
+
+    /// A source that counts the bytes read from it, and seems `len` bytes long: past what it holds, it reads as noughts.
+    struct Counted<'a> {
+        bytes: &'a [u8],
+        len: u64,
+        at: u64,
+        read: u64,
+    }
+
+    impl std::io::Read for Counted<'_> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let n = (buf.len() as u64).min(self.len.saturating_sub(self.at)) as usize;
+            for (k, b) in buf[..n].iter_mut().enumerate() {
+                *b = self.bytes.get((self.at + k as u64) as usize).copied().unwrap_or(0);
+            }
+            self.at += n as u64;
+            self.read += n as u64;
+            Ok(n)
+        }
+    }
+
+    impl std::io::Seek for Counted<'_> {
+        fn seek(&mut self, to: std::io::SeekFrom) -> std::io::Result<u64> {
+            self.at = match to {
+                std::io::SeekFrom::Start(n) => n,
+                std::io::SeekFrom::End(d) => self.len.saturating_add_signed(d),
+                std::io::SeekFrom::Current(d) => self.at.saturating_add_signed(d),
+            };
+            Ok(self.at)
+        }
+    }
+
+    /// The points `read` hands from a source, in metres to a thousandth of a millimetre, and how many bytes it read.
+    fn streamed(bytes: &[u8], len: u64) -> (Result<Vec<[f64; 3]>, String>, u64) {
+        let mut src = Counted { bytes, len, at: 0, read: 0 };
+        let mut got = Vec::new();
+        let r = super::read(&mut src, len, &mut |raw: Raw| {
+            got.push(raw.p.map(|v| (v * 1e6).round() / 1e6));
+            Ok(())
+        });
+        (r.map(|()| got), src.read)
+    }
+
+    #[test]
+    fn an_e57_read_from_disk_a_window_at_a_time_gives_what_memory_gives() {
+        let file = e57(&[plain(3000), plain(2000), plain(700)]);
+        assert!(file.len() > 4 * WINDOW, "the file should take several windows");
+        let mut disk = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut disk, &file).unwrap();
+        let from_disk = super::super::read_from(disk.as_file_mut(), Format::E57, &Options::default(), None).unwrap();
+        let from_memory = read(&file).unwrap();
+        assert_eq!(from_disk.points.len(), 5700);
+        assert_eq!(all(&from_disk), all(&from_memory));
+    }
+
+    #[test]
+    fn a_pass_over_an_e57_reads_its_bytes_about_once_whatever_its_size() {
+        let file = e57(&[plain(3000), plain(2000), plain(700)]);
+        let (points, read) = streamed(&file, file.len() as u64);
+        assert_eq!(points.unwrap().len(), 5700);
+        assert!(read as f64 <= 1.2 * file.len() as f64, "{read} bytes read of {}", file.len());
+        // The same file followed by gigabytes it never points at: its size costs nothing, neither memory nor reading.
+        let huge = 5_u64 << 30;
+        let (tail, read) = streamed(&file, huge);
+        assert_eq!(tail.unwrap().len(), 5700);
+        assert!(read as f64 <= 1.2 * file.len() as f64, "{read} bytes read of {huge}");
+    }
+
+    #[test]
+    fn an_e57_says_so_when_its_xml_is_more_than_is_held() {
+        let file = e57(&[plain(5)]);
+        let mut b = file.clone();
+        b[32..40].copy_from_slice(&(MAX_XML as u64 + 1).to_le_bytes());
+        let (r, _) = streamed(&b, 2 * MAX_XML as u64);
+        let e = r.unwrap_err();
+        assert!(e.contains("XML") && e.contains(&MAX_XML.to_string()), "{e}");
+        let (r, _) = streamed(&b, b.len() as u64);
+        assert!(r.unwrap_err().contains("longer than the file"));
     }
 
     #[test]

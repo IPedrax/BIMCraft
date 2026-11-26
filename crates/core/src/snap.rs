@@ -694,7 +694,7 @@ fn cloud_point(m: &Model, level: Id, p: P2, reach: f64, look: &Look) -> Option<P
             let (sin, cos) = pc.angle.to_radians().sin_cos();
             let d = p - pc.at;
             let local = [d.0 * cos + d.1 * sin, -d.0 * sin + d.1 * cos];
-            let q = cloud.nearest(local, reach, (cut - CUT_BAND - base, cut + CUT_BAND - base))?;
+            let q = cloud.nearest_of_all(local, reach, (cut - CUT_BAND - base, cut + CUT_BAND - base))?;
             let [x, y, _] = m.cloud_place(pc)(q);
             Some(P2(x, y))
         })
