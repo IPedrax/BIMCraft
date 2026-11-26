@@ -16,6 +16,11 @@ fn at_start(h: &Harness<BimApp>, label: &str) -> Pos2 {
     h.get_by_label_contains(label).rect().center()
 }
 
+/// A palette's header named `label`: the topmost of those named so, the header standing over what the palette draws.
+fn header_of(h: &Harness<BimApp>, label: &str) -> Pos2 {
+    h.get_all_by_label(label).map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).expect("the palette's header").center()
+}
+
 /// A palette's Dock menu, and an item of it.
 fn dock_by_menu(h: &mut Harness<BimApp>, palette: &str, item: &str) {
     press(h, &format!("Dock {palette}"));
@@ -373,15 +378,41 @@ fn a_palette_dropped_at_the_top_of_another_goes_above_it_in_its_own_stack_in_bot
 #[test]
 fn the_app_bars_palettes_menu_brings_a_closed_palette_back_and_resets_the_layout() {
     let mut h = bimcraft(BOX);
-    h.state_mut().show_palette(Palette::Tools, false);
     h.state_mut().show_palette(Palette::Browser, false);
     h.run();
     press(&mut h, "Palettes");
-    pick(&mut h, Role::CheckBox, "Tools");
-    assert!(docking(&h).shown(Palette::Tools), "the Tools palette, which has no shortcut, comes back from the bar");
+    assert!(h.query_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none(), "the tools' surface is no palette");
+    pick(&mut h, Role::CheckBox, crate::lang::t("Navigator"));
+    assert!(docking(&h).shown(Palette::Browser), "a closed palette comes back from the bar");
     press(&mut h, "Palettes");
     press(&mut h, "Reset Palette Layout");
     assert_eq!(docking(&h), &Docking::default(), "the layout as at first, the Navigator back too");
+}
+
+#[test]
+fn the_tools_palette_has_no_close_box_and_comes_back_if_a_layout_closed_it() {
+    let mut h = bimcraft(BOX);
+    assert!(h.query_by_label("Close Tools").is_none(), "the tools are the ribbon's place: no box closes them");
+    assert!(h.query_by_label("Close Inspector").is_some(), "the other palettes close as they did");
+    // A preset or an older file may have closed them: the next frame brings them back, as the ribbon is always there.
+    h.state_mut().show_palette(Palette::Tools, false);
+    h.run();
+    assert!(h.state().docking.shown(Palette::Tools), "the tools come back without a tick or a reset");
+}
+
+#[test]
+fn the_switchable_palettes_are_the_known_ones_without_tools() {
+    let switchable = Palette::switchable();
+    assert!(!switchable.contains(&Palette::Tools));
+    assert_eq!(switchable.len() + 1, Palette::known().len());
+}
+
+#[test]
+fn the_settings_palette_list_leaves_the_tools_palette_out() {
+    let mut h = bimcraft(BOX);
+    press(&mut h, "Settings");
+    assert!(h.query_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none(), "Settings lists palettes, not the tools' surface");
+    press(&mut h, "Close");
 }
 
 // ---------- the windows of views: magnets, columns, rows and tiles ----------
@@ -781,4 +812,62 @@ fn resetting_the_palette_layout_brings_panels_and_tools_back() {
     assert_eq!(*docking(&h), Docking::default(), "the standard layout of the profile");
     assert!(h.state().tools_hidden.is_empty(), "every tool is shown again");
     assert!(h.state().panels_hidden.is_empty(), "every panel is shown again");
+}
+
+#[test]
+fn right_clicking_a_palettes_header_lists_every_palette_with_its_box() {
+    let mut h = app(BOX);
+    let at = header_of(&h, "Properties");
+    right_click_at(&mut h, at);
+    for p in Palette::known().into_iter().filter(|p| *p != Palette::Tools) {
+        let node = h.get_by_role_and_label(Role::CheckBox, p.name());
+        let ticked = node.accesskit_node().toggled() == Some(egui::accesskit::Toggled::True);
+        assert_eq!(ticked, h.state().docking.shown(p), "{}", p.name());
+    }
+    // The Tools palette is the tools' surface, not a palette to switch: the menu leaves it out.
+    assert!(h.query_all_by_role_and_label(Role::CheckBox, "Tools").next().is_none());
+}
+
+#[test]
+fn a_palettes_box_in_its_menu_closes_and_opens_it_and_the_menu_stays_open() {
+    let mut h = app(BOX);
+    let at = header_of(&h, "Properties");
+    right_click_at(&mut h, at);
+    h.get_by_role_and_label(Role::CheckBox, "Project Browser").click();
+    h.run();
+    assert!(!h.state().docking.shown(Palette::Browser), "the palette is closed");
+    assert!(h.query_all_by_role_and_label(Role::Label, "Palettes").next().is_some(), "the menu stays open");
+    h.get_by_role_and_label(Role::CheckBox, "Project Browser").click();
+    h.run();
+    assert!(h.state().docking.shown(Palette::Browser), "and its box opens it again");
+    assert!(h.query_by_label("Project Browser").is_some());
+}
+
+#[test]
+fn the_palettes_menu_closes_with_its_own_palette_and_does_not_reopen() {
+    let mut h = app(BOX);
+    let at = header_of(&h, "Properties");
+    right_click_at(&mut h, at);
+    h.get_by_role_and_label(Role::CheckBox, "Properties").click();
+    h.run();
+    assert!(!h.state().docking.shown(Palette::Properties), "the palette went with its box");
+    assert!(h.query_all_by_role_and_label(Role::Label, "Palettes").next().is_none(), "and the menu went with it");
+    h.state_mut().docking.show(Palette::Properties, true);
+    h.run();
+    assert!(h.get_all_by_label("Properties").next().is_some(), "the palette is back");
+    assert!(h.query_all_by_role_and_label(Role::Label, "Palettes").next().is_none(), "the menu did not come back with it");
+}
+
+#[test]
+fn the_palettes_menu_opens_on_the_inspectors_header_in_bimcraft() {
+    let mut h = bimcraft(BOX);
+    let at = header_of(&h, crate::lang::t("Inspector"));
+    right_click_at(&mut h, at);
+    h.get_by_role_and_label(Role::CheckBox, crate::lang::t("Navigator")).click();
+    h.run();
+    assert!(!h.state().docking.shown(Palette::Browser), "the Navigator is closed from the menu");
+    assert!(h.query_all_by_role_and_label(Role::Label, "Palettes").next().is_some(), "the menu stays open");
+    // The tools' own palette is not among them: it is what the list of palettes is for the ribbon in Rev.
+    assert!(h.query_all_by_role_and_label(Role::CheckBox, crate::lang::t("Tools")).next().is_none());
+    assert!(h.state().docking.shown(Palette::Tools), "and it stays as it was");
 }

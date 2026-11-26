@@ -4,7 +4,8 @@
 use std::cell::{Cell, RefCell};
 
 use egui::{
-    Align2, FontId, Id, Popup, Rect, Response, Sense, Shape, Stroke, StrokeKind, Ui, UiBuilder, Vec2, WidgetInfo, WidgetType, pos2, vec2,
+    Align2, FontId, Id, Popup, PopupCloseBehavior, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind, Ui, UiBuilder, Vec2,
+    WidgetInfo, WidgetType, pos2, vec2,
 };
 
 use crate::lang::t;
@@ -71,6 +72,8 @@ thread_local! {
     static CURRENT_TAB: RefCell<String> = const { RefCell::new(String::new()) };
     /// The keys of the panels the user took out of the window, drawn in Edit Tools alone.
     static PANELS_HIDDEN: RefCell<std::collections::BTreeSet<String>> = const { RefCell::new(std::collections::BTreeSet::new()) };
+    /// Every tab the window can show and its panels, by name, in the order they are drawn: what the panels menu lists (ТЗ-019.2).
+    static PANEL_GROUPS: RefCell<Vec<(String, Vec<String>)>> = const { RefCell::new(Vec::new()) };
     /// The panels whose box was ticked or cleared in Edit Tools this frame, by key.
     static TOGGLED_PANELS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     /// Every panel key drawn since the window started: what a preset's editor lists under its tabs.
@@ -175,9 +178,11 @@ pub(crate) fn panel_key(title: &str) -> String {
     format!("tab:{tab}/{title}")
 }
 
-/// What the panels drawn now leave out: the user's hidden panels (`panels_hidden` in `settings.json`).
-pub(crate) fn panel_rules(hidden: std::collections::BTreeSet<String>) {
+/// What the panels drawn now leave out (the user's hidden panels, `panels_hidden` in `settings.json`), and every tab with its panels,
+/// for the panels menu (ТЗ-019.2).
+pub(crate) fn panel_rules(hidden: std::collections::BTreeSet<String>, groups: Vec<(String, Vec<String>)>) {
     PANELS_HIDDEN.with(|h| *h.borrow_mut() = hidden);
+    PANEL_GROUPS.with(|g| *g.borrow_mut() = groups);
 }
 
 /// Whether the user took the panel whose key is `key` out of the window.
@@ -193,6 +198,89 @@ pub(crate) fn toggle_panel(key: &str) {
 /// The panels ticked or cleared since the last call.
 pub(crate) fn take_toggled_panels() -> Vec<String> {
     TOGGLED_PANELS.with(|t| std::mem::take(&mut *t.borrow_mut()))
+}
+
+/// The menu of every panel, hung from the name of the panel whose key is `own`: its own tab's panels, ticked when they are shown, then
+/// **Other Tabs** with every other tab's. A tick hides or shows the panel through the queue Edit Tools writes ([`toggle_panel`]); the
+/// menu stays open to change several, and closes when the panel it hangs from goes (ТЗ-019.2 R2–R6).
+fn panel_menu(ui: &mut Ui, own: &str) {
+    let hidden = PANELS_HIDDEN.with(|h| h.borrow().clone());
+    let groups = PANEL_GROUPS.with(|g| g.borrow().clone());
+    let current = tab_of(own);
+    ui.set_min_width(240.0);
+    if let Some((tab, panels)) = groups.iter().find(|(tab, _)| *tab == current) {
+        ui.label(RichText::new(tab_label(tab)).strong());
+        ui.indent(("ribbon-panel-menu-rows", tab), |ui| {
+            for panel in panels {
+                panel_row(ui, tab, panel, own, &hidden);
+            }
+        });
+    }
+    ui.separator();
+    ui.menu_button(t("Other Tabs"), |ui| {
+        for (tab, panels) in groups.iter().filter(|(tab, _)| *tab != current) {
+            ui.menu_button(tab_label(tab), |ui| {
+                for panel in panels {
+                    panel_row(ui, tab, panel, own, &hidden);
+                }
+            });
+        }
+    });
+}
+
+/// One panel's row in the panels menu: a box, ticked when the panel is shown; a panel the project's scale leaves out is unticked and
+/// cannot be ticked, and says why. Ticking or clearing it writes the panel's key to the queue Edit Tools writes, and closes the menu
+/// when the panel it hangs from is the one taken out.
+fn panel_row(ui: &mut Ui, tab: &str, panel: &str, own: &str, hidden: &std::collections::BTreeSet<String>) {
+    let key = format!("tab:{tab}/{panel}");
+    let label = panel_label(tab, panel);
+    let by_scale = scale_hides(panel);
+    let mut on = !by_scale && !hidden.contains(&key);
+    if by_scale {
+        let r = ui.add_enabled(false, egui::Checkbox::new(&mut on, label));
+        r.on_disabled_hover_text(t("The project scale leaves this panel out"));
+        return;
+    }
+    if ui.checkbox(&mut on, label).changed() {
+        toggle_panel(&key);
+        if key == own {
+            Popup::close_id(ui.ctx(), panel_menu_id(own));
+        }
+    }
+}
+
+/// Hangs the panels menu from `r`, the name of the panel whose key is `key`: a popup of its own, with an id of its own, so the list of
+/// the panel's tools (a left click) and this menu (a right click) are never drawn as one. A second right click on the same name closes
+/// it, and a click inside it, a tick's or a submenu's, leaves it open.
+fn panel_menu_popup(r: &Response, key: &str) {
+    let id = panel_menu_id(key);
+    let open = Popup::is_id_open(&r.ctx, id);
+    let set = r.secondary_clicked().then_some(egui::SetOpenCommand::Bool(!open));
+    Popup::context_menu(r).id(id).open_memory(set).close_behavior(PopupCloseBehavior::CloseOnClickOutside).show(|ui| panel_menu(ui, key));
+}
+
+/// The panels menu's id of the panel whose key is `key`, apart from the list of its tools, which hangs on the same response.
+fn panel_menu_id(key: &str) -> Id {
+    Id::new(("ribbon-panel-menu", key))
+}
+
+/// The tab a panel's key is in: `tab:<tab>/<panel>` read back, a plugin's `plugin:<name>` and a family document's `family:<DocTab>`
+/// kept as they are.
+fn tab_of(key: &str) -> String {
+    key.strip_prefix("tab:").and_then(|k| k.split_once('/')).map_or_else(String::new, |(tab, _)| tab.to_string())
+}
+
+/// A tab's name as the window reads it: a plugin's as its manifest names it, a family document's or a built-in tab's translated.
+pub(crate) fn tab_label(tab: &str) -> String {
+    match tab.strip_prefix("plugin:") {
+        Some(name) => name.to_string(),
+        None => t(tab.strip_prefix("family:").unwrap_or(tab)).to_string(),
+    }
+}
+
+/// A panel's name as the window reads it: a plugin's as its manifest names it, a built-in panel's or a family document's translated.
+fn panel_label(tab: &str, panel: &str) -> String {
+    if tab.starts_with("plugin:") { panel.to_string() } else { t(panel).to_string() }
 }
 
 /// Starts counting the panels the tab drawn next has: [`drawn_panels`] says whether any was drawn.
@@ -406,8 +494,10 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
     note_panel(&key);
     let editing = editing_tools();
     let on = !panel_hidden(&key);
-    // Taken out, it is drawn in Edit Tools alone: there its box is, and its tools' boxes with it.
+    // Taken out, it is drawn in Edit Tools alone: there its box is, and its tools' boxes with it. Its menu can't hang from a name
+    // that is no longer drawn: left open in the popups' memory, it would come back with the panel (ТЗ-019.2 R6).
     if !on && !editing {
+        Popup::close_id(ui.ctx(), panel_menu_id(&key));
         HIDDEN_PANELS.with(|h| h.set(h.get() + 1));
         return;
     }
@@ -417,14 +507,19 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
         if in_palette() {
             if editing {
                 let mut shown = on;
-                if ui.checkbox(&mut shown, t(title)).changed() {
+                let r = ui.checkbox(&mut shown, t(title));
+                if r.changed() {
                     toggle_panel(&key);
                 }
+                panel_menu_popup(&r, &key);
             } else {
-                // Painted: a panel may be named as a tab is (the Structure tab's Structure panel), and its tools say the rest.
-                let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
+                // Painted: a panel may be named as a tab is (the Structure tab's Structure panel), and its tools say the rest. Its
+                // name takes the right click that opens the panels menu, and names it for screen readers; a left click does nothing.
+                let (r, label) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::click());
+                label.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, t(title)));
                 let at = r.left_bottom() - vec2(0.0, 6.0);
                 ui.painter().text(at, Align2::LEFT_BOTTOM, t(title), FontId::proportional(11.5), pal().muted);
+                panel_menu_popup(&label, &key);
             }
         }
         if !on {
@@ -460,6 +555,7 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
         add(&mut counted);
         open_if_asked(ui, &r);
         list(&r, &mut add);
+        panel_menu_popup(&r, &key);
         r.rect.width()
     } else {
         let shown = ui.vertical(|ui| {
@@ -471,6 +567,7 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
                 if r.changed() {
                     toggle_panel(&key);
                 }
+                panel_menu_popup(&r, &key);
                 row_at.1 = r.rect.width();
                 ui.scope(|ui| {
                     if !on {
@@ -502,6 +599,7 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
                 title_row.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
                 open_if_asked(ui, &title_row);
                 list(&title_row.clone().on_hover_text(name), &mut add);
+                panel_menu_popup(&title_row, &key);
                 title_row
             }
         });

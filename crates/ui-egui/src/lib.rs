@@ -1840,6 +1840,19 @@ const PANELS: [(Tab, &[&str]); 14] = [
     (Tab::Modify, &["Select", "Properties", "Clipboard"]),
 ];
 
+/// Adds one panel to its tab's group, keeping the order tabs and the panels in them are met, and every key once: what
+/// `BimApp::panel_groups` builds the panels menu and the preset editor from.
+fn add_panel(groups: &mut Vec<(String, Vec<String>)>, seen: &mut BTreeSet<String>, tab: &str, panel: &str) {
+    let key = format!("tab:{tab}/{panel}");
+    if !seen.insert(key) {
+        return;
+    }
+    match groups.iter_mut().find(|(name, _)| name == tab) {
+        Some((_, panels)) => panels.push(panel.to_string()),
+        None => groups.push((tab.to_string(), vec![panel.to_string()])),
+    }
+}
+
 /// A tab on the Tools palette's rail: its icon, lit while it is open; its name for screen readers and in its tooltip.
 fn rail_button(ui: &mut Ui, icon: Icon, label: &str, open: bool) -> Response {
     let label = t(label);
@@ -2549,7 +2562,7 @@ impl BimApp {
         };
         style::follow(&ctx, look);
         ribbon::tool_rules(self.tools_hidden.clone(), self.scale, self.editing_tools);
-        ribbon::panel_rules(self.panels_hidden.clone());
+        ribbon::panel_rules(self.panels_hidden.clone(), self.panel_groups());
         // The fonts with the hanzi and the Hangul go behind the window's own whatever language it speaks: content — a floor's
         // name from a Korean file — is not the interface's. Chinese needs its glyphs, which the system may not have: then the
         // window stays in English and says why.
@@ -5049,20 +5062,38 @@ impl BimApp {
         }
     }
 
-    /// The panel keys the preset editor lists: every built-in tab's panels, whether it has been opened or not, and every plugin
-    /// tab's declared panels. A tool's or a script's own panels join them from what the window has drawn (`panel_keys`).
-    pub(crate) fn known_panel_keys(&self) -> BTreeSet<String> {
-        let mut keys = BTreeSet::new();
+    /// Every tab the window can show and its panels, in the order they are drawn: the built-in tabs of `PANELS`, then the plugins'
+    /// tabs in the order they loaded, then any tab or panel the window has drawn that those don't name (a family document's, a tool's
+    /// own). The panels menu and the preset editor both read this one list (ТЗ-019.2 R10).
+    pub(crate) fn panel_groups(&self) -> Vec<(String, Vec<String>)> {
+        let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+        let mut seen: BTreeSet<String> = BTreeSet::new();
         for (tab, panels) in PANELS {
             let name = self.tab_name(tab);
             for panel in panels {
-                keys.insert(format!("tab:{name}/{panel}"));
+                add_panel(&mut groups, &mut seen, &name, panel);
             }
         }
         for tab in &self.plugin_tabs {
-            let name = tab.name.clone().unwrap_or_else(|| "Plugins".to_string());
+            // The manifest's name, never translated: a key reads the same in every language.
+            let name = format!("plugin:{}", tab.name.clone().unwrap_or_else(|| "Plugins".to_string()));
             for panel in &tab.panels {
-                keys.insert(format!("tab:plugin:{name}/{}", panel.name));
+                add_panel(&mut groups, &mut seen, &name, &panel.name);
+            }
+        }
+        for key in &self.panel_keys {
+            let Some((tab, panel)) = key.strip_prefix("tab:").and_then(|k| k.split_once('/')) else { continue };
+            add_panel(&mut groups, &mut seen, tab, panel);
+        }
+        groups
+    }
+
+    /// The panel keys in one flat set, as the preset editor lists them: [`Self::panel_groups`] read across, never `PANELS` again.
+    pub(crate) fn known_panel_keys(&self) -> BTreeSet<String> {
+        let mut keys = BTreeSet::new();
+        for (tab, panels) in self.panel_groups() {
+            for panel in panels {
+                keys.insert(format!("tab:{tab}/{panel}"));
             }
         }
         keys
@@ -5805,7 +5836,7 @@ impl BimApp {
             let tip = msg!("Show or hide the palettes, and pick the interface's language");
             let r = big_button(ui, Icon::Interface, "User Interface", false, tip);
             ribbon::choices(ui, &r, false, |ui| {
-                for p in dock::Palette::known() {
+                for p in dock::Palette::switchable() {
                     let mut on = self.docking.shown(p);
                     if ui.checkbox(&mut on, p.title()).changed() {
                         self.show_palette(p, on);
