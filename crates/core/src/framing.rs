@@ -111,6 +111,9 @@ pub struct FramingType {
     pub layout: Layout,
     /// A stud's or a plate's thickness, a 2x's 38 (1.5").
     pub thickness: f64,
+    /// How deep a stud is meant to be: the structure layer it stands in should be as thick (a 2x4's 89, a 60x160's 160). The
+    /// members are always as deep as the layer; a framed wall whose layer differs is warned of in Properties.
+    pub target_depth: f64,
     /// What the members are made of: a material of the library; none, the structure layer's.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub material: Option<String>,
@@ -155,6 +158,7 @@ impl Default for FramingType {
             spacing: 406.4,
             layout: Layout::Start,
             thickness: 38.0,
+            target_depth: 89.0,
             material: None,
             bottom_plates: 1,
             top_plates: 2,
@@ -419,6 +423,7 @@ impl FramingType {
         FramingType {
             spacing: 625.0,
             thickness: 60.0,
+            target_depth: 160.0,
             material,
             top_plates: 1,
             headers: vec![
@@ -437,6 +442,15 @@ type CutKey = (Role, [i64; 2], u32, i64);
 /// The shortest of `stock` a member `length` long is cut from; none when it is longer than all of them (spliced).
 pub fn stock(length: f64, stock: &[f64]) -> Option<f64> {
     stock.iter().copied().find(|s| *s >= length - EPS)
+}
+
+/// How far wall `w`'s framed structure layer is deeper than its framing type's target depth, mm (shallower, less than 0); none
+/// when it isn't framed or is as deep, within half a millimetre.
+pub fn off_target(m: &Model, w: &Wall) -> Option<(f64, f64)> {
+    let t = m.types.framing.get(w.framing.as_ref()?)?;
+    let (_, [lo, hi]) = structure(m, w)?;
+    let depth = hi - lo;
+    ((depth - t.target_depth).abs() > 0.5).then_some((depth, t.target_depth))
 }
 
 /// The structure layer a type's members stand in: the one marked `framed`, else the thickest (the first of the thickest).
@@ -483,6 +497,7 @@ pub(crate) fn check_type(m: &Model, name: &str, t: &FramingType) -> Result<(), S
         if (lo..=hi).contains(&n) { Ok(()) } else { Err(format!("{who}: {n} {what}; it has {lo} to {hi}")) }
     };
     within("thickness (mm)", t.thickness, 10.0, 300.0)?;
+    within("target_depth (mm)", t.target_depth, 10.0, 1000.0)?;
     within("spacing (mm)", t.spacing, 0.0, 3000.0)?;
     if t.spacing <= t.thickness {
         return Err(format!("{who}: its studs {} mm apart must be farther apart than they are thick ({} mm)", t.spacing, t.thickness));

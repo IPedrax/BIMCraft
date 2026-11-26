@@ -302,7 +302,7 @@ fn the_sample_changes_wall_types_picked_from_two_lists() {
         Some(crate::pyaddins::Field::Text(t)) => t.clone(),
         other => panic!("{other:?}"),
     };
-    assert_eq!((form(&h, "from_type"), form(&h, "to_type")), ("Interior - 100mm".into(), "Generic - 200mm".into()));
+    assert_eq!((form(&h, "from_type"), form(&h, "to_type")), ("Timber Frame - 185mm".into(), "Timber Frame - 114mm".into()));
     // From: Generic, what the box's walls are; To: Exterior.
     let list = |h: &mut Harness<BimApp>, input: &str, pick: &str| {
         h.get_by_role_and_label(Role::ComboBox, input).click();

@@ -294,12 +294,26 @@ fn framing_screenshots() {
         press(&mut h, "Structure");
         press(&mut h, "Frame");
         save(&mut h, "structure");
+        if egui::Popup::is_any_open(&h.ctx) {
+            press(&mut h, "2x4 @ 406");
+        }
         click(&mut h, P2(4000.0, 0.0));
         press(&mut h, "Structure");
         h.get_by_label("Edit Framing Type").scroll_to_me();
         save(&mut h, "properties");
         edit_framing_type(&mut h);
         save(&mut h, "typeprops");
+        // A member picked in the type's picture: the rows that build it lit.
+        if let Some(f) = h.state_mut().type_dialog.as_mut().and_then(|d| d.framing.as_mut()) {
+            f.part = Some(crate::framing_diagram::Part::Header);
+            f.seek = true;
+        }
+        save(&mut h, "typeprops_header");
+        if let Some(f) = h.state_mut().type_dialog.as_mut().and_then(|d| d.framing.as_mut()) {
+            f.part = Some(crate::framing_diagram::Part::Stud);
+            f.seek = true;
+        }
+        save(&mut h, "typeprops_stud");
         let mut h = bimcraft(&with_type());
         let structure = h.get_all_by_label("Structure").map(|n| n.rect()).find(|r| r.left() < 60.0).unwrap();
         click_at(&mut h, structure.center());

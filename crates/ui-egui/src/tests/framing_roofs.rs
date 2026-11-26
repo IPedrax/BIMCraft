@@ -262,6 +262,9 @@ fn roof_framing_screenshots() {
         select(&mut h, &[roof]);
         press(&mut h, "Structure");
         press(&mut h, "Frame");
+        if egui::Popup::is_any_open(&h.ctx) {
+            press(&mut h, bimcraft_core::framing::DEFAULT_TYPE);
+        }
         save(&mut h, "structure");
         h.get_by_label("Edit Framing Type").scroll_to_me();
         save(&mut h, "properties");

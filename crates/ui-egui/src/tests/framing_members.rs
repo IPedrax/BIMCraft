@@ -124,5 +124,72 @@ wall {"points": [[0, 3000], [4000, 3000]]}"#);
     // A generic wall has no structure layer: a hint, not a drop-down that refuses.
     h.state_mut().selection = vec![100003];
     h.run();
-    assert!(h.query_by_label("Type Generic - 200mm has no Structure layer to frame").is_some());
+    assert!(h.query_by_label("No Framing").is_some(), "a short label, its reason on hover");
+}
+
+/// The framing type's Type Properties, from the button beside the selected wall's Framing.
+fn framing_type_dialog(h: &mut Harness<BimApp>) {
+    h.get_by_label("Edit Framing Type").scroll_to_me();
+    h.run();
+    press(h, "Edit Framing Type");
+}
+
+#[test]
+fn a_framing_types_picture_names_rows_the_list_has_and_its_headers_are_edited_there() {
+    use crate::framing_diagram::Part;
+    let (mut h, _) = framed();
+    framing_type_dialog(&mut h);
+    // Every row a member of the picture lights is a row of the list.
+    for part in [
+        Part::Stud,
+        Part::TopPlate,
+        Part::BottomPlate,
+        Part::King,
+        Part::Jack,
+        Part::Header,
+        Part::Cripple,
+        Part::Sill,
+        Part::Blocking,
+        Part::Window,
+        Part::Door,
+    ] {
+        for label in part.rows() {
+            assert!(h.query_all(By::new().label(label)).next().is_some(), "{part:?}: no row {label}");
+        }
+    }
+    // Picked in the picture, it's named under it.
+    if let Some(f) = h.state_mut().type_dialog.as_mut().and_then(|d| d.framing.as_mut()) {
+        f.part = Some(Part::Header);
+        f.seek = true;
+    }
+    h.run();
+    assert!(h.query_all(By::new().label("Header")).next().is_some());
+    // Target Depth and the first header's depth, typed.
+    let set = |h: &mut Harness<BimApp>, label: &str, value: &str| {
+        let field = h.query_all(By::new().role(Role::TextInput).label(label)).next().map(|n| n.accesskit_node().id()).unwrap();
+        h.get_by(|n| n.id() == field).focus();
+        h.run();
+        h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+        h.get_by(|n| n.id() == field).type_text(value);
+        h.run();
+    };
+    set(&mut h, "Header Depth", "235");
+    set(&mut h, "Target Depth", "140");
+    press(&mut h, "OK");
+    let t = &h.state().session.model.types.framing[bimcraft_core::framing::DEFAULT_TYPE];
+    assert_eq!((t.headers[0].depth, t.target_depth), (235.0, 140.0), "{}", h.state().status.text);
+}
+
+#[test]
+fn properties_warns_under_framing_when_the_structure_layer_is_deeper_than_the_target() {
+    // KVH's 160 mm layer framed as 2x4s, whose target is 89.
+    let mut h = app(r#"wall {"points": [[0, 0], [4000, 0]], "type": "Timber Frame - 185mm"}
+frame {"ids": [100002], "type": "2x4 @ 406"}"#);
+    h.state_mut().selection = vec![100002];
+    h.run();
+    assert!(h.query_by_label("⚠ Layer deeper than target").is_some());
+    // Framed as KVH 60x160: as deep as it means, no warning.
+    h.state_mut().run("frame", serde_json::json!({"ids": [100002], "type": bimcraft_core::framing::EUROPEAN_TYPE}));
+    h.run();
+    assert!(h.query_by_label("⚠ Layer deeper than target").is_none());
 }

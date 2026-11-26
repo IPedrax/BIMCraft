@@ -1155,7 +1155,7 @@ pub(crate) struct TypeDialog {
     /// A room type's own: its rooms' floor and ceiling, and their colour on plans.
     pub(crate) room: Option<RoomRows>,
     /// A framing type's own: its spacing, plates, openings, joins, material and stock.
-    framing: Option<FramingRows>,
+    pub(crate) framing: Option<FramingRows>,
     /// The type's values of the project's type parameters, as typed.
     project: Vec<TypeValue>,
     /// A stair type's rules and how its stairs show in plan.
@@ -1282,10 +1282,11 @@ enum Typed {
 
 /// A framing type's typed fields: its group, its key, which of the key's pair it is (none for the key itself), its label and
 /// what it holds.
-const FRAMING_FIELDS: [(&str, &str, Option<usize>, &str, Typed); 16] = [
+const FRAMING_FIELDS: [(&str, &str, Option<usize>, &str, Typed); 17] = [
     // A wall's studs, a floor's joists and a roof's rafters alike.
     ("Construction", "spacing", None, msg!("Spacing"), Typed::Length),
     ("Construction", "thickness", None, msg!("Thickness"), Typed::Length),
+    ("Construction", "target_depth", None, msg!("Target Depth"), Typed::Length),
     ("Walls", "bottom_plates", None, msg!("Bottom Plates"), Typed::Count),
     ("Walls", "top_plates", None, msg!("Top Plates"), Typed::Count),
     ("Walls", "blocking", None, msg!("Blocking Heights"), Typed::Lengths),
@@ -1309,6 +1310,9 @@ const FRAMING_FLAGS: [(&str, &str, &str); 3] = [
     ("Roofs", "ridge", msg!("Ridge Board")),
 ];
 
+/// How wide a framing type's picture is in its Type Properties, beside the list.
+const FRAMING_PICTURE: f32 = 340.0;
+
 /// A framing type's choices: its key, its group, its label, and each value with its label.
 type FramingChoice = (&'static str, &'static str, &'static str, &'static [(&'static str, &'static str)]);
 const FRAMING_CHOICES: [FramingChoice; 3] = [
@@ -1317,9 +1321,9 @@ const FRAMING_CHOICES: [FramingChoice; 3] = [
     ("tee", "Wall Joins", msg!("Tee Junction"), &[("studs", msg!("Backing Studs")), ("none", "None")]),
 ];
 
-/// A framing type's parameters, as typed and picked. Its headers aren't edited here (the `type` command does), only shown: what
-/// the dialog doesn't change goes back as it was, and a number is read back only once it is typed over, so a spacing of 406.4
-/// shown as 406 stays 406.4.
+/// A framing type's parameters, as typed and picked, its headers among them: what the dialog doesn't change goes back as it
+/// was, and a number is read back only once it is typed over, so a spacing of 406.4 shown as 406 stays 406.4. Beside them, its
+/// picture (`framing_diagram`): the member picked there lights the rows that build it.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct FramingRows {
     was: Value,
@@ -1332,7 +1336,17 @@ pub(crate) struct FramingRows {
     flags: Vec<bool>,
     /// Its members' material, "" for their structure layer's.
     material: String,
+    /// Its headers as typed: the widest rough opening each spans ("" for any), its depth, its plies, and whether it lies flat;
+    /// and as shown.
+    headers: Vec<HeaderRow>,
+    headers_shown: Vec<HeaderRow>,
+    /// The member picked in its picture, and whether the list is yet to scroll to its rows.
+    pub(crate) part: Option<crate::framing_diagram::Part>,
+    pub(crate) seek: bool,
 }
+
+/// A header as typed: up to (blank, any), depth, plies, flat.
+type HeaderRow = (String, String, String, bool);
 
 impl FramingRows {
     fn new(m: &Model, name: &str) -> FramingRows {
@@ -1354,7 +1368,36 @@ impl FramingRows {
         let picked = FRAMING_CHOICES.iter().map(|(key, ..)| was[*key].as_str().unwrap_or_default().to_string()).collect();
         let flags = FRAMING_FLAGS.iter().map(|(_, key, _)| was[*key].as_bool().unwrap_or_default()).collect();
         let material = was["material"].as_str().unwrap_or_default().to_string();
-        FramingRows { typed: shown.clone(), shown, picked, flags, material, was }
+        let headers: Vec<HeaderRow> = was["headers"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|h| {
+                (
+                    h["up_to"].as_f64().map_or_else(String::new, |x| units.length(x)),
+                    h["depth"].as_f64().map_or_else(String::new, |x| units.length(x)),
+                    h["plies"].as_u64().unwrap_or(1).to_string(),
+                    h["flat"].as_bool().unwrap_or(false),
+                )
+            })
+            .collect();
+        FramingRows {
+            typed: shown.clone(),
+            shown,
+            picked,
+            flags,
+            material,
+            headers_shown: headers.clone(),
+            headers,
+            part: None,
+            seek: false,
+            was,
+        }
+    }
+
+    /// The labels of the rows the member picked in the picture is built by, as the list shows them.
+    pub(crate) fn lit(&self) -> Vec<String> {
+        self.part.map_or_else(Vec::new, |p| p.rows().iter().map(|l| t(l).to_string()).collect())
     }
 
     /// Its rows under `group`.
@@ -1381,7 +1424,17 @@ impl FramingRows {
             }
         }
         if group == "Wall Openings" {
-            tb.shown(t("Headers"), &headers(&self.was["headers"], units));
+            let lit = self.part == Some(crate::framing_diagram::Part::Header);
+            let seek = lit && std::mem::take(&mut self.seek);
+            let rows = &mut self.headers;
+            tb.full(|ui| {
+                let frame = egui::Frame::new().inner_margin(4).corner_radius(3);
+                let frame = if lit { frame.fill(pal().accent.gamma_multiply(0.22)) } else { frame };
+                let r = frame.show(ui, |ui| header_editor(ui, rows, units)).response;
+                if seek {
+                    ui.scroll_to_rect(r.rect, Some(egui::Align::Center));
+                }
+            });
         }
         if group == "Materials and Finishes" {
             let layer = t("By Structure Layer").to_string();
@@ -1424,6 +1477,23 @@ impl FramingRows {
             v[*key] = json!(on);
         }
         v["material"] = if self.material.is_empty() { Value::Null } else { json!(self.material) };
+        if self.headers != self.headers_shown {
+            let length = |label: &str, s: &str| units.parse(s).ok_or_else(|| tf("{}: `{}` is not a length", &[label, s.trim()]));
+            let headers = self
+                .headers
+                .iter()
+                .map(|(up_to, depth, plies, flat)| {
+                    let mut h = json!({"depth": length(t("Header Depth"), depth)?, "flat": flat});
+                    h["plies"] =
+                        json!(plies.trim().parse::<u32>().map_err(|_| tf("{}: `{}` is not a whole number", &[t("Plies"), plies.trim()]))?);
+                    if !up_to.trim().is_empty() {
+                        h["up_to"] = json!(length(t("Up To"), up_to)?);
+                    }
+                    Ok(h)
+                })
+                .collect::<Result<Vec<Value>, String>>()?;
+            v["headers"] = json!(headers);
+        }
         for (k, val) in v.as_object().into_iter().flatten() {
             p[k] = val.clone();
         }
@@ -1431,21 +1501,42 @@ impl FramingRows {
     }
 }
 
-/// A framing type's headers as its dialog shows them: each its plies by its depth, laid flat or not, and the widest rough
-/// opening it spans; the last, any.
-fn headers(v: &Value, units: Units) -> String {
-    let each = v.as_array().into_iter().flatten().map(|h| {
-        let plies = h["plies"].as_u64().unwrap_or(1).to_string();
-        let mut said = tf("{} x {}", &[&plies, &units.length(h["depth"].as_f64().unwrap_or(0.0))]);
-        if h["flat"].as_bool() == Some(true) {
-            said = tf("{}, flat", &[&said]);
-        }
-        match h["up_to"].as_f64() {
-            Some(up_to) => tf("{} up to {}", &[&said, &units.length(up_to)]),
-            None => said,
+/// A framing type's headers, each a row: the widest rough opening it spans (blank for any, which the last should be), its depth,
+/// its plies, and whether it lies flat; Add Header puts one under the last, and each can be taken away while another is left.
+fn header_editor(ui: &mut Ui, rows: &mut Vec<HeaderRow>, units: Units) {
+    ui.label(RichText::new(t("Headers")).strong());
+    ui.label(
+        RichText::new(t("The first whose Up To holds the rough opening's width is its header; blank, any width."))
+            .small()
+            .color(pal().muted),
+    );
+    let mut gone = None;
+    Grid::new("framing-headers").num_columns(5).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
+        let up_to = ui.label(RichText::new(t("Up To")).color(pal().muted));
+        let depth = ui.label(RichText::new(t("Header Depth")).color(pal().muted));
+        let plies = ui.label(RichText::new(t("Plies")).color(pal().muted));
+        ui.label(RichText::new(t("Flat")).color(pal().muted));
+        ui.label("");
+        ui.end_row();
+        let many = rows.len() > 1;
+        for (k, (u, d, p, flat)) in rows.iter_mut().enumerate() {
+            ui.add_sized([80.0, 20.0], TextEdit::singleline(u).hint_text(t("any"))).labelled_by(up_to.id);
+            ui.add_sized([80.0, 20.0], TextEdit::singleline(d).hint_text(units.name())).labelled_by(depth.id);
+            ui.add_sized([40.0, 20.0], TextEdit::singleline(p)).labelled_by(plies.id);
+            ui.checkbox(flat, "");
+            if ui.add_enabled(many, Button::new(t("Delete")).small()).clicked() {
+                gone = Some(k);
+            }
+            ui.end_row();
         }
     });
-    each.collect::<Vec<_>>().join("; ")
+    if let Some(k) = gone {
+        rows.remove(k);
+    }
+    if rows.len() < 8 && ui.button(t("Add Header")).clicked() {
+        let last = rows.last().cloned().unwrap_or_else(|| (String::new(), units.length(184.0), "2".into(), false));
+        rows.push((String::new(), last.1, last.2, last.3));
+    }
 }
 
 /// The groups a room type's parameters are under.
@@ -2783,14 +2874,22 @@ impl BimApp {
                                     .iter()
                                     .any(|l| l.function == bimcraft_core::model::Function::Structure)
                             });
+                            // A framed wall whose structure layer isn't as deep as its framing type means: a little warning under it.
+                            let off = ids.iter().filter_map(|i| model.wall(*i)).find_map(|w| bimcraft_core::framing::off_target(model, w));
+                            ui.vertical(|ui| {
                             ui.horizontal(|ui| {
                                 let tall = ui.spacing().interact_size.y;
                                 let wide = (ui.available_width() - tall - ui.spacing().item_spacing.x).max(40.0);
                                 let picked = ui
                                     .allocate_ui(vec2(wide, tall), |ui| {
                                         if let Some(w) = bare.filter(|_| framed.is_none()) {
-                                            let hint = tf("Type {} has no Structure layer to frame", &[&w.type_name]);
-                                            ui.label(RichText::new(hint).color(pal().muted).small()).labelled_by(name.id);
+                                            let why = tf(
+                                                "Type {} has no Structure layer to frame: give it one in Edit Type, or pick a timber frame wall type",
+                                                &[&w.type_name],
+                                            );
+                                            ui.add(egui::Label::new(RichText::new(t("No Framing")).color(pal().muted)).truncate())
+                                                .labelled_by(name.id)
+                                                .on_hover_text(why);
                                             None
                                         } else {
                                             combo(ui, (id, key), name.id, &now, &options)
@@ -2810,6 +2909,16 @@ impl BimApp {
                                 if r.on_hover_text(edit).clicked() {
                                     edit_framing = framed.map(str::to_string);
                                 }
+                            });
+                            if let Some((depth, target)) = off {
+                                let (d, tg) = (model.units.length(depth), model.units.length(target));
+                                let (word, why) = if depth > target {
+                                    (t("⚠ Layer deeper than target"), tf("Its structure layer is {}, deeper than the framing type's target depth of {}: the studs are as deep as the layer", &[&d, &tg]))
+                                } else {
+                                    (t("⚠ Layer shallower than target"), tf("Its structure layer is {}, shallower than the framing type's target depth of {}: the studs are as deep as the layer", &[&d, &tg]))
+                                };
+                                ui.add(egui::Label::new(RichText::new(word).color(pal().error).small()).truncate()).on_hover_text(why);
+                            }
                             });
                         }
                         // Revit's greyed checkbox: Attach Top/Base and Detach Top/Base change it. Beside it, what it's attached to.
@@ -3831,7 +3940,9 @@ impl BimApp {
         let names: Vec<String> = model.type_names(d.category).into_iter().map(String::from).collect();
         let (mut ok, mut cancel, mut apply, mut asked) = (false, false, false, None);
         let mut edit_pattern = false;
-        let r = Modal::new(UiId::new("type-properties"), t("Type Properties")).width(crate::typeprops::WIDTH).show(ctx, |ui| {
+        // A framing type's dialog is wider: its picture stands beside the list.
+        let side = if d.framing.is_some() { FRAMING_PICTURE + 16.0 } else { 0.0 };
+        let r = Modal::new(UiId::new("type-properties"), t("Type Properties")).width(crate::typeprops::WIDTH + side).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 let family = tf("System Family: {}", &[&lang::category(d.category, true)]);
                 asked = typeprops::head(ui, "type", &family, &names, &d.name, &mut d.naming, true);
@@ -3878,7 +3989,14 @@ impl BimApp {
                         _ => None,
                     }
                 };
+                ui.horizontal_top(|ui| {
+                ui.vertical(|ui| {
+                ui.set_width((ui.available_width() - side).max(200.0));
                 typeprops::table(ui, "type", below, |tb| {
+                    // The rows the member picked in a framing type's picture is built by, lit.
+                    if let Some(f) = &d.framing {
+                        tb.light(f.lit(), f.seek);
+                    }
                     // A stair type lays out its own table: the model, then the graphics.
                     if let Some(stair) = &mut d.stair {
                         stair.show(tb, &model, &mut d.fields);
@@ -3940,6 +4058,17 @@ impl BimApp {
                         ramp.show(tb, &model);
                     }
                     type_value_rows(tb, &mut d.project, model.units);
+                });
+                });
+                if let Some(f) = &mut d.framing {
+                    f.seek = false;
+                    ui.vertical(|ui| {
+                        ui.set_width(FRAMING_PICTURE);
+                        if crate::framing_diagram::show(ui, FRAMING_PICTURE, &mut f.part) {
+                            f.seek = true;
+                        }
+                    });
+                }
                 });
                 typeprops::error(ui, d.error.as_deref());
             });

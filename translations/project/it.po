@@ -69,7 +69,7 @@ msgstr "Categoria"
 msgid "Ceiling Luminaire"
 msgstr "Plafoniera"
 
-#: crates/core/src/render.rs:4465
+#: crates/core/src/render.rs:4488
 msgid "Ceiling Plan"
 msgstr "Pianta dei controsoffitti"
 
@@ -152,8 +152,8 @@ msgstr "Tratteggio incrociato"
 msgid "Cut to Clipboard"
 msgstr "Taglia negli appunti"
 
-#: crates/core/src/render.rs:5862
-#: crates/core/src/render.rs:6308
+#: crates/core/src/render.rs:5877
+#: crates/core/src/render.rs:6323
 msgid "DN"
 msgstr "GIÙ"
 
@@ -581,7 +581,7 @@ msgstr "Metallo"
 msgid "Mounting Height"
 msgstr "Altezza di installazione"
 
-#: crates/core/src/render.rs:4198
+#: crates/core/src/render.rs:4221
 msgid "NOT ENCLOSED"
 msgstr "NON CHIUSA"
 
@@ -677,7 +677,7 @@ msgstr "Fase"
 msgid "Phases"
 msgstr "Fasi"
 
-#: crates/core/src/framing.rs:1381
+#: crates/core/src/framing.rs:1396
 #: crates/core/src/model.rs:4932
 #: crates/core/src/model.rs:4974
 #: crates/core/src/model.rs:4978
@@ -720,7 +720,7 @@ msgstr "Progetto n."
 msgid "Property Line"
 msgstr "Confine di proprietà"
 
-#: crates/core/src/render.rs:4198
+#: crates/core/src/render.rs:4221
 msgid "REDUNDANT"
 msgstr "RIDONDANTE"
 
@@ -1010,8 +1010,8 @@ msgstr "Taratura"
 msgid "Type"
 msgstr "Tipo"
 
-#: crates/core/src/render.rs:5862
-#: crates/core/src/render.rs:6308
+#: crates/core/src/render.rs:5877
+#: crates/core/src/render.rs:6323
 msgid "UP"
 msgstr "SU"
 

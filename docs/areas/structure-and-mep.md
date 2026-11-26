@@ -266,7 +266,9 @@ framing type changes them with nothing to regenerate, and a file holds no member
 
 A framing type is `Types::framing[name]`, a `FramingType` (all mm; every field has its default, so `type {category: framing,
 name}` alone is 2x4 framing 16 inches on centre for a bearing wall): `spacing` 406.4 (the grid's stud centres apart);
-`layout` `start`, `end` or `centre` (where the grid is measured from); `thickness` 38 (a stud's or a plate's); `material`, a
+`layout` `start`, `end` or `centre` (where the grid is measured from); `thickness` 38 (a stud's or a plate's); `target_depth`
+89 (how deep a stud is meant to be: the members are as deep as the structure layer, and Properties warns under Framing, "Layer
+deeper than target" or "shallower", when a framed wall's layer differs by more than half a millimetre, `framing::off_target`); `material`, a
 material of the library, none for the structure layer's; `bottom_plates` 1 and `top_plates` 2; `kings` 1 and `jacks` 1 each side
 of an opening; `window_rough` [25, 13] and `door_rough` [50, 41], what a rough opening adds to the opening's width (half each
 side) and to its height (on top); `headers`, `{up_to?, depth, plies, flat?}` in order, the first whose `up_to` holds the rough
@@ -369,7 +371,10 @@ rough opening starts in the top plates (a clerestory over the wall's top) isn't 
 header cut to fit is said at the height it is cut to (a flat one's plies times its depth).
 
 A framed wall's members are solids of the wall in the framing's material (`view3d.rs`), so a pick takes the wall and a section
-cuts them as it cuts any solid; its structure layer is split off its body and drawn only where a view hides Walls > Framing
+cuts them as it cuts any solid; each stays a piece of its own, never run together with the member beside it of the same material:
+in 3D its faces are its own (`PlaneTable::assign`, as a curtain wall's parts), a section outlines each member it cuts over the
+wall's poché, and a plan clears every framed wall's structure band before it draws any wall's members, so a wall mitring with a
+framed one never covers the end of its members; its structure layer is split off its body and drawn only where a view hides Walls > Framing
 (`framing`, a subcategory of walls in Visibility/Graphics, `graphics::SUBCATEGORIES`), which brings the layer back as it was. A
 plan at medium or fine detail clears the structure layer's band and draws the members its cut plane crosses, filled in their
 material's cut pattern and outlined (`render::members_cut`); at coarse detail the wall draws as before. A schedule of
@@ -390,7 +395,11 @@ In the window, the Structure tab's Framing panel has Frame and Remove Framing fo
 has both. A wall's Properties have Framing under Structural, None or one of the project's types (`modify`), with a button beside
 it to its Type Properties, where every field but the headers is typed or picked (spacing, thickness, plates, blocking heights and
 stock lengths as lengths parted by commas, layout, corner and tee, rough allowances, kings, jacks, sill plates and material) and
-Duplicate and Rename work as for any type; the headers are shown and set with `type`. The Project Browser lists framing types
+Duplicate and Rename work as for any type. The headers are a table under Wall Openings (Up To, blank for any width; Header Depth;
+Plies; Flat), with Add Header and Delete. Beside the list stands the type's picture (`framing_diagram.rs`): a framed wall in
+elevation with a window and a door, each kind of member drawn where it stands; a click on one (or on an opening) lights the rows
+that build it in the list and scrolls to them (`typeprops::Table::light`). A wall whose type has no structure layer shows No
+Framing in place of the drop-down, why on hover. The Project Browser lists framing types
 under Families, a click opens one's Type Properties and its right-click menu deletes one nothing uses.
 
 #### Members edited one by one

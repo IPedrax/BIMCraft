@@ -2104,9 +2104,10 @@ impl PlaneTable {
     /// The number of `t`'s surface: a curtain wall part's own, else its face's, else its curve's, else that of a plane found before within the tolerance,
     /// else a new one.
     fn assign(&mut self, t: &Tri) -> usize {
-        // A curtain wall's pieces are each their own: the joint between two in one plane shows, as a mitre from a butt. A
-        // piece's triangles come together, so a triangle goes with the one before if it lies on it and shares an edge.
-        if t.curtain_part().is_some() {
+        // A curtain wall's pieces are each their own: the joint between two in one plane shows, as a mitre from a butt. So is
+        // each framing member: a king and its jack, a stud on its plate, never run together. A piece's triangles come
+        // together, so a triangle goes with the one before if it lies on it and shares an edge.
+        if t.curtain_part().is_some() || crate::family::visibility::framing(t.vis) == Some(true) {
             let same = self.part.filter(|(before, _)| {
                 let n = cross(sub(before[1], before[0]), sub(before[2], before[0]));
                 let shared = t.p.iter().filter(|p| before.contains(p)).count() >= 2;

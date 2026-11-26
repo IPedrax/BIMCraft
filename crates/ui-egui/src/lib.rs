@@ -43,6 +43,7 @@ mod find;
 mod finishes;
 mod fly;
 mod footer;
+mod framing_diagram;
 mod framing_members;
 mod gpu;
 mod halftone;

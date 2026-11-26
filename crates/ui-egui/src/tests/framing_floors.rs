@@ -268,6 +268,9 @@ fn floor_framing_screenshots() {
         select(&mut h, &[floor]);
         press(&mut h, "Structure");
         press(&mut h, "Frame");
+        if egui::Popup::is_any_open(&h.ctx) {
+            press(&mut h, bimcraft_core::framing::DEFAULT_TYPE);
+        }
         type_into(&mut h, DIRECTION, "90");
         key(&mut h, Key::Enter);
         save(&mut h, "structure");

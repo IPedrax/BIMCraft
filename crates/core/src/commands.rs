@@ -3292,7 +3292,7 @@ other_files(
     ),
     edit(
         "framing_member",
-        "Framing Member",
+        ui_msg!("Framing Member"),
         &[],
         "{id, key | keys, section?, plies?, exclude?, reset?} a framed wall's members edited one by one (`framing` lists their \
          keys): `section` [thickness, depth] mm gives one ply another size and `plies` another number of plies; `exclude: true` \

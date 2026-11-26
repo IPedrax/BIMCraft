@@ -6,6 +6,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use crate::engine::Session;
+use crate::geom::P2;
 
 fn run(s: &mut Session, c: &str, p: Value) -> Value {
     s.execute(c, &p).unwrap_or_else(|e| panic!("{c} {p}: {e}"))
@@ -254,4 +255,52 @@ fn tab_finds_the_members_under_a_ray_nearest_first_and_in_a_plan_round_a_point()
     // A plan cut at 1200: what lies within 10 mm of a point on the start stud.
     let near = crate::framing::edit::in_plan(&f, crate::geom::P2(19.0, 0.0), 1200.0, 10.0);
     assert_eq!(near.first().map(String::as_str), Some("stud/start"), "{near:?}");
+}
+
+#[test]
+fn a_plan_draws_every_member_of_framed_walls_that_mitre_over_the_other_walls_band() {
+    use crate::render::{Prim, View, draw};
+    // On their exterior faces the two don't take the compound butt: their layers mitre, while the framing runs one through.
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "wall",
+        json!({"points": [[1200, 0], [0, 0], [0, 1200]], "type": "Timber Frame - 114mm", "height": 2700, "location": "exterior-finish"}),
+    );
+    let walls: Vec<u64> = s.model.elements.iter().filter(|(_, e)| e.category() == "wall").map(|(id, _)| *id).collect();
+    run(&mut s, "frame", json!({"ids": walls}));
+    run(&mut s, "detail", json!({"view": "Level 1", "detail": "fine"}));
+    assert!(walls.iter().all(|id| !crate::walls::layer_geometry(&s.model, *id, None).joined()), "their layers mitre");
+    let level = s.model.levels()[0].0;
+    let view = View { angle: 0.0, scale: 1.0, cx: 300.0, cy: 300.0, width: 1000, height: 1000 };
+    let d = draw(&s.model, level, view);
+    let cut = s.model.plan_range(level).cut;
+    let mut seen = 0;
+    for id in &walls {
+        let f = crate::framing::wall(&s.model, *id).ok().flatten().unwrap_or_else(|| panic!("not framed"));
+        for member in &f.members {
+            let Some([s0, s1]) = member.cut_at(cut) else { continue };
+            let c = f.at((s0 + s1) / 2.0, (member.across[0] + member.across[1]) / 2.0);
+            let (x, y) = view.px(c);
+            if !(0.0..1000.0).contains(&x) || !(0.0..1000.0).contains(&y) {
+                continue;
+            }
+            // The last fill over its middle is its own wall's: nothing of the other wall is drawn over it.
+            let mut last = d.prims.iter().zip(&d.owners).filter_map(|(p, o)| match p {
+                Prim::Fill { rings, .. } => {
+                    let over = rings.iter().any(|r| {
+                        crate::geom::contains(
+                            &r.iter().map(|q| P2(f64::from(q.0), f64::from(q.1))).collect::<Vec<_>>(),
+                            P2(f64::from(x), f64::from(y)),
+                        )
+                    });
+                    over.then_some(*o)
+                }
+                _ => None,
+            });
+            assert_eq!(last.next_back().flatten(), Some(*id), "wall {id}'s {} is drawn over", member.key);
+            seen += 1;
+        }
+    }
+    assert!(seen >= 4, "{seen} members looked at");
 }
