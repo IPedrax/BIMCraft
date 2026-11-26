@@ -5147,6 +5147,11 @@ impl BimApp {
             let faint = Stroke::new(1.0, blue.gamma_multiply(0.7));
             p.extend(Shape::dashed_line(&[a, at(fa), at(fb), b], faint, 5.0, 4.0));
         }
+        // The near clip, when it is past the line: the band the view sees starts there.
+        if let Some((na, nb)) = elevation::near(&v) {
+            let fainter = Stroke::new(1.0, blue.gamma_multiply(0.45));
+            p.extend(Shape::dashed_line(&[a, at(na), at(nb), b], fainter, 3.0, 4.0));
+        }
         for (part, g) in elevation::grips(&v) {
             let c = at(g);
             if part == elevation::Part::Far {
@@ -6286,6 +6291,7 @@ impl BimApp {
                     name: m.free_view_name("Section", true),
                     start,
                     end,
+                    near: None,
                     depth: None,
                     crop: None,
                     reference: None,
@@ -6308,6 +6314,7 @@ impl BimApp {
                         name,
                         start,
                         end,
+                        near: None,
                         depth: None,
                         crop: None,
                         reference,

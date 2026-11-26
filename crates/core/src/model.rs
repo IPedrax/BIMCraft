@@ -244,7 +244,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// `framing` (its rafters worked out as a floor's joists are) and a framing type's `ridge`, held with them.
 /// And a ramp may be drawn along a line (`path`), sketched (`sketch`, its run lines styled `ramp run`) or `flipped`; a build that
 /// reads up to 20 would leave those out and lay it as one straight run. A file of 20 needs no step: it holds none.
-pub const FORMAT: u32 = 21;
+/// 22 also: a section or an elevation may start seeing `near` mm past its line (`Section::near`, its near clip), as `depth` is
+/// where it stops; a build that reads up to 21 would leave `near` out as a field it doesn't know and draw what it cuts away, not
+/// say "saved by a newer BIMCraft". A file of 22 needs no step from 21: without `near` a view starts at its line, as 21 holds it.
+pub const FORMAT: u32 = 22;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2686,14 +2689,18 @@ pub fn heading(angle: f64) -> P2 {
 
 /// A section or an elevation: a vertical view along the line from `start` to `end`, looking to
 /// its left. A section cuts the model at its line; an elevation's line lies outside the building,
-/// looking at it. It sees `depth` mm past its line, or everything without one; cropped, only from
-/// the height `crop[0]` up to `crop[1]`.
+/// looking at it. It sees from `near` mm past its line (its line without one) to `depth` mm past it,
+/// or everything without a far clip; cropped, only from the height `crop[0]` up to `crop[1]`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Section {
     pub name: String,
     pub start: P2,
     pub end: P2,
+    /// Its near clip: how far past its line the band it sees starts, mm. None is 0, its line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub near: Option<f64>,
+    /// Its far clip: how far past its line the band it sees ends, mm. None sees everything.
     #[serde(default)]
     pub depth: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5950,6 +5957,7 @@ impl Model {
         // 20 to 21: the building codes. `codes_from_386` above takes a file's `building_code`, `stair_rules` and `building_codes` into
         // `codes`; a file of 20 holds none of them, so nothing to do.
         // 20 to 21 (framed walls and framing types) has no step: a file of 20 holds none.
+        // 21 to 22 (a section's or an elevation's `near` clip) has no step: without it a view starts at its line, as it did.
         self.format = FORMAT;
     }
 
@@ -10966,6 +10974,19 @@ impl Model {
                     return Err(format!("{who}: a view needs a name"));
                 }
                 line(&who, v.start, v.end)?;
+                if let Some(n) = v.near {
+                    coord(&format!("{who} near"), n)?;
+                    if n < 0.0 {
+                        return Err(format!("{who}: its near clip {n} mm is before its line; it starts at 0 or more, the way it looks"));
+                    }
+                    if let Some(d) = v.depth
+                        && n >= d - TOL
+                    {
+                        return Err(format!(
+                            "{who}: its near clip {n} mm isn't before its far clip {d} mm; the band it sees needs room between them"
+                        ));
+                    }
+                }
                 if let Some(d) = v.depth {
                     size(&format!("{who} depth"), d)?;
                 }

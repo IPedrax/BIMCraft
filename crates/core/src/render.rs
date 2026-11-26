@@ -2248,8 +2248,9 @@ fn level_spans(m: &Model, w: &SectionWork, v: &Section, look: &Look, cancelled: 
             None => w.extent(m, cancelled)?,
         };
         let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
-        let (near, far) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(past(*q)), b.max(past(*q))));
-        if far < -TOL || v.depth.is_some_and(|d| near > d) {
+        let (first_past, last_past) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(past(*q)), b.max(past(*q))));
+        // It shows where the level reaches into the band: past the near clip and before the far one.
+        if last_past < v.near.unwrap_or(0.0) - TOL || v.depth.is_some_and(|d| first_past > d) {
             continue;
         }
         let (a, b) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min((*q - v.start).dot(u)), b.max((*q - v.start).dot(u))));
@@ -2347,7 +2348,11 @@ pub fn section_camera(m: &Model, id: impl Key, view: View) -> Option<(Camera, Cl
         Some(_) => (column(0.0), column(v.start.dist(v.end))),
         None => (f64::NEG_INFINITY, f64::INFINITY),
     };
-    Some((cam, Clip { near: 0.0, far: v.depth, x: columns, y: rows }))
+    // Its band starts `near` mm past its line, the way it looks, while a clip's depth is toward the camera: `far` is measured
+    // from `near`, not from the line.
+    let near = v.near.unwrap_or(0.0);
+    let far = v.depth.map(|d| d - near);
+    Some((cam, Clip { near: -near, far, x: columns, y: rows }))
 }
 
 /// What section or elevation `id` sees past its line through `view`, in hidden line: the
@@ -2567,6 +2572,9 @@ fn section_base_cancellable(
     let Some(v) = m.section_geometry(id) else { return Some(d) };
     let look = Look::of(m, id);
     d.pattern_styles = look.pattern_styles();
+    // With a near clip the plane on the line is cut away too: nothing is cut at it, in poché or otherwise (the price of
+    // seeing a band past it, ТЗ-029.1).
+    let cut_at_line = v.near.unwrap_or(0.0) <= TOL;
     let u = (v.end - v.start).unit();
     let (first, last) = span(m, work, &v, &look, cancelled)?;
     // Each element's cut pieces, filled as one so where they meet (a roof's slopes at its ridge)
@@ -2596,10 +2604,12 @@ fn section_base_cancellable(
         assert!(s.cuts(v.start + u * first, u, last - first).is_empty(), "{} is cut by a line it lies all on one side of", s.owner());
     }
     // A family's form whose Visibility Settings keep it out of this view's cut isn't cut (F8).
-    for s in solids
-        .iter()
-        .filter(|s| !matches!(m.elements.get(s.owner()), Some(Element::Mass(_))) && !one_side(s.owner()) && look.forms_show(s.vis(), true))
-    {
+    for s in solids.iter().filter(|s| {
+        cut_at_line
+            && !matches!(m.elements.get(s.owner()), Some(Element::Mass(_)))
+            && !one_side(s.owner())
+            && look.forms_show(s.vis(), true)
+    }) {
         if cancelled() {
             return None;
         }
@@ -2629,7 +2639,7 @@ fn section_base_cancellable(
         let Some(e) = m.elements.get(*id).filter(|e| (e.run().is_some() && work.cell(at).is_some()) || cut_component(e)) else {
             continue;
         };
-        if cfg!(not(test)) && one_side(*id) {
+        if !cut_at_line || cfg!(not(test)) && one_side(*id) {
             continue;
         }
         if cancelled() {
@@ -2702,6 +2712,9 @@ fn section_base_cancellable(
     for (wall, w) in section_walls(m, &lookup, &v, first, last) {
         if cancelled() {
             return None;
+        }
+        if !cut_at_line {
+            continue;
         }
         let layers = m.type_layers("wall", &w.type_name);
         // A slanted wall's layers lean across the section: it shows in poché, its layers not yet drawn.
@@ -2963,6 +2976,9 @@ fn section_base_cancellable(
         if cancelled() {
             return None;
         }
+        if !cut_at_line {
+            continue;
+        }
         let Element::Mass(ms) = e else { continue };
         let (z0, z1) = m.span(ms.level, ms.base_offset, ms.top_level, ms.height);
         d.owner = Some(mid);
@@ -3007,7 +3023,7 @@ fn section_base_cancellable(
             d.text(&text, (b.0 + d.px(8.0) + font::width(&text, h) / 2.0, b.1 + d.px(dy)), h, INK);
         }
     }
-    // Grids running into what it sees: across its line, reaching past it (within its depth).
+    // Grids running into what it sees: across its line, reaching into its band (past its near clip, within its depth).
     let past = |q: P2| (q - v.start).dot(v.looking());
     for (grid_id, e) in lookup.grids().filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))) {
         if cancelled() {
@@ -3015,7 +3031,7 @@ fn section_base_cancellable(
         }
         if let Element::Grid(g) = e
             && let Some(x) = geom::line_intersection(v.start, v.end, g.start, g.end)
-            && past(g.start).max(past(g.end)) >= -TOL
+            && past(g.start).max(past(g.end)) >= v.near.unwrap_or(0.0) - TOL
             && v.depth.is_none_or(|far| past(g.start).min(past(g.end)) <= far)
             && (first..=last).contains(&(x - v.start).dot(u))
         {

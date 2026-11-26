@@ -463,6 +463,51 @@ fn a_section_shows_a_scan_between_its_line_and_its_far_clip() {
     assert_eq!((pixels(&img, red), pixels(&img, blue)), (0, 0));
 }
 
+#[test]
+fn a_section_shows_a_scan_between_its_near_and_far_clips() {
+    let mut s = Session::new();
+    run(&mut s, "point_cloud", json!({"path": scan("band", "floors.xyz", &floors()), "origin": "file"}));
+    // Looking north from a metre south of the two red patches at y = 0 and y = 4 m, the blue one over the first.
+    let look = |s: &mut Session, near: Option<f64>, depth: Option<f64>| {
+        let mut p = json!({"start": [-1000, -1000], "end": [7000, -1000]});
+        if let Some(n) = near {
+            p["near"] = json!(n);
+        }
+        if let Some(d) = depth {
+            p["depth"] = json!(d);
+        }
+        let v = run(s, "section", p)["id"].as_u64().unwrap();
+        let view = render::section_fit(&s.model, v, 600, 400);
+        render::section_image(&s.model, &Scene::new(&s.model), v, view, &[]).unwrap()
+    };
+    let (reds, blues) = {
+        let img = look(&mut s, None, None);
+        (pixels(&img, red), pixels(&img, blue))
+    };
+    assert!(reds > 100 && blues > 50, "{reds} {blues}");
+    // A near clip 4 m out hides the first red patch (1 to 3 m past the line) and the blue one over it.
+    let (near_reds, near_blues) = {
+        let img = look(&mut s, Some(4000.0), None);
+        (pixels(&img, red), pixels(&img, blue))
+    };
+    assert_eq!(near_blues, 0, "the blue patch is nearer than the near clip");
+    assert!(near_reds > 0 && near_reds < reds, "{near_reds} of {reds}");
+    // A far clip 4 m out hides the second red patch (5 to 7 m past the line), keeping the first and the blue one.
+    let (far_reds, far_blues) = {
+        let img = look(&mut s, None, Some(4000.0));
+        (pixels(&img, red), pixels(&img, blue))
+    };
+    assert!(far_blues > 50, "{far_blues}");
+    assert!(far_reds > 0 && far_reds < reds, "{far_reds} of {reds}");
+    // Both: only the near half of the second red patch, within 4 to 6 m, is left.
+    let (band_reds, band_blues) = {
+        let img = look(&mut s, Some(4000.0), Some(6000.0));
+        (pixels(&img, red), pixels(&img, blue))
+    };
+    assert_eq!(band_blues, 0);
+    assert!(band_reds > 0 && band_reds < near_reds, "{band_reds} of {near_reds}");
+}
+
 // ---------- snaps ----------
 
 use crate::snap::{Kind, Reach, Snaps, snap};

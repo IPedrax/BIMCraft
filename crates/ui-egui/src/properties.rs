@@ -498,6 +498,7 @@ fn rows(category: &str) -> &'static [Row] {
         "section" | "elevation" => &[
             ("Identity Data", "name", "View Name", Text),
             (msg!("Extents"), "crop", "Crop View", Crop),
+            ("Extents", "near", msg!("Near Clip Offset"), Limit(msg!("Line"))),
             ("Extents", "depth", msg!("Far Clip Offset"), Limit(msg!("No Clip"))),
             ("Other", "start", "Start", Point),
             ("Other", "end", "End", Point),

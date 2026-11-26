@@ -134,6 +134,13 @@ pub fn far(v: &Section) -> Option<Line> {
     Some((v.start + by, v.end + by))
 }
 
+/// The line a view sees from, when its near clip is past its line: its own line, `near` on the way it looks. None at 0,
+/// where the view line itself is.
+pub fn near(v: &Section) -> Option<Line> {
+    let by = v.looking() * v.near.filter(|n| *n > TOL)?;
+    Some((v.start + by, v.end + by))
+}
+
 /// The grips a selected section or elevation has in plan, each where it is held: an end of its line when it is cropped
 /// (uncropped, the line moves and doesn't stretch), and the middle of its far clip line when it has one.
 pub fn grips(v: &Section) -> Vec<(Part, P2)> {
@@ -466,11 +473,13 @@ mod tests {
         let mut s = Session::new();
         let cut = id(&run(&mut s, "section", json!({"start": [0, 0], "end": [6000, 0]})));
         assert_eq!(super::far(s.model.section(cut).unwrap()), None);
+        assert_eq!(super::near(s.model.section(cut).unwrap()), None);
         let err = s.execute("move", &json!({"ids": [cut], "by": [0, 500], "end": "far"})).unwrap_err();
         assert!(err.contains("far clip"), "{err}");
-        run(&mut s, "modify", json!({"id": cut, "depth": 3000}));
+        run(&mut s, "modify", json!({"id": cut, "near": 500, "depth": 3000}));
         let v = s.model.section(cut).unwrap().clone();
         assert_eq!(super::far(&v), Some((P2(0.0, 3000.0), P2(6000.0, 3000.0))));
+        assert_eq!(super::near(&v), Some((P2(0.0, 500.0), P2(6000.0, 500.0))), "the band starts 500 mm past the line");
         assert_eq!(super::grips(&v), vec![(super::Part::Far, P2(3000.0, 3000.0))]);
         run(&mut s, "move", json!({"ids": [cut], "by": [250, 1500], "end": "far"}));
         assert_eq!(s.model.section(cut).unwrap().depth, Some(4500.0));
