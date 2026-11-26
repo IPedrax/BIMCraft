@@ -1244,3 +1244,10 @@ about `about`, and `reset`.
   view's own underlay isn't drawn in it; a change
   to another level still makes it again (a revision check on what the source shows would spare that).
 
+## Elevation labels and signs
+
+A spot elevation reads its height through `render::height`, and a level's label through `render::level_text`; both end in
+`dims::signed`, so the project's `Model::signs` (Settings > Units, the `units` command's `signs`) decides one sign everywhere.
+With none, a spot elevation is `+3.600` at zero `±0.000` and a level label unsigned; with one, `positive` writes `+` or nothing
+before a positive value and `zero` writes `±` or nothing at zero, rounding first. The settings are in the project because the
+printed drawing depends on them; how a label's type sets its units and precision is SPEC-039, which reads the same formatter.
