@@ -3478,7 +3478,7 @@ pub fn scan_detail(m: &Model, cam: &Camera, look: &Look, most: usize, load: bool
     let section = if plain { None } else { look.section_box() };
     // What each scan's node shows on the screen: none where the picture or the section box doesn't, else how many pixels a
     // millimetre takes at its nearest.
-    let seens: Vec<Box<dyn Fn([f64; 3], [f64; 3]) -> Option<f64> + '_>> = scans
+    let seens: Vec<Box<crate::cloud::lod::Seen<'_>>> = scans
         .iter()
         .map(|(_, _, pc)| {
             let place = m.cloud_place(pc);
@@ -3509,11 +3509,11 @@ pub fn scan_detail(m: &Model, cam: &Camera, look: &Look, most: usize, load: bool
                     }
                 }
                 Some(k.px_per_mm(nearest.max(NEAR)))
-            }) as Box<dyn Fn([f64; 3], [f64; 3]) -> Option<f64> + '_>
+            }) as Box<crate::cloud::lod::Seen<'_>>
         })
         .collect();
     // One budget for them all, the nodes taken by how big they are on the screen whichever scan they're of.
-    let asked: Vec<(&crate::cloud::lod::Indexed, &dyn Fn([f64; 3], [f64; 3]) -> Option<f64>)> =
+    let asked: Vec<(&crate::cloud::lod::Indexed, &crate::cloud::lod::Seen<'_>)> =
         scans.iter().zip(&seens).map(|((_, ix, _), seen)| (ix.as_ref(), seen.as_ref())).collect();
     for (k, i) in crate::cloud::lod::select(&asked, most) {
         let Some((scan, ix, _)) = scans.get(k) else { continue };

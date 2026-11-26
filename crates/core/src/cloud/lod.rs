@@ -103,6 +103,10 @@ pub struct Points {
     bytes: u64,
 }
 
+/// What a view says of a node's box (its lowest and highest corner from its scan's middle, mm): how many pixels a millimetre
+/// takes on the screen there, or none where the view doesn't show it.
+pub type Seen<'a> = dyn Fn([f64; 3], [f64; 3]) -> Option<f64> + 'a;
+
 /// A node of an index open: the index's number ([`Indexed::uid`]) and the node's.
 type Key = (u64, usize);
 
@@ -295,7 +299,7 @@ pub fn held() -> u64 {
 /// lowest and highest corner from the scan's middle, mm) how many pixels a millimetre takes on the screen there, or none
 /// where the view doesn't show it. A node is read below one whose points are more than [`SPREAD`] px apart, and the nodes
 /// are taken by how far apart their own points are on the screen, roots too, so the scan the view is near gets the detail.
-pub fn select(scans: &[(&Indexed, &dyn Fn([f64; 3], [f64; 3]) -> Option<f64>)], most: usize) -> Vec<(usize, usize)> {
+pub fn select(scans: &[(&Indexed, &Seen<'_>)], most: usize) -> Vec<(usize, usize)> {
     #[derive(PartialEq)]
     struct Next(f64, usize, usize);
     impl Eq for Next {}

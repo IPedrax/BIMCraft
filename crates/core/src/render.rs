@@ -3492,7 +3492,7 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
         let view = d.view;
         let indexed: Vec<(usize, &std::sync::Arc<crate::cloud::lod::Indexed>)> =
             placed.iter().enumerate().filter_map(|(k, (_, _, c))| c.indexed().map(|ix| (k, ix))).collect();
-        let seens: Vec<Box<dyn Fn([f64; 3], [f64; 3]) -> Option<f64>>> = indexed
+        let seens: Vec<Box<crate::cloud::lod::Seen<'static>>> = indexed
             .iter()
             .map(|&(k, _)| {
                 let place = m.cloud_place(placed[k].1);
@@ -3508,10 +3508,10 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
                     }
                     let shows = z1 >= depth - TOL && z0 <= cut && x1 >= 0.0 && y1 >= 0.0 && x0 <= w as f64 && y0 <= h as f64;
                     shows.then_some(view.scale)
-                }) as Box<dyn Fn([f64; 3], [f64; 3]) -> Option<f64>>
+                }) as Box<crate::cloud::lod::Seen<'static>>
             })
             .collect();
-        let asked: Vec<(&crate::cloud::lod::Indexed, &dyn Fn([f64; 3], [f64; 3]) -> Option<f64>)> =
+        let asked: Vec<(&crate::cloud::lod::Indexed, &crate::cloud::lod::Seen<'_>)> =
             indexed.iter().zip(&seens).map(|((_, ix), seen)| (ix.as_ref(), seen.as_ref())).collect();
         let load = FROM_CACHE.with(|c| !c.get());
         for (s, i) in crate::cloud::lod::select(&asked, crate::cloud::lod::DRAWN) {
