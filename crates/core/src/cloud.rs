@@ -364,20 +364,34 @@ impl Cloud {
     /// Opens its index at the path the project holds (from the folder of the project at `project`), or the full one it was
     /// built at, unless it's open; why it can't be when it can't. Every copy of the scan shares it.
     pub fn attach(&self, project: Option<&std::path::Path>) -> Result<(), String> {
+        self.attach_in(project, None)
+    }
+
+    /// [`Cloud::attach`], looking in the folder `cache` too (the user's folder of indexes) for a file of the index's name, when
+    /// it isn't where the project holds it: a project copied without its indexes finds them there.
+    pub fn attach_in(&self, project: Option<&std::path::Path>, cache: Option<&std::path::Path>) -> Result<(), String> {
         let Some(r) = &self.index else { return Ok(()) };
         if self.opened.get().is_some() {
             return Ok(());
         }
-        let near = lod::resolve(&r.path, project);
-        let opened = match lod::Indexed::open(&near, r) {
-            Ok(i) => i,
-            Err(first) => match r.full.as_deref().map(std::path::Path::new).filter(|f| *f != near) {
-                Some(full) => lod::Indexed::open(full, r).map_err(|_| first)?,
-                None => return Err(first),
-            },
-        };
-        let _ = self.opened.set(Arc::new(opened));
-        Ok(())
+        let mut first = None;
+        for at in lod::places(r, project, cache) {
+            match lod::Indexed::open(&at, r) {
+                Ok(i) => {
+                    let _ = self.opened.set(Arc::new(i));
+                    return Ok(());
+                }
+                Err(e) => {
+                    first.get_or_insert(e);
+                }
+            }
+        }
+        Err(first.unwrap_or_else(|| "it has no index to open".into()))
+    }
+
+    /// This scan, its index let go: the project holds only the points it has.
+    pub fn without_index(self) -> Cloud {
+        Cloud { index: None, packed: Arc::default(), opened: Arc::default(), ..self }
     }
 
     /// The file it was read from.

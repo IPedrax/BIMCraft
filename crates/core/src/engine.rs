@@ -218,6 +218,9 @@ pub struct Session {
     pub(crate) scan_read: Option<crate::cloud::ScanRead>,
     /// Whether `point_cloud` keeps the scan it read in `scan_read`: a session reading one ahead ([`Session::read_scan_ahead`]).
     pub(crate) keep_scan: bool,
+    /// The user's folder of scans' indexes (Settings > Graphics): where `point_cloud` builds a new one, and where `open` looks for
+    /// one the project's paths don't find. None: beside the project.
+    pub index_dir: Option<PathBuf>,
     /// Whether a Co-Work guest's command is running ([`crate::cowork::run_for_guest`]): then no command may read or write a file, so a
     /// guest never reaches the host's disk.
     pub(crate) no_files: bool,
@@ -309,6 +312,7 @@ impl Session {
             progress: None,
             scan_read: None,
             keep_scan: false,
+            index_dir: None,
             no_files: false,
             clipboard: None,
             steps_made: 0,

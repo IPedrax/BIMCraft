@@ -405,7 +405,7 @@ other_files(
         "point_cloud",
         ui_msg!("Point Cloud"),
         &[],
-        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?, index?} brings in a laser scan (`path`: \
+        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?, index?, index_dir?} brings in a laser scan (`path`: \
          PTS, XYZ, PLY, LAS, LAZ (COPC too) or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
          cm, m (the default), in or ft; one point kept in each cube `spacing` mm wide) or places one the project holds again \
          (`cloud`, its name), as an element: its middle on `at` (the origin) and its foot on the level, or with `origin: file` \
@@ -414,7 +414,8 @@ other_files(
          scan's name, the points kept and read, and where its middle was in the file. `index` (true, false or auto, the \
          default: files over 64 MB) keeps every point in an index, `<project>_clouds/<name>.bimpc` beside the project (beside \
          the scan's file, `<name>.bimpc`, while the project has no file), which views read as they zoom in; the project holds only the top of it (and `spacing` isn't used), \
-         and the reply gives the index's `path`, `count` and `bytes`",
+         and the reply gives the index's `path`, `count` and `bytes`. `index_dir` puts it in that folder instead, named \
+         `<project>_<name>.bimpc` (a desktop's Point cloud index folder)",
         point_cloud,
         Files::Read,
     ),
@@ -422,11 +423,15 @@ other_files(
         "point_cloud_index",
         ui_msg!("Point Cloud Index"),
         &[],
-        "{cloud, path?} finds a scan's index again (a `.bimpc` file, which `point_cloud` with `index` built): at `path`, which \
-         must be that scan's index, or where the project holds it. A view draws the top of a scan whose index can't be found, \
-         and `open` lists those as `clouds_not_indexed`",
+        "{cloud?, action?: find | info | rebuild | delete | purge, path?} looks after a scan's index (a `.bimpc` file, which \
+         `point_cloud` with `index` built). `find` (the default) finds it again: at `path`, which must be that scan's index, or \
+         where the project holds it, where it was built, or in the session's folder of indexes; a view draws the top of a scan \
+         whose index can't be found, and `open` lists those as `clouds_not_indexed`. `info` says where it is, its bytes and \
+         points, whether it's open and the files it came from. `rebuild` builds it again from those files. `delete` deletes \
+         its file and lets it go, the scan keeping the top the project holds. `purge` (no `cloud`) deletes the indexes in the \
+         project's folder of them (`<project>_clouds/`) and the session's that no scan names, what deleted scans left behind",
         point_cloud_index,
-        Files::Read,
+        Files::Write,
     ),
     edit_files(
         "import_mesh",
@@ -10511,15 +10516,31 @@ fn index_at(s: &Session, c: &str, p: &Value, paths: &[PathBuf], name: &str) -> R
     if !wanted.unwrap_or_else(big) {
         return Ok(None);
     }
-    // Beside the project, or, while it has no file, beside the scan's first file: the project holds its full path then.
-    let dir = match &s.path {
-        Some(project) => {
-            let stem = project.file_stem().map_or_else(|| "project".into(), |s| s.to_string_lossy().into_owned());
+    // A session that may only read writes no index.
+    if s.read_only.is_some() {
+        return match wanted {
+            Some(true) => Err(bad(c, "this session may only read, so it builds no index: give `index: false`")),
+            _ => Ok(None),
+        };
+    }
+    let file: String = name.chars().map(|ch| if ch.is_alphanumeric() || " -_.()".contains(ch) { ch } else { '_' }).collect();
+    let stem = s.path.as_ref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned());
+    // In the folder of indexes given (the user's), named for the project and the scan; else beside the project, or, while it
+    // has no file, beside the scan's first file: the project holds its full path then.
+    let cache = match string(c, p, "index_dir")? {
+        Some(d) => Some(PathBuf::from(d)),
+        None => s.index_dir.clone(),
+    };
+    if let Some(dir) = cache {
+        let named = stem.map_or_else(|| file.trim().to_string(), |stem| format!("{stem}_{}", file.trim()));
+        return Ok(Some(dir.join(format!("{named}.bimpc"))));
+    }
+    let dir = match (&s.path, &stem) {
+        (Some(project), Some(stem)) => {
             project.parent().map_or_else(|| PathBuf::from(format!("{stem}_clouds")), |d| d.join(format!("{stem}_clouds")))
         }
-        None => paths.first().and_then(|p| p.parent()).map_or_else(PathBuf::new, std::path::Path::to_path_buf),
+        _ => paths.first().and_then(|p| p.parent()).map_or_else(PathBuf::new, std::path::Path::to_path_buf),
     };
-    let file: String = name.chars().map(|ch| if ch.is_alphanumeric() || " -_.()".contains(ch) { ch } else { '_' }).collect();
     Ok(Some(dir.join(format!("{}.bimpc", file.trim()))))
 }
 
@@ -10555,6 +10576,8 @@ fn index_scan(
         id: cloud::lod::IndexRef::id_of(built.id),
         count: built.count,
         levels: built.levels,
+        sources: paths.iter().map(|p| std::path::absolute(p).unwrap_or_else(|_| p.clone()).to_string_lossy().into_owned()).collect(),
+        scale: Some(scale),
     };
     let scan = match <[_; 1]>::try_from(built.stations) {
         Ok([one]) => Cloud::new(&one.source, built.scan),
@@ -10566,14 +10589,63 @@ fn index_scan(
     }))
 }
 
-/// A scan's index found again: at `path`, or where the project holds it.
+/// A scan's index: found again (at `path`, or where the project holds it), said of, built again from its files, or deleted;
+/// or the project's indexes no scan names, deleted.
 fn point_cloud_index(s: &mut Session, p: &Value) -> R {
     let c = "point_cloud_index";
+    let action = string(c, p, "action")?.unwrap_or_else(|| "find".into());
+    if action == "purge" {
+        return purge_indexes(s, c);
+    }
     let name = string(c, p, "cloud")?.ok_or_else(|| bad(c, "give `cloud`, the name of a scan the project holds"))?;
     let scan = s.model.clouds.get(&name).cloned().ok_or_else(|| bad(c, format!("the project holds no scan named `{name}`")))?;
     let r = scan.index().cloned().ok_or_else(|| bad(c, format!("scan `{name}` has no index: the project holds all its points")))?;
+    let found = || cloud::lod::places(&r, s.path.as_deref(), s.index_dir.as_deref()).into_iter().find(|at| at.is_file());
+    match action.as_str() {
+        "find" => {}
+        "info" => {
+            let at = scan.indexed().map(|i| i.path().to_path_buf()).or_else(found);
+            let bytes = at.as_ref().and_then(|at| std::fs::metadata(at).ok()).map(|m| m.len());
+            return Ok(json!({
+                "cloud": name, "path": r.path, "found": at.map(|at| at.to_string_lossy().into_owned()), "bytes": bytes,
+                "count": r.count, "levels": r.levels, "open": scan.indexed().is_some(), "sources": r.sources,
+            }));
+        }
+        "delete" => {
+            if s.read_only.is_some() {
+                return Err(bad(c, "this session may only read, so it deletes no index"));
+            }
+            // An index open stays readable to whoever holds it (the file is deleted when the last one lets go of it).
+            let at = scan.indexed().map(|i| i.path().to_path_buf()).or_else(found);
+            if let Some(at) = &at {
+                std::fs::remove_file(at).map_err(|e| bad(c, format!("{} can't be deleted: {e}", at.display())))?;
+            }
+            s.model_mut().clouds.insert(name.clone(), scan.without_index());
+            return Ok(json!({"cloud": name, "deleted": at.map(|at| at.to_string_lossy().into_owned())}));
+        }
+        "rebuild" => {
+            if r.sources.is_empty() {
+                return Err(bad(c, format!("scan `{name}`'s index doesn't say what files it was built from: bring them in again")));
+            }
+            let paths: Vec<PathBuf> = r.sources.iter().map(PathBuf::from).collect();
+            let mut formats = Vec::with_capacity(paths.len());
+            for path in &paths {
+                let ext = path.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
+                formats.push(cloud::Format::from_extension(&ext).map_err(|e| bad(c, format!("{}: {e}", path.display())))?);
+            }
+            let out = found().unwrap_or_else(|| cloud::lod::resolve(&r.path, s.path.as_deref()));
+            let held: usize = s.model.clouds.iter().filter(|(n, _)| **n != name).map(|(_, c)| c.len()).sum();
+            let cap = cloud::MAX_CLOUD_POINTS.saturating_sub(held).max(1);
+            let scale = r.scale.unwrap_or(1000.0);
+            let built = index_scan(s, c, &paths, formats, scale, &out, cap)?.map_err(|e| bad(c, e))?;
+            let count = built.index().map_or(0, |r| r.count);
+            s.model_mut().clouds.insert(name.clone(), built);
+            return Ok(json!({"cloud": name, "path": out.to_string_lossy(), "count": count}));
+        }
+        a => return Err(bad(c, format!("`action` is find, info, rebuild, delete or purge, not {a}"))),
+    }
     let Some(path) = string(c, p, "path")? else {
-        scan.attach(s.path.as_deref()).map_err(|e| bad(c, e))?;
+        scan.attach_in(s.path.as_deref(), s.index_dir.as_deref()).map_err(|e| bad(c, e))?;
         return Ok(json!({"cloud": name, "path": r.path}));
     };
     let at = beside(s, &path);
@@ -10584,13 +10656,50 @@ fn point_cloud_index(s: &mut Session, p: &Value) -> R {
     Ok(json!({"cloud": name, "path": r.path}))
 }
 
+/// The indexes in the project's folder of them (`<project>_clouds/`) and in the user's (`index_dir`) that no scan of the
+/// project names, deleted: what a scan deleted, or undone, left behind.
+fn purge_indexes(s: &mut Session, c: &str) -> R {
+    if s.read_only.is_some() {
+        return Err(bad(c, "this session may only read, so it deletes no index"));
+    }
+    let project = s.path.clone().ok_or_else(|| bad(c, "the project has no file, so no folder of indexes to purge: save it first"))?;
+    let stem = project.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let named: std::collections::BTreeSet<PathBuf> = s
+        .model
+        .clouds
+        .values()
+        .filter_map(Cloud::index)
+        .flat_map(|r| cloud::lod::places(r, s.path.as_deref(), s.index_dir.as_deref()))
+        .filter_map(|p| std::fs::canonicalize(p).ok())
+        .collect();
+    let mut dirs = Vec::new();
+    dirs.extend(project.parent().map(|d| (d.join(format!("{stem}_clouds")), String::new())));
+    dirs.extend(s.index_dir.clone().map(|d| (d, format!("{stem}_"))));
+    let mut deleted = Vec::new();
+    for (dir, prefix) in dirs {
+        let Ok(files) = std::fs::read_dir(&dir) else { continue };
+        for f in files.flatten() {
+            let path = f.path();
+            let ours = path.extension().is_some_and(|e| e == "bimpc")
+                && path.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&prefix));
+            let canon = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            if ours && !named.contains(&canon) && std::fs::remove_file(&path).is_ok() {
+                deleted.push(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    Ok(json!({"deleted": deleted}))
+}
+
 /// Every scan's index opened; the scans whose index couldn't be, as `{cloud, error}`: a view draws the top of them the project
 /// holds.
 fn reindex(s: &Session) -> Vec<Value> {
     s.model
         .clouds
         .iter()
-        .filter_map(|(name, scan)| scan.attach(s.path.as_deref()).err().map(|error| json!({"cloud": name, "error": error})))
+        .filter_map(|(name, scan)| {
+            scan.attach_in(s.path.as_deref(), s.index_dir.as_deref()).err().map(|error| json!({"cloud": name, "error": error}))
+        })
         .collect()
 }
 

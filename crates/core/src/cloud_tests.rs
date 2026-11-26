@@ -862,3 +862,73 @@ fn a_3d_view_near_a_scan_reads_its_index_and_a_snap_finds_its_points() {
     let p = cloud.nearest_of_all(at, 3.0, z).unwrap();
     assert!((f64::from(p[0]) - (1230.0 - o[0])).abs() < 1.0 && (f64::from(p[1]) - (2340.0 - o[1])).abs() < 1.0, "{p:?}");
 }
+
+#[test]
+fn an_index_kept_in_a_folder_of_indexes_is_found_there_when_the_project_is_copied_without_it() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    TUNED.with(|t| t.set(Some((Tuning { bucket: 100_000, leaf: 2_000 }, 20_000))));
+    let path = scan("cachedir", "floor.xyz", &floor());
+    let dir = PathBuf::from(&path).parent().unwrap().to_path_buf();
+    let cache = dir.join("indexes");
+    let _ = std::fs::remove_dir_all(&cache);
+    let project = dir.join("house.bimc");
+    let mut s = Session::new();
+    run(&mut s, "save", json!({"path": project}));
+    let r = run(&mut s, "point_cloud", json!({"path": path, "index": true, "index_dir": cache}));
+    assert!(cache.join("house_floor.bimpc").exists(), "{r}");
+    run(&mut s, "save", json!({}));
+    // The project, copied to another folder alone, finds it in the session's folder of indexes.
+    let elsewhere = dir.join("copy");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    std::fs::copy(&project, elsewhere.join("house.bimc")).unwrap();
+    std::fs::rename(cache.join("house_floor.bimpc"), cache.join("moved.bimpc")).unwrap();
+    std::fs::rename(cache.join("moved.bimpc"), cache.join("house_floor.bimpc")).unwrap();
+    let mut t = Session::new();
+    t.index_dir = Some(cache.clone());
+    let r = run(&mut t, "open", json!({"path": elsewhere.join("house.bimc")}));
+    assert_eq!(r["clouds_not_indexed"], Value::Null, "{r}");
+    assert!(t.model.clouds.get("floor").unwrap().indexed().is_some());
+}
+
+#[test]
+fn an_index_says_where_it_is_and_is_built_again_deleted_and_purged() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let (mut s, project, _) = indexed("actions");
+    let file = project.parent().unwrap().join("house_clouds/floor.bimpc");
+    let info = run(&mut s, "point_cloud_index", json!({"cloud": "floor", "action": "info"}));
+    assert_eq!((info["open"].as_bool(), info["count"].as_u64()), (Some(true), Some(361_201)), "{info}");
+    assert_eq!(info["bytes"].as_u64(), Some(std::fs::metadata(&file).unwrap().len()));
+    assert!(info["sources"][0].as_str().unwrap().ends_with("floor.xyz"));
+    // Built again from its files: another index, the same points.
+    let before = s.model.clouds.get("floor").unwrap().index().unwrap().id.clone();
+    let r = run(&mut s, "point_cloud_index", json!({"cloud": "floor", "action": "rebuild"}));
+    assert_eq!(r["count"].as_u64(), Some(361_201), "{r}");
+    let after = s.model.clouds.get("floor").unwrap();
+    assert!(after.index().unwrap().id != before && after.indexed().is_some());
+    // An index nothing names is purged; the scan's own isn't.
+    std::fs::write(project.parent().unwrap().join("house_clouds/left.bimpc"), b"x").unwrap();
+    let r = run(&mut s, "point_cloud_index", json!({"action": "purge"}));
+    assert_eq!(r["deleted"].as_array().map(Vec::len), Some(1), "{r}");
+    assert!(file.exists());
+    // Deleted: the file goes, and the scan keeps the top the project holds.
+    let r = run(&mut s, "point_cloud_index", json!({"cloud": "floor", "action": "delete"}));
+    assert!(r["deleted"].as_str().is_some() && !file.exists(), "{r}");
+    let kept = s.model.clouds.get("floor").unwrap();
+    assert!(kept.index().is_none() && !kept.is_empty());
+    assert!(fails(&mut s, "point_cloud_index", json!({"cloud": "floor", "action": "info"})).contains("has no index"));
+}
+
+#[test]
+fn a_session_that_may_only_read_builds_no_index_and_a_copy_over_co_work_keeps_the_index_it_cant_open() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let mut s = Session::new();
+    s.read_only = Some("a test");
+    let e = fails(&mut s, "point_cloud", json!({"path": scan("readonly", "dots.xyz", "0 0 0\n1 1 1\n"), "index": true}));
+    assert!(e.contains("only read"), "{e}");
+    // A guest's copy of the model holds the scan's index, as the host's file says it, and opens none of it.
+    let (host, _, _) = indexed("guest");
+    let text = host.model.to_json().unwrap();
+    let (copy, _) = crate::model::Model::read(&text).unwrap();
+    let cloud = copy.clouds.get("floor").unwrap();
+    assert!(cloud.index().is_some() && cloud.indexed().is_none());
+}

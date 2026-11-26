@@ -23,7 +23,7 @@ const MOST: u64 = 8 << 30;
 const FIXED: u64 = 1 << 30;
 
 /// What a project holds of a scan's index: where it is, which index it is, and the levels the project holds itself.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IndexRef {
     /// Its file, relative to the project's folder where it's in it.
@@ -37,6 +37,12 @@ pub struct IndexRef {
     pub count: u64,
     /// The levels from the root a project holds whole: 0 when it holds a thinned root.
     pub levels: u8,
+    /// The files it was built from, in full: what Rebuild Index reads again.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<String>,
+    /// Millimetres to their unit, as they were read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f64>,
 }
 
 impl IndexRef {
@@ -51,6 +57,12 @@ impl IndexRef {
         }
         if self.id.len() != 32 || u128::from_str_radix(&self.id, 16).is_err() {
             return Err(format!("a scan's index id {:?} isn't 32 hex digits", self.id));
+        }
+        if self.sources.len() > super::MAX_STATIONS || self.sources.iter().any(|s| s.len() > 4096) {
+            return Err("a scan's index names too many files, or one too long".into());
+        }
+        if self.scale.is_some_and(|k| !(k.is_finite() && k > 0.0 && k <= 1e6)) {
+            return Err("a scan's index's unit isn't one".into());
         }
         if self.count > super::index::MAX_COUNT || self.levels > super::index::MAX_DEPTH + 1 {
             return Err("a scan's index says more than an index holds".into());
@@ -339,6 +351,18 @@ pub fn resolve(path: &str, project: Option<&Path>) -> PathBuf {
     }
 }
 
+/// Where to look for the index `r` names, in order: where the project holds it (from the folder of the project at `project`),
+/// where it was built, and in the folder `cache` by its file's name.
+pub fn places(r: &IndexRef, project: Option<&Path>, cache: Option<&Path>) -> Vec<PathBuf> {
+    let mut out = vec![resolve(&r.path, project)];
+    out.extend(r.full.as_deref().map(PathBuf::from));
+    if let (Some(dir), Some(name)) = (cache, Path::new(&r.path).file_name()) {
+        out.push(dir.join(name));
+    }
+    out.dedup();
+    out
+}
+
 /// `index` as a project at `project` holds it: from the project's folder when it's in it.
 pub fn relative(index: &Path, project: Option<&Path>) -> String {
     project
@@ -369,8 +393,15 @@ mod tests {
         }
         let input = Input { name: "plane.xyz".into(), src: Box::new(std::io::Cursor::new(s.into_bytes())), format: Format::Xyz };
         let b = build_tuned(vec![input], 1000.0, &out, 2_000, None, None, Tuning { bucket: 1_000_000, leaf: 500 }).unwrap();
-        let r =
-            IndexRef { path: out.to_string_lossy().into_owned(), full: None, id: IndexRef::id_of(b.id), count: b.count, levels: b.levels };
+        let r = IndexRef {
+            path: out.to_string_lossy().into_owned(),
+            full: None,
+            id: IndexRef::id_of(b.id),
+            count: b.count,
+            levels: b.levels,
+            sources: Vec::new(),
+            scale: None,
+        };
         (out, r)
     }
 
