@@ -356,3 +356,19 @@ a courtesy:
   "Photorealistic Texture Pack 3 - PTP-Elements_07-256x256.png" by Screaming
     Brain Studios,
     https://opengameart.org/content/photorealistic-texture-pack-3-ptp-elements07-256x256png
+
+==============================================================================
+Point clouds: laz
+==============================================================================
+
+The core (bimcraft-core) reads LAZ and COPC point clouds, LAS whose points
+LASzip compressed, through the laz crate, unmodified, without its `parallel`
+feature:
+
+  laz  Apache-2.0  a Rust port of LASzip's decompression
+    Copyright 2023 Thomas Montaigu
+    https://github.com/tmontaigu/laz-rs
+    https://crates.io/crates/laz/0.14.0
+
+Its own dependencies are byteorder (Unlicense OR MIT) and num-traits (MIT OR
+Apache-2.0). The Apache License 2.0's text is in LICENSE-APACHE.

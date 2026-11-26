@@ -406,7 +406,7 @@ other_files(
         ui_msg!("Point Cloud"),
         &[],
         "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?} brings in a laser scan (`path`: \
-         PTS, XYZ, PLY, LAS or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
+         PTS, XYZ, PLY, LAS, LAZ (COPC too) or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
          cm, m (the default), in or ft; one point kept in each cube `spacing` mm wide) or places one the project holds again \
          (`cloud`, its name), as an element: its middle on `at` (the origin) and its foot on the level, or with `origin: file` \
          where its file's coordinates put it, or with `origin: shared` where they put it as the map's, by the active location \
@@ -10337,7 +10337,7 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         (None, None) => {
             return Err(bad(
                 c,
-                "give `path`, a scan file (PTS, XYZ, PLY, LAS or E57) to bring in, or `cloud`, the name of a scan the project holds",
+                "give `path`, a scan file (PTS, XYZ, PLY, LAS, LAZ or E57) to bring in, or `cloud`, the name of a scan the project holds",
             ));
         }
         (None, Some(n)) => {

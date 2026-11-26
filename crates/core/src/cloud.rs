@@ -1,5 +1,5 @@
 //! Point clouds: what a laser scan brings in. A file's points are read from public specifications
-//! (PTS and XYZ text, PLY, ASPRS LAS 1.2 to 1.4, ASTM E57),
+//! (PTS and XYZ text, PLY, ASPRS LAS 1.2 to 1.4, LAZ and COPC as LASzip compresses them, ASTM E57),
 //! turned into millimetres, thinned to what a project may hold, and kept about their centre as `f32`, which holds a
 //! millimetre across `MAX_SPAN`. A project holds each scan once, as a [`Cloud`]; a `PointCloud` element places it.
 
@@ -14,13 +14,16 @@ use flate2::write::ZlibEncoder;
 use serde::{Deserialize, Serialize};
 
 mod e57;
+#[cfg(feature = "laz")]
+mod laz;
 
 /// Points a cloud may keep: a file with more is thinned down to it.
 pub const MAX_CLOUD_POINTS: usize = 5_000_000;
 /// What a file may be before it's refused, bytes: a terabyte. A file is read a piece at a time and never held, so what it
 /// takes of memory is the points kept, not its size.
 pub const MAX_BYTES: u64 = 1 << 40;
-/// What a point kept takes of memory while a file is read, bytes: its place and colour, and its cube when thinned by spacing.
+/// What a point kept takes of memory while a file is read, bytes: its place and colour, its cube when thinned by spacing, and
+/// for a file read once (LAZ), what it was in the file until the file's bounds are known.
 pub const KEPT_BYTES: u64 = 96;
 /// The longest line a text file of points may have, bytes: a point is a hundred or so.
 const MAX_LINE: usize = 1 << 20;
@@ -37,6 +40,10 @@ pub const MAX_STATIONS: usize = 256;
 /// How wide a square of a cloud's [`Grid`] is, mm.
 const CELL: f64 = 250.0;
 
+/// What a build without the `laz` feature says of a LAZ file.
+const NO_LAZ: &str =
+    "this build of BIMCraft reads no LAZ (it was built without the `laz` feature): decompress it to LAS first (laszip or PDAL)";
+
 /// What a file of points is written as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -49,6 +56,8 @@ pub enum Format {
     Ply,
     /// ASPRS LAS 1.2 to 1.4, uncompressed.
     Las,
+    /// LAZ: LAS whose points LASzip compressed; COPC (`.copc.laz`) is one.
+    Laz,
     /// ASTM E57: every scan the file holds, placed by its pose.
     E57,
 }
@@ -62,10 +71,11 @@ impl Format {
             "xyz" | "txt" => Ok(Format::Xyz),
             "ply" => Ok(Format::Ply),
             "las" => Ok(Format::Las),
-            "laz" => Err("LAZ is compressed LAS, which BIMCraft doesn't read: decompress it to LAS first (laszip or PDAL)".into()),
+            "laz" if cfg!(feature = "laz") => Ok(Format::Laz),
+            "laz" => Err(NO_LAZ.into()),
             "e57" => Ok(Format::E57),
             "rcp" | "rcs" => Err("ReCap's RCP and RCS are closed formats: export the scan from ReCap as E57, LAS or PTS".into()),
-            _ => Err(format!("a .{ext} file isn't a point cloud BIMCraft reads: PTS, XYZ, PLY, LAS or E57")),
+            _ => Err(format!("a .{ext} file isn't a point cloud BIMCraft reads: PTS, XYZ, PLY, LAS, LAZ or E57")),
         }
     }
 }
@@ -588,13 +598,23 @@ pub fn read_from(src: &mut dyn Source, format: Format, o: &Options, budget: Opti
         }
         Ok(())
     };
-    // ponytail: the file is parsed twice, once to measure it and once to keep its points; text files pay for it.
+    // ponytail: the file is parsed twice, once to measure it and once to keep its points; text files pay for it. A LAZ file
+    // is read once: its points can't be stepped over, so a second pass would decompress every one of them again, and its
+    // header says how many it holds, so which to keep is known as it's read.
+    let known = once(src, len, format);
+    let every = known.map(|count| count.div_ceil(o.cap as u64).max(1));
     if let Some(p) = progress {
-        p.stage(bimcraft_i18n::ui_msg!("Measuring the scan"), 0);
+        match known {
+            Some(count) => p.stage(bimcraft_i18n::ui_msg!("Reading the points"), count),
+            None => p.stage(bimcraft_i18n::ui_msg!("Measuring the scan"), 0),
+        }
     }
-    let (mut stats, mut last) = (Stats::default(), 0);
-    each(src, len, format, 1, &mut |_, raw| {
+    let (mut stats, mut last, mut held) = (Stats::default(), 0, Vec::new());
+    each(src, len, format, 1, &mut |at, raw| {
         stats.add(&raw, o.scale)?;
+        if every.is_some_and(|every| at.is_multiple_of(every)) {
+            held.push(Held::of(&raw));
+        }
         look(&mut last, stats.count as u64)
     })?;
     if stats.count == 0 {
@@ -611,19 +631,64 @@ pub fn read_from(src: &mut dyn Source, format: Format, o: &Options, budget: Opti
     // Every so many, so the cap is never passed, and then one in each cube of the spacing.
     let stride = stats.count.div_ceil(o.cap).max(1);
     let mut keep = Keep { scale: o.scale, spacing: o.spacing, min: stats.min, origin, colour: stats.colour(), ..Keep::default() };
-    let mut last = 0;
-    if let Some(p) = progress {
-        p.stage(bimcraft_i18n::ui_msg!("Reading the points"), stats.count as u64);
-    }
-    each(src, len, format, stride as u64, &mut |at, raw| {
-        look(&mut last, at)?;
-        if at.is_multiple_of(stride as u64) {
-            keep.push(&raw);
+    if let Some(count) = known {
+        if stats.count as u64 != count {
+            return Err(format!("it holds {} points, and its header says {count}", stats.count));
         }
-        Ok(())
-    })?;
+        for h in &held {
+            keep.push(&h.raw());
+        }
+    } else {
+        let mut last = 0;
+        if let Some(p) = progress {
+            p.stage(bimcraft_i18n::ui_msg!("Reading the points"), stats.count as u64);
+        }
+        each(src, len, format, stride as u64, &mut |at, raw| {
+            look(&mut last, at)?;
+            if at.is_multiple_of(stride as u64) {
+                keep.push(&raw);
+            }
+            Ok(())
+        })?;
+    }
     let colours = keep.colour.as_ref().map(|_| keep.colours);
     Ok(Scan { origin, points: keep.points, colours, read: stats.count })
+}
+
+/// How many points a file holds, when that's known before it's read and reading it once is what's wanted: a LAZ file's, from
+/// its header.
+fn once(src: &mut dyn Source, size: u64, format: Format) -> Option<u64> {
+    if !matches!(format, Format::Las | Format::Laz) {
+        return None;
+    }
+    src.seek(SeekFrom::Start(0)).ok()?;
+    LasHead::read(src, size).ok().filter(|h| h.compressed).map(|h| h.count)
+}
+
+/// A point held while a file is read once, until its bounds and shades are known: its place, and its intensity and colour,
+/// which a LAZ file holds in sixteen bits and `f32` holds exactly (NaN where it has none).
+struct Held {
+    p: [f64; 3],
+    intensity: f32,
+    rgb: [f32; 3],
+}
+
+impl Held {
+    fn of(raw: &Raw) -> Held {
+        Held {
+            p: raw.p,
+            intensity: raw.intensity.map_or(f32::NAN, |i| i as f32),
+            rgb: raw.rgb.map_or([f32::NAN; 3], |c| c.map(|v| v as f32)),
+        }
+    }
+
+    fn raw(&self) -> Raw {
+        Raw {
+            p: self.p,
+            intensity: (!self.intensity.is_nan()).then_some(f64::from(self.intensity)),
+            rgb: (!self.rgb[0].is_nan()).then(|| self.rgb.map(f64::from)),
+        }
+    }
 }
 
 /// The points a read keeps, once its bounds and shades are known: one in each cube of `spacing` (from `min`), about `origin`.
@@ -765,7 +830,7 @@ fn each(
     match format {
         Format::Pts | Format::Xyz => text(&mut BufReader::with_capacity(BLOCK, src), format == Format::Pts, &mut counted),
         Format::Ply => ply(src, size, every, f),
-        Format::Las => las(src, size, every, f),
+        Format::Las | Format::Laz => las(src, size, every, f),
         Format::E57 => e57::read(src, size, &mut counted),
     }
 }
@@ -1109,10 +1174,16 @@ fn ply(src: &mut dyn Source, size: u64, every: u64, f: &mut impl FnMut(u64, Raw)
 /// The smallest record each LAS point format takes, bytes, from format 0 to 10.
 const LAS_RECORD: [usize; 11] = [20, 28, 26, 34, 57, 63, 30, 36, 38, 59, 67];
 
-/// What a LAS file's header says of its points, as far as they are read.
+/// What a LAS file's header says of its points, as far as they are read; a LAZ file's too.
 pub(super) struct LasHead {
+    /// Where its records of its own start: right after the header, bytes.
+    #[cfg_attr(not(feature = "laz"), allow(dead_code))]
+    pub(super) header: u64,
     /// Where its points start, bytes.
     pub(super) start: u64,
+    /// How many records of its own it has.
+    #[cfg_attr(not(feature = "laz"), allow(dead_code))]
+    pub(super) vlrs: u32,
     /// Whether LASzip compressed its points (LAZ).
     pub(super) compressed: bool,
     /// How long each record is, bytes.
@@ -1152,6 +1223,7 @@ impl LasHead {
             return Err(short());
         }
         let start = u64::from(u32_at(96)?);
+        let vlrs = u32_at(100)?;
         // LASzip marks a compressed file's point format with its top bit (and the one below it, in its compatibility mode).
         let byte = u8_at(104)?;
         let (format, compressed) = (byte & 0x3F, byte & 0xC0 != 0);
@@ -1183,7 +1255,7 @@ impl LasHead {
             7 | 8 | 10 => Some(30),
             _ => None,
         };
-        Ok(LasHead { start, compressed, len, count, scale, offset, colour })
+        Ok(LasHead { header, start, vlrs, compressed, len, count, scale, offset, colour })
     }
 
     /// The point a record of this file holds.
@@ -1205,11 +1277,14 @@ impl LasHead {
 }
 
 /// ASPRS LAS 1.0 to 1.4: a header, records of its own, then the points, each scaled and moved by the header. A file whose
-/// points LASzip compressed (LAZ) is refused, whatever its name says.
+/// points LASzip compressed (LAZ, COPC) is read by `laz` (without the `laz` feature, refused), whatever its name says.
 fn las(src: &mut dyn Source, size: u64, every: u64, f: &mut impl FnMut(u64, Raw) -> Result<(), String>) -> Result<(), String> {
     let h = LasHead::read(src, size)?;
     if h.compressed {
-        return Err("its points are compressed (LAZ): decompress it to LAS first (laszip or PDAL)".into());
+        #[cfg(feature = "laz")]
+        return laz::read(src, size, &h, f);
+        #[cfg(not(feature = "laz"))]
+        return Err(NO_LAZ.into());
     }
     let (start, count, len) = (h.start, h.count, h.len);
     let end = count.checked_mul(len as u64).and_then(|b| b.checked_add(start));
@@ -1237,7 +1312,7 @@ mod tests {
 
     /// A LAS file: `minor` version, point format, scale and offset, and each point's record numbers, its
     /// intensity and its colour; `gap` bytes of variable length records between the header and the points.
-    fn las(minor: u8, format: u8, scale: [f64; 3], offset: [f64; 3], gap: usize, pts: &[([i32; 3], u16, [u16; 3])]) -> Vec<u8> {
+    pub(super) fn las(minor: u8, format: u8, scale: [f64; 3], offset: [f64; 3], gap: usize, pts: &[([i32; 3], u16, [u16; 3])]) -> Vec<u8> {
         let header = if minor >= 4 { 375 } else { 227 };
         let len: usize = match format {
             0 => 20,
@@ -1319,11 +1394,17 @@ mod tests {
             ("ply", Format::Ply),
             (".las", Format::Las),
             ("E57", Format::E57),
+            #[cfg(feature = "laz")]
+            ("laz", Format::Laz),
+            #[cfg(feature = "laz")]
+            ("LAZ", Format::Laz),
         ];
         for (ext, f) in known {
             assert_eq!(Format::from_extension(ext), Ok(f), "{ext}");
         }
-        for (ext, says) in [("laz", "LAZ"), ("rcp", "ReCap"), ("rcs", "ReCap"), ("dwg", "dwg")] {
+        #[cfg(not(feature = "laz"))]
+        assert!(Format::from_extension("laz").unwrap_err().contains("`laz` feature"));
+        for (ext, says) in [("rcp", "ReCap"), ("rcs", "ReCap"), ("dwg", "dwg")] {
             let e = Format::from_extension(ext).unwrap_err();
             assert!(e.contains(says), "{ext}: {e}");
         }
@@ -1477,7 +1558,7 @@ mod tests {
         let mut nan = good.clone();
         nan[163..171].copy_from_slice(&f64::NAN.to_le_bytes());
         for (bytes, says) in [
-            (laz, "LAZ"),
+            (laz, if cfg!(feature = "laz") { "LASzip" } else { "`laz` feature" }),
             (short, "record"),
             (many, "short"),
             (past, "short"),
