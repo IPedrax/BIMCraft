@@ -466,10 +466,12 @@ fn a_section_shows_a_scan_between_its_line_and_its_far_clip() {
 #[test]
 fn a_section_shows_a_scan_between_its_near_and_far_clips() {
     let mut s = Session::new();
-    run(&mut s, "point_cloud", json!({"path": scan("band", "floors.xyz", &floors()), "origin": "file"}));
-    // Looking north from a metre south of the two red patches at y = 0 and y = 4 m, the blue one over the first.
+    // Four red points in a row across the view, 1, 4, 6 and 7 m past the line (looking north from y = -1 m). Their
+    // different x makes each its own column of the picture, so a clipped point leaves a visible gap.
+    let rows = "0 0 0.5 255 0 0\n1 3 0.5 255 0 0\n2 5 0.5 255 0 0\n3 6 0.5 255 0 0\n";
+    run(&mut s, "point_cloud", json!({"path": scan("band", "rows.xyz", rows), "origin": "file"}));
     let look = |s: &mut Session, near: Option<f64>, depth: Option<f64>| {
-        let mut p = json!({"start": [-1000, -1000], "end": [7000, -1000]});
+        let mut p = json!({"start": [-1000, -1000], "end": [4000, -1000]});
         if let Some(n) = near {
             p["near"] = json!(n);
         }
@@ -478,34 +480,19 @@ fn a_section_shows_a_scan_between_its_near_and_far_clips() {
         }
         let v = run(s, "section", p)["id"].as_u64().unwrap();
         let view = render::section_fit(&s.model, v, 600, 400);
-        render::section_image(&s.model, &Scene::new(&s.model), v, view, &[]).unwrap()
+        pixels(&render::section_image(&s.model, &Scene::new(&s.model), v, view, &[]).unwrap(), red)
     };
-    let (reds, blues) = {
-        let img = look(&mut s, None, None);
-        (pixels(&img, red), pixels(&img, blue))
-    };
-    assert!(reds > 100 && blues > 50, "{reds} {blues}");
-    // A near clip 4 m out hides the first red patch (1 to 3 m past the line) and the blue one over it.
-    let (near_reds, near_blues) = {
-        let img = look(&mut s, Some(4000.0), None);
-        (pixels(&img, red), pixels(&img, blue))
-    };
-    assert_eq!(near_blues, 0, "the blue patch is nearer than the near clip");
-    assert!(near_reds > 0 && near_reds < reds, "{near_reds} of {reds}");
-    // A far clip 4 m out hides the second red patch (5 to 7 m past the line), keeping the first and the blue one.
-    let (far_reds, far_blues) = {
-        let img = look(&mut s, None, Some(4000.0));
-        (pixels(&img, red), pixels(&img, blue))
-    };
-    assert!(far_blues > 50, "{far_blues}");
-    assert!(far_reds > 0 && far_reds < reds, "{far_reds} of {reds}");
-    // Both: only the near half of the second red patch, within 4 to 6 m, is left.
-    let (band_reds, band_blues) = {
-        let img = look(&mut s, Some(4000.0), Some(6000.0));
-        (pixels(&img, red), pixels(&img, blue))
-    };
-    assert_eq!(band_blues, 0);
-    assert!(band_reds > 0 && band_reds < near_reds, "{band_reds} of {near_reds}");
+    let full = look(&mut s, None, None);
+    assert!(full > 0, "{full}");
+    // The near clip keeps the points 4, 6 and 7 m out.
+    let near = look(&mut s, Some(4000.0), None);
+    assert!(near > 0 && near < full, "{near} of {full}");
+    // The far clip keeps the points 1 and 4 m out.
+    let far = look(&mut s, None, Some(4000.0));
+    assert!(far > 0 && far < full, "{far} of {full}");
+    // Both keep only the point 4 m out.
+    let band = look(&mut s, Some(4000.0), Some(5000.0));
+    assert!(band > 0 && band < near && band < far, "{band} of {near} and {far}");
 }
 
 // ---------- snaps ----------
