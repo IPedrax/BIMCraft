@@ -5154,8 +5154,8 @@ msgstr "Schneidet"
 msgid "Cylinder"
 msgstr "Zylinder"
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5862
+#: crates/core/src/render.rs:6308
 msgid "DN"
 msgstr "DN"
 
@@ -11383,7 +11383,7 @@ msgstr "NBR 17068: 2 bis 3 mm Überstand"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: Zielmarke im Plan (±0.00), gleichseitiges Dreieck im Schnitt"
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4198
 msgid "NOT ENCLOSED"
 msgstr "NICHT UMSCHLOSSEN"
 
@@ -14494,7 +14494,7 @@ msgstr ""
 msgid "Query"
 msgstr ""
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4198
 msgid "REDUNDANT"
 msgstr "REDUNDANT"
 
@@ -19963,8 +19963,8 @@ msgstr ""
 msgid "Type:"
 msgstr "Typ:"
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5862
+#: crates/core/src/render.rs:6308
 msgid "UP"
 msgstr "OBEN"
 
