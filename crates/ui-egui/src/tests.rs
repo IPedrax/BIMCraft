@@ -4616,6 +4616,22 @@ fn a_multi_category_schedule_is_made_from_the_new_schedule_dialog_and_lists_wall
 }
 
 #[test]
+fn a_material_takeoff_is_made_from_the_schedules_list_and_opened() {
+    let mut h = app(SAMPLE);
+    let before = ids(&h, "schedule").len();
+    press(&mut h, "View");
+    press(&mut h, "Schedules");
+    press(&mut h, "Material Takeoff…");
+    press(&mut h, "OK");
+    let after = ids(&h, "schedule");
+    assert_eq!(after.len(), before + 1, "the dialog made one view");
+    let sc = *after.iter().max().unwrap();
+    let Some(Element::Schedule(s)) = h.state().session.model.elements.get(sc) else { panic!("no schedule {sc}") };
+    assert!(s.takeoff.is_some(), "it is a material takeoff, not an element schedule");
+    assert_eq!(h.state().sheet, Sheet::Table(sc), "its table is open");
+}
+
+#[test]
 fn a_schedule_of_the_projects_own_is_deleted_from_the_browser_and_its_tab_closes() {
     let mut h = app(&format!("{SAMPLE}\nschedule {{\"name\": \"Extras\", \"category\": \"multicategory\"}}"));
     let sc = find(&h, |e| matches!(e, Element::Schedule(s) if s.name == "Extras"));
