@@ -932,3 +932,81 @@ fn a_session_that_may_only_read_builds_no_index_and_a_copy_over_co_work_keeps_th
     let cloud = copy.clouds.get("floor").unwrap();
     assert!(cloud.index().is_some() && cloud.indexed().is_none());
 }
+
+// ---------- Streaming the 3D view, and eye-dome lighting ----------
+
+#[test]
+fn eye_dome_lighting_darkens_what_lies_behind_its_neighbours_and_leaves_a_flat_surface_lit() {
+    // Two planes facing a parallel camera: the left half a metre nearer than the right.
+    let (w, h) = (20, 10);
+    let depth: Vec<f32> = (0..w * h).map(|k| if k % w < 10 { 500.0 } else { 0.0 }).collect();
+    let lit = crate::view3d::eye_dome(&depth, (w, h), None);
+    let at = |x: usize, y: usize| lit[y * w + x];
+    // The far plane's pixels beside the near one are dark; the rest of both, flat, are lit whole.
+    assert!(at(10, 5) < 0.2 && at(11, 5) < 0.2, "{} {}", at(10, 5), at(11, 5));
+    assert!((at(15, 5) - 1.0).abs() < 1e-6 && (at(3, 5) - 1.0).abs() < 1e-6 && (at(9, 5) - 1.0).abs() < 1e-6);
+    // Nothing at a pixel: lit, untouched.
+    let empty = vec![f32::NEG_INFINITY; w * h];
+    assert!(crate::view3d::eye_dome(&empty, (w, h), Some(5000.0)).iter().all(|&l| l == 1.0));
+}
+
+#[test]
+fn a_3d_view_with_eye_dome_lighting_draws_a_scan_s_edges_dark_and_says_so() {
+    let mut s = Session::new();
+    // Two red sheets, one a metre in front of the other and half over it.
+    let mut text = sheet(Some([255, 0, 0]));
+    for line in sheet(Some([255, 0, 0])).lines() {
+        let v: Vec<f64> = line.split(' ').map(|x| x.parse().unwrap()).collect();
+        text += &format!("{} -1 {} 255 0 0\n", v[0] + 1.0, v[2] + 1.0);
+    }
+    run(&mut s, "point_cloud", json!({"path": scan("dome", "two.xyz", &text)}));
+    let picture = |s: &Session| {
+        let scene = Scene::new(&s.model);
+        scene.render_in(&scene.fit(AZIMUTH, ELEVATION, 320, 240), &[], &Look::of_3d(&s.model))
+    };
+    let dark = |img: &Image| pixels(img, |c| c.0 < 120 && c.1 < 40 && c.2 < 40);
+    let before = dark(&picture(&s));
+    let r = run(&mut s, "graphic_display_options", json!({"eye_dome": true}));
+    assert_eq!(r["eye_dome"], true, "{r}");
+    let after = dark(&picture(&s));
+    assert!(after > before + 50, "{before} {after}");
+    // Off again, as it was.
+    run(&mut s, "graphic_display_options", json!({"eye_dome": false}));
+    assert_eq!(dark(&picture(&s)), before);
+}
+
+#[test]
+fn a_view_streams_the_nodes_it_wants_most_first_and_packs_each_for_the_card_where_its_points_are() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let (s, _, _) = indexed("stream");
+    let scene = Scene::new(&s.model);
+    let far = scene.fit(AZIMUTH, ELEVATION, 320, 240);
+    let near = crate::view3d::Camera { scale: far.scale * 40.0, ..far };
+    let look = Look::default();
+    let wanted = crate::view3d::scan_wanted(&s.model, &near, &look, 10_000_000);
+    assert!(!wanted.is_empty());
+    // Nothing is read to say what's wanted, and it's what the picture's detail reads, in its order.
+    let detail = crate::view3d::scan_detail(&s.model, &near, &look, 10_000_000, true);
+    assert_eq!(detail.points(), wanted.iter().map(|w| w.index.source().node(w.node).unwrap().1 as usize).sum::<usize>());
+    // A node packed for the card comes back where its points are, to within its step, in their colour.
+    let w = &wanted[0];
+    let points = w.index.fetch(w.node).unwrap();
+    let origin = [1000.0, 2000.0, 0.0];
+    let packed = crate::view3d::node_dots(&look, origin, w, &points);
+    assert_eq!((packed.count as usize, packed.words.len()), (points.points.len(), 3 * points.points.len()));
+    let pc = match s.model.elements.get(w.owner) {
+        Some(crate::model::Element::PointCloud(pc)) => pc.clone(),
+        _ => panic!("a point cloud"),
+    };
+    let place = s.model.cloud_place(&pc);
+    for (i, p) in points.points.iter().enumerate() {
+        let [xy, z, colour] = [packed.words[3 * i], packed.words[3 * i + 1], packed.words[3 * i + 2]];
+        let q = [xy & 0xFFFF, xy >> 16, z];
+        let at = place(*p);
+        for a in 0..3 {
+            let back = f64::from(packed.min[a]) + f64::from(q[a]) * f64::from(packed.step[a]) + origin[a];
+            assert!((back - at[a]).abs() <= f64::from(packed.step[a]), "{a}: {back} {}", at[a]);
+        }
+        assert_eq!(colour, 255, "red");
+    }
+}

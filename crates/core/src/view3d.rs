@@ -73,6 +73,10 @@ pub struct DisplayOptions {
     pub silhouette: u32,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ambient_shadows: bool,
+    /// Eye-dome lighting: a scan's points shaded where they lie behind their neighbours on the screen, so its edges read without
+    /// normals (Boucheny's, as Potree and CloudCompare draw it).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub eye_dome: bool,
 }
 
 fn shown() -> bool {
@@ -85,7 +89,7 @@ fn is_none(px: &u32) -> bool {
 
 impl Default for DisplayOptions {
     fn default() -> DisplayOptions {
-        DisplayOptions { edges: true, silhouette: 0, ambient_shadows: false }
+        DisplayOptions { edges: true, silhouette: 0, ambient_shadows: false, eye_dome: false }
     }
 }
 
@@ -2758,6 +2762,53 @@ pub fn scene_kept_in(before: &Model, after: &Model, view: Option<Id>) -> bool {
         && Look::of_3d_view(before, view).with_section_box(None) == Look::of_3d_view(after, view).with_section_box(None)
 }
 
+/// How much eye-dome lighting darkens: Potree's 300 at a strength of 1.
+const DOME: f64 = 300.0;
+
+/// How lit each pixel of a picture whose depths are `depth` is by eye-dome lighting, 0 to 1: of its four neighbours two pixels
+/// off, how far (in the log of the distance from the eye) it lies behind those nearer, averaged, and shaded by `exp(-DOME x)`.
+/// A depth is nearness as a picture keeps it: `d² / a - d` in perspective, with the eye `eye` from the target, else mm toward
+/// the camera. A pixel with nothing at it, or whose neighbours all lie behind it, is lit whole.
+pub fn eye_dome(depth: &[f32], (w, h): (usize, usize), eye: Option<f64>) -> Vec<f32> {
+    let near = depth.iter().copied().filter(|z| z.is_finite()).fold(f32::NEG_INFINITY, f32::max);
+    // The distance from the eye, mm, which the log is taken of.
+    let far = |z: f32| -> Option<f64> {
+        if !z.is_finite() {
+            return None;
+        }
+        let z = f64::from(z);
+        let a = match eye {
+            Some(e) if z + e > 0.0 => e * e / (z + e),
+            Some(_) => return None,
+            None => f64::from(near) - z + 1000.0,
+        };
+        (a > 0.0).then(|| a.ln())
+    };
+    let logs: Vec<Option<f64>> = depth.iter().map(|&z| far(z)).collect();
+    let mut out = vec![1.0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let k = y * w + x;
+            let Some(Some(me)) = logs.get(k) else { continue };
+            let (mut sum, mut n) = (0.0, 0);
+            for (dx, dy) in [(2_i64, 0_i64), (-2, 0), (0, 2), (0, -2)] {
+                let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+                if nx < 0 || ny < 0 || nx >= w as i64 || ny >= h as i64 {
+                    continue;
+                }
+                n += 1;
+                if let Some(Some(them)) = logs.get(ny as usize * w + nx as usize) {
+                    sum += (me - them).max(0.0);
+                }
+            }
+            if n > 0 {
+                out[k] = (-(sum / f64::from(n)) * DOME).exp() as f32;
+            }
+        }
+    }
+    out
+}
+
 /// The most points a picture draws, as Revit's density does: past it, every so many of each scan's.
 pub const DRAWN: usize = 2_000_000;
 
@@ -3458,7 +3509,7 @@ impl Detail {
 /// The points of the model's indexed scans `cam` sees below the top the project holds, as `look` shows them: of each scan, the
 /// nodes of its index whose points are more than [`crate::cloud::lod::SPREAD`] px apart in the picture's parent, ranked across
 /// every scan by how big they are on the screen, no more than `most` points among them all. With `load`, a node not yet read is read; without, it's counted `missing`.
-pub fn scan_detail(m: &Model, cam: &Camera, look: &Look, most: usize, load: bool) -> Detail {
+fn chosen(m: &Model, cam: &Camera, look: &Look, most: usize) -> (Vec<(Scan, Arc<crate::cloud::lod::Indexed>)>, Vec<(usize, usize)>) {
     let plain = look.is_plain();
     let scans: Vec<(Scan, Arc<crate::cloud::lod::Indexed>, &crate::model::PointCloud)> = scans_of(m)
         .into_iter()
@@ -3469,9 +3520,8 @@ pub fn scan_detail(m: &Model, cam: &Camera, look: &Look, most: usize, load: bool
             Some((s, ix, pc))
         })
         .collect();
-    let mut out = Detail::default();
     if scans.is_empty() {
-        return out;
+        return (Vec::new(), Vec::new());
     }
     let k = cam.projector();
     let (w, h) = (f64::from(cam.width), f64::from(cam.height));
@@ -3515,8 +3565,17 @@ pub fn scan_detail(m: &Model, cam: &Camera, look: &Look, most: usize, load: bool
     // One budget for them all, the nodes taken by how big they are on the screen whichever scan they're of.
     let asked: Vec<(&crate::cloud::lod::Indexed, &crate::cloud::lod::Seen<'_>)> =
         scans.iter().zip(&seens).map(|((_, ix, _), seen)| (ix.as_ref(), seen.as_ref())).collect();
-    for (k, i) in crate::cloud::lod::select(&asked, most) {
-        let Some((scan, ix, _)) = scans.get(k) else { continue };
+    let picked = crate::cloud::lod::select(&asked, most);
+    drop(asked);
+    drop(seens);
+    (scans.into_iter().map(|(s, ix, _)| (s, ix)).collect(), picked)
+}
+
+pub fn scan_detail(m: &Model, cam: &Camera, look: &Look, most: usize, load: bool) -> Detail {
+    let (scans, picked) = chosen(m, cam, look, most);
+    let mut out = Detail::default();
+    for (k, i) in picked {
+        let Some((scan, ix)) = scans.get(k) else { continue };
         match if load { ix.fetch(i) } else { ix.cached(i) } {
             Some(p) => out.scans.push(Scan {
                 points: Arc::clone(&p.points),
@@ -3529,6 +3588,81 @@ pub fn scan_detail(m: &Model, cam: &Camera, look: &Look, most: usize, load: bool
         }
     }
     out
+}
+
+/// A node of a scan's index a 3D picture wants ([`scan_wanted`]): the point cloud it's of, its index and its number there.
+#[derive(Clone)]
+pub struct Want {
+    pub owner: Id,
+    pub index: Arc<crate::cloud::lod::Indexed>,
+    pub node: usize,
+    scan: Scan,
+}
+
+impl Want {
+    /// Which node it is, of all the indexes open: what a cache of them keys it by.
+    pub fn key(&self) -> (u64, usize) {
+        (self.index.uid(), self.node)
+    }
+}
+
+/// The nodes of the model's indexed scans a picture from `cam` wants, most needed first, ranked across every scan as
+/// [`scan_detail`] ranks them, no more than `most` points: what a view streams, reading what it hasn't on threads of its own and
+/// drawing what it has. Nothing is read here.
+pub fn scan_wanted(m: &Model, cam: &Camera, look: &Look, most: usize) -> Vec<Want> {
+    let (scans, picked) = chosen(m, cam, look, most);
+    picked
+        .into_iter()
+        .filter_map(|(k, node)| {
+            let (scan, ix) = scans.get(k)?;
+            Some(Want { owner: scan.owner, index: Arc::clone(ix), node, scan: scan.clone() })
+        })
+        .collect()
+}
+
+/// A node's points as a card draws them ([`node_dots`]): each a place within the node's box in the model, quantized to 16 bits
+/// along each axis from `min` by `step` (mm, from the mesh's origin), and its colour as the view gives it. Six words of 16 bits a
+/// point and a colour of 32: `words` holds `x | y << 16`, `z`, `colour` for each.
+pub struct NodeDots {
+    pub owner: Id,
+    pub min: [f32; 3],
+    pub step: [f32; 3],
+    pub words: Vec<u32>,
+    pub count: u32,
+}
+
+/// Node `want`'s points `points`, placed as its scan is and coloured as `look` colours them, for a card whose mesh is about
+/// `origin`.
+pub fn node_dots(look: &Look, origin: P3, want: &Want, points: &crate::cloud::lod::Points) -> NodeDots {
+    let scan = Scan {
+        points: Arc::clone(&points.points),
+        colours: points.colours.clone(),
+        intensity: points.intensity.clone(),
+        ..want.scan.clone()
+    };
+    let paint = scan.paint(look.is_plain(), look);
+    let placed: Vec<P3> = scan.points.iter().map(|p| scan.place(*p)).collect();
+    let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+    for p in &placed {
+        for a in 0..3 {
+            lo[a] = lo[a].min(p[a]);
+            hi[a] = hi[a].max(p[a]);
+        }
+    }
+    let step: [f64; 3] = std::array::from_fn(|a| ((hi[a] - lo[a]) / 65535.0).max(1e-6));
+    let mut words = Vec::with_capacity(placed.len() * 3);
+    for (i, p) in placed.iter().enumerate() {
+        let q: [u32; 3] = std::array::from_fn(|a| ((p[a] - lo[a]) / step[a]).round().clamp(0.0, 65535.0) as u32);
+        let Rgb(r, g, b) = paint.colour(i, *p);
+        words.extend([q[0] | q[1] << 16, q[2], u32::from(r) | u32::from(g) << 8 | u32::from(b) << 16]);
+    }
+    NodeDots {
+        owner: want.owner,
+        min: std::array::from_fn(|a| (lo[a] - origin[a]) as f32),
+        step: step.map(|v| v as f32),
+        count: placed.len() as u32,
+        words,
+    }
 }
 
 impl Scene {
@@ -4229,7 +4363,18 @@ impl Scene {
         // The scans' points, each a dot in its colour where nothing opaque is nearer; in a section's picture, those between its
         // line and its far clip. A pixel a point shows holds its scan's slot, after the triangles', and the point's colour.
         let first = self.tris.len();
-        let dots = self.dots((cam, clip, cut), (w, h), |s| plain || look.shows(s.owner), (plain, look, more), (&mut depth, &mut hit));
+        let mut dots = self.dots((cam, clip, cut), (w, h), |s| plain || look.shows(s.owner), (plain, look, more), (&mut depth, &mut hit));
+        // Eye-dome lighting: each point darkened by how far it lies behind its neighbours on the screen.
+        if display.eye_dome && !dots.is_empty() {
+            let dome = eye_dome(&depth, (w, h), cam.eye_distance());
+            for (k, c) in dots.iter_mut().enumerate() {
+                if hit.get(k).is_some_and(|&t| t as usize >= first && t != u32::MAX)
+                    && let Some(&l) = dome.get(k)
+                {
+                    *c = Rgb((f32::from(c.0) * l) as u8, (f32::from(c.1) * l) as u8, (f32::from(c.2) * l) as u8);
+                }
+            }
+        }
         // Only a picture with something in it to see through needs the second pass, and its buffers.
         let through_any = self.tris.iter().any(|t| shown(t) && see_through(t));
         let (mut seen, mut seen_lit, mut near) = (Vec::new(), Vec::new(), Vec::new());
@@ -7246,7 +7391,7 @@ mod tests {
         let r = s.execute("GD", &json!({"view": "{3D}", "edges": false})).unwrap();
         assert_eq!(r, json!({"view": v, "edges": false, "silhouette": 3, "ambient_shadows": true}));
         let shown = Look::of_3d(&s.model).display();
-        assert_eq!(shown, DisplayOptions { edges: false, silhouette: 3, ambient_shadows: true });
+        assert_eq!(shown, DisplayOptions { edges: false, silhouette: 3, ambient_shadows: true, eye_dome: false });
         // Kept in the file, and read back.
         let (m, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
         assert!(left_out.is_empty(), "{left_out:?}");
@@ -7274,7 +7419,7 @@ mod tests {
         assert!(wide.check().unwrap_err().contains("silhouette 40 px wide"));
         // Undone, a step at a time.
         s.execute("undo", &json!({})).unwrap();
-        assert_eq!(Look::of_3d(&s.model).display(), DisplayOptions { edges: true, silhouette: 3, ambient_shadows: true });
+        assert_eq!(Look::of_3d(&s.model).display(), DisplayOptions { edges: true, silhouette: 3, ambient_shadows: true, eye_dome: false });
         s.execute("undo", &json!({})).unwrap();
         assert_eq!(Look::of_3d(&s.model).display(), DisplayOptions::default());
     }

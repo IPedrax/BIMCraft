@@ -207,6 +207,11 @@ impl Indexed {
         })
     }
 
+    /// Its number among the indexes open: what a cache of their nodes keys them by.
+    pub fn uid(&self) -> u64 {
+        self.uid
+    }
+
     /// Where its nodes come from.
     pub fn source(&self) -> &dyn NodeSource {
         self.source.as_ref()

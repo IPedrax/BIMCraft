@@ -3451,10 +3451,12 @@ other_files(
         ui_msg!("Graphic Display Options"),
         &["GD"],
         "{view?: a 3D view's name or id ({3D} unless given), edges?: true | false, silhouette?: px, ambient_shadows?: true | \
-         false} how a 3D view draws its edges and shadows, as Revit's Graphic Display Options: `edges`, the lines where its \
+         false, eye_dome?: true | false} how a 3D view draws its edges and shadows, as Revit's Graphic Display Options: `edges`, the lines where its \
          surfaces meet in Shaded (on unless turned off; Hidden Line always draws them); `silhouette`, an outline that many \
          pixels wide (a whole number, 0 to 10; 0, the default, for none) round what stands in front of what is further off \
-         or of nothing; `ambient_shadows`, soft shadows where faces meet inside a corner (off unless turned on). What is left \
+         or of nothing; `ambient_shadows`, soft shadows where faces meet inside a corner (off unless turned on); `eye_dome`, \
+         eye-dome lighting, a point cloud's points darkened where they lie behind their neighbours, so its edges read (off \
+         unless turned on). What is left \
          out stays as it was; with none of them it only says what the view has",
         graphic_display_options,
     ),
@@ -7059,6 +7061,7 @@ fn graphic_display_options(s: &mut Session, p: &Value) -> R {
         edges: on("edges")?.unwrap_or(was.edges),
         silhouette: silhouette.unwrap_or(was.silhouette),
         ambient_shadows: on("ambient_shadows")?.unwrap_or(was.ambient_shadows),
+        eye_dome: on("eye_dome")?.unwrap_or(was.eye_dome),
     };
     let view = match view {
         None if now != was => Some(s.model_mut().insert(Element::View3D(View3D::default_view()))),
@@ -7069,7 +7072,10 @@ fn graphic_display_options(s: &mut Session, p: &Value) -> R {
     {
         v3.display = now;
     }
-    Ok(json!({"view": view, "edges": now.edges, "silhouette": now.silhouette, "ambient_shadows": now.ambient_shadows}))
+    Ok(json!({
+        "view": view, "edges": now.edges, "silhouette": now.silhouette, "ambient_shadows": now.ambient_shadows,
+        "eye_dome": now.eye_dome,
+    }))
 }
 
 /// `[x, y, z]` in mm within the model's limits, or an error naming `key`.
