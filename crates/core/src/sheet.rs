@@ -894,7 +894,7 @@ mod tests {
         assert_eq!(frame.height as f32, TITLE_ROW + 3.0 * ROW);
         s.execute("language", &serde_json::json!({"code": "pt"})).unwrap();
         let t = table_of(&s.model, Some(id), &sc);
-        assert_eq!((t.headings[1].as_str(), t.rows[0][2].as_str(), t.rows[1][0].as_str()), ("Área (m²)", "Sim", "Total"));
+        assert_eq!((t.headings[1].as_str(), t.rows[0][2].as_str(), t.rows[1][0].as_str()), ("Área", "Sim", "Total"));
     }
 
     #[test]

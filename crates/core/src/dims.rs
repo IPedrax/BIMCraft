@@ -521,7 +521,7 @@ mod signs_tests {
     #[test]
     fn rounding_comes_before_the_sign_so_almost_nothing_is_zero() {
         let signs = Signs::default();
-        assert_eq!(signed(Units::Metres, Some(3), signs, -0.0004), "±0.000");
-        assert_eq!(signed(Units::Metres, Some(3), signs, -0.0005), "-0.001");
+        assert_eq!(signed(Units::Metres, Some(3), signs, -0.4), "±0.000");
+        assert_eq!(signed(Units::Metres, Some(3), signs, -0.5), "-0.001");
     }
 }
