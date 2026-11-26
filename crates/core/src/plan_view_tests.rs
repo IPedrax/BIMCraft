@@ -121,10 +121,10 @@ fn a_duplicate_is_a_plan_view_of_the_same_level_named_after_it_and_numbered() {
 }
 
 #[test]
-fn only_plans_are_duplicated_and_the_mode_is_one_of_three() {
+fn unsupported_views_are_not_duplicated_and_the_mode_is_one_of_three() {
     let mut s = house();
-    run(&mut s, "elevation", json!({"facing": "north"}));
-    let e = s.execute("duplicate_view", &json!({"view": "North"})).unwrap_err();
+    run(&mut s, "section", json!({"name": "Cut", "start": [0, 0], "end": [8000, 0]}));
+    let e = s.execute("duplicate_view", &json!({"view": "Cut"})).unwrap_err();
     assert!(e.contains("isn't a plan"), "{e}");
     let e = s.execute("duplicate_view", &json!({"view": "Level 1", "mode": "twin"})).unwrap_err();
     assert!(e.contains("duplicate, detailing or dependent"), "{e}");
