@@ -8,7 +8,7 @@
 //! An upright wall joined at an end to a slanted one is lofted the same way ([`lofted`]): its end follows the slanted wall's face
 //! up the wall, as Revit's does; an edited profile's too, each stretch between its edges' planes.
 
-use super::{Axis, Bound, Hole, Index, Plane, arms, bounds, cap_heights, cap_with, faces_at, hole, openings_of, profile};
+use super::{Axis, Bound, Hole, Index, Plane, arms, boundaries, bounds, cap_heights, cap_with, faces_at, hole, lean, openings_of, profile};
 use crate::geom::{self, P2};
 use crate::model::{Element, Id, Model};
 
@@ -203,6 +203,44 @@ fn loft(ring: &impl Fn(f64, f64) -> Vec<P2>, (under, over): (&Level, &Level), wi
         return None;
     }
     Some(closed(bottom, top))
+}
+
+/// The solid layer `k` of wall `id` fills round a piece of it whose box is `[lo, hi]`, leaning with the wall's faces: at each
+/// height between the layer's two boundaries ([`boundaries`]) as they lean and widen there ([`faces_at`]), run on past the
+/// wall's ends, and an outer layer past its face, so the part of the piece within it is that layer's, its mitred ends included.
+/// None where `k` is no layer.
+pub(crate) fn layer_slab(m: &Model, id: Id, k: usize, [lo, hi]: [P3; 2]) -> Option<Piece> {
+    let w = m.wall(id)?;
+    let b = boundaries(m, w);
+    let (&outer, &inner) = (b.get(k)?, b.get(k + 1)?);
+    let last = b.len().saturating_sub(2);
+    let slant = if w.slant.is_finite() { w.slant.clamp(-super::MAX_SLANT, super::MAX_SLANT) } else { 0.0 };
+    let wide = 1.0 / slant.to_radians().cos();
+    let thick = m.thickness(w).abs() * wide + 1.0;
+    let axis = Axis::of(w);
+    let len = axis.length();
+    // Past its ends as far as the piece reaches, no farther round an arc than its radius.
+    let reach = (P2(hi[0], hi[1]).dist(P2(lo[0], lo[1])) + thick).min(axis.radius().unwrap_or(f64::INFINITY));
+    // A line across it at height `z`, kept on its own side of an arc's centre.
+    let line = |off: f64, z: f64| {
+        let off = off * wide + lean(m, w, z);
+        let off = match axis.arc() {
+            Some((_, r, _, sweep)) if sweep > 0.0 => off.min(r - 1.0),
+            Some((_, r, _, _)) => off.max(1.0 - r),
+            None => off,
+        };
+        let mut pts = vec![axis.at(0.0, off) - axis.tangent(0.0) * reach];
+        pts.extend(if axis.arc().is_some() { axis.points(0.0, len, off) } else { Vec::new() });
+        pts.push(axis.at(len, off) + axis.tangent(len) * reach);
+        pts
+    };
+    let ring = |z: f64| -> Vec<P3> {
+        let (a, b) = (if k == 0 { outer + thick } else { outer }, if k == last { inner - thick } else { inner });
+        let mut r = line(a, z);
+        r.extend(line(b, z).into_iter().rev());
+        r.into_iter().map(|q| [q.0, q.1, z]).collect()
+    };
+    Some(closed(ring(lo[2] - 1.0), ring(hi[2] + 1.0)))
 }
 
 /// The closed solid between `bottom` and `top`, corner for corner: its two ends, and a side between each two corners.

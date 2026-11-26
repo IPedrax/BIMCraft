@@ -5155,8 +5155,8 @@ msgstr "剪切"
 msgid "Cylinder"
 msgstr "圓柱體"
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5862
+#: crates/core/src/render.rs:6308
 msgid "DN"
 msgstr "下"
 
@@ -11384,7 +11384,7 @@ msgstr "NBR 17068：延伸 2 至 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492：平面採用圓環靶心 (±0.00)，剖面採用等邊三角形"
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4198
 msgid "NOT ENCLOSED"
 msgstr "未封閉"
 
@@ -14495,7 +14495,7 @@ msgstr ""
 msgid "Query"
 msgstr ""
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4198
 msgid "REDUNDANT"
 msgstr "冗餘"
 
@@ -19964,8 +19964,8 @@ msgstr ""
 msgid "Type:"
 msgstr "類型："
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5862
+#: crates/core/src/render.rs:6308
 msgid "UP"
 msgstr "上"
 
