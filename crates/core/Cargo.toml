@@ -9,6 +9,11 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["laz"]
+# Reads LAZ point clouds (the laz crate is Apache-2.0 only, so a binary built with it is Apache-2.0).
+laz = ["dep:laz"]
+
 [dependencies]
 bimcraft-i18n = { workspace = true }
 serde = { workspace = true }
@@ -25,6 +30,8 @@ encoding_rs = { workspace = true }
 getrandom = { workspace = true }
 tempfile = { workspace = true }
 rayon = { workspace = true }
+# LAZ (and COPC) point clouds, through the laz crate, Apache-2.0 only: on by default, and a build without it refuses LAZ.
+laz = { workspace = true, optional = true }
 ttf-parser = { workspace = true }
 proj4rs = { workspace = true }
 crs-definitions = { workspace = true }

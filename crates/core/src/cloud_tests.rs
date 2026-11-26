@@ -101,8 +101,9 @@ fn units_spacing_and_files_it_cant_take() {
     for (p, says) in [
         (json!({"path": feet, "units": "furlong", "name": "f2"}), "mm, cm, m, in, ft"),
         (json!({"path": feet, "spacing": -1, "name": "f3"}), "spacing"),
-        (json!({"path": scan("units", "plan.dwg", "x")}), "PTS, XYZ, PLY, LAS or E57"),
-        (json!({"path": scan("units", "scan.laz", "x")}), "LAZ"),
+        (json!({"path": scan("units", "plan.dwg", "x")}), "PTS, XYZ, PLY, LAS, LAZ or E57"),
+        // A LAZ file is read as LAS whose points are compressed: one that isn't LAS at all says so.
+        (json!({"path": scan("units", "scan.laz", "x")}), if cfg!(feature = "laz") { "LASF" } else { "`laz` feature" }),
         (json!({"path": scan("units", "gone", "x").replace("gone", "not-there.xyz")}), "not-there.xyz"),
         (json!({"path": scan("units", "bad.xyz", "0 0 zero\n")}), "line 1"),
         (json!({}), "path"),
@@ -562,4 +563,43 @@ fn a_project_file_with_too_many_scans_is_refused_before_the_extra_one_is_unpacke
         let e = e.unwrap_err();
         assert!(e.contains("scans") && e.contains(&MAX_CLOUDS.to_string()), "{e}");
     }
+}
+
+#[test]
+fn a_scan_read_ahead_on_another_session_is_placed_by_point_cloud_without_reading_it_again() {
+    let path = scan("ahead", "box.xyz", BOX);
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"name": "Level 9", "elevation": 30000}));
+    let before = s.history().len();
+    let params = json!({"path": path.clone(), "units": "m"});
+    let progress = std::sync::Arc::new(crate::progress::Progress::new());
+    let read = Session::read_scan_ahead(std::sync::Arc::clone(&s.model), s.path.clone(), &params, Some(progress)).unwrap();
+    // Reading it ahead changed nothing here.
+    assert_eq!((s.history().len(), s.model.clouds.len()), (before, 0));
+    // The file is gone: what places it is what was read.
+    std::fs::remove_file(&path).unwrap();
+    s.give_scan(read.clone());
+    let r = run(&mut s, "point_cloud", params.clone());
+    assert_eq!((r["points"].as_u64(), r["read"].as_u64()), (Some(4), Some(4)), "{r}");
+    assert_eq!(s.history().len(), before + 1, "one undo step");
+    // A scan read for other options, or for another file, is not taken: the file is read, and it's gone.
+    s.give_scan(read.clone());
+    let e = fails(&mut s, "point_cloud", json!({"path": path.clone(), "units": "mm", "name": "other"}));
+    assert!(e.contains("box.xyz"), "{e}");
+    // Nor one read before the project's other scans took some of its room: it would have kept more than it now may.
+    s.give_scan(read);
+    let e = fails(&mut s, "point_cloud", json!({"path": path.clone(), "units": "m", "name": "again"}));
+    assert!(e.contains("box.xyz"), "{e}");
+    // One read now is taken once, whatever the new scan is named: the next one reads the file.
+    let again = json!({"path": scan("ahead", "box.xyz", BOX), "units": "m", "name": "again"});
+    let read = Session::read_scan_ahead(std::sync::Arc::clone(&s.model), None, &again, None).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    s.give_scan(read);
+    run(&mut s, "point_cloud", again.clone());
+    assert!(fails(&mut s, "point_cloud", json!({"path": path.clone(), "units": "m", "name": "thrice"})).contains("box.xyz"));
+    // A refusal reading ahead is the command's.
+    let Err(e) = Session::read_scan_ahead(std::sync::Arc::clone(&s.model), None, &json!({"path": path, "name": "gone"}), None) else {
+        panic!("a file that's gone was read");
+    };
+    assert!(e.contains("box.xyz"), "{e}");
 }

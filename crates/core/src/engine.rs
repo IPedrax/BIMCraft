@@ -214,6 +214,10 @@ pub struct Session {
     pub author: Option<String>,
     /// How far a long command (`open`) has got, and its Cancel: a front end that runs it on a thread of its own reads it.
     pub progress: Option<Arc<crate::progress::Progress>>,
+    /// A scan read ahead, for the next `point_cloud` to take when it's for the same files and options ([`Session::give_scan`]).
+    pub(crate) scan_read: Option<crate::cloud::ScanRead>,
+    /// Whether `point_cloud` keeps the scan it read in `scan_read`: a session reading one ahead ([`Session::read_scan_ahead`]).
+    pub(crate) keep_scan: bool,
     /// Whether a Co-Work guest's command is running ([`crate::cowork::run_for_guest`]): then no command may read or write a file, so a
     /// guest never reaches the host's disk.
     pub(crate) no_files: bool,
@@ -303,6 +307,8 @@ impl Session {
             read_only: None,
             author: None,
             progress: None,
+            scan_read: None,
+            keep_scan: false,
             no_files: false,
             clipboard: None,
             steps_made: 0,
@@ -376,6 +382,30 @@ impl Session {
         self.verified = Some(Arc::clone(&self.model));
         self.undo.clear();
         self.redo.clear();
+    }
+
+    /// Reads the scan `point_cloud` with `params` would bring into `model` (opened from `path`), without changing anything:
+    /// on a session of its own, so a front end can do it on a thread of its own, `progress` saying how far it has got and its
+    /// Cancel stopping it. What it read goes to the session that places it with [`Session::give_scan`]; a refusal is the
+    /// command's.
+    pub fn read_scan_ahead(
+        model: Arc<Model>,
+        path: Option<PathBuf>,
+        params: &Value,
+        progress: Option<Arc<crate::progress::Progress>>,
+    ) -> Result<crate::cloud::ScanRead, String> {
+        let mut s = Session::new();
+        s.reset_shared(model, path);
+        s.progress = progress;
+        s.keep_scan = true;
+        s.execute("point_cloud", params)?;
+        s.scan_read.take().ok_or_else(|| "point_cloud: it placed a scan the project held, so there was nothing to read".to_string())
+    }
+
+    /// Hands this session a scan read ahead ([`Session::read_scan_ahead`]): the next `point_cloud` takes it when it's for the
+    /// same files and options, and drops it whichever it is.
+    pub fn give_scan(&mut self, read: crate::cloud::ScanRead) {
+        self.scan_read = Some(read);
     }
 
     /// Labels of the undo steps, oldest first.
