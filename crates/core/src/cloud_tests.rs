@@ -1048,3 +1048,75 @@ fn a_copc_file_is_its_own_index_read_as_it_is_never_built_rebuilt_or_deleted() {
     let r = run(&mut s, "point_cloud", json!({"path": path, "name": "plain", "index": false}));
     assert_eq!(r["index"], Value::Null, "{r}");
 }
+
+// ---------- Detail by the output ----------
+
+/// A face 6 m wide and 3 m tall on y = 0, from `z0` m up, a point every 10 mm, metres, red: 180,901 points.
+fn face_at(z0: f64) -> String {
+    let mut text = String::new();
+    for i in 0..=600 {
+        for k in 0..=300 {
+            text += &format!("{} 0 {} 255 0 0\n", f64::from(i) * 0.01, z0 + f64::from(k) * 0.01);
+        }
+    }
+    text
+}
+
+/// A project saved in a folder of this test's own with `text` brought in indexed by its file's coordinates (small buckets, a
+/// sample of 20,000): its file.
+fn indexed_project(test: &str, text: &str) -> PathBuf {
+    TUNED.with(|t| t.set(Some((Tuning { bucket: 100_000, leaf: 2_000 }, 20_000))));
+    let path = scan(test, "scan.xyz", text);
+    let project = PathBuf::from(&path).parent().unwrap().join("house.bimc");
+    let mut s = Session::new();
+    run(&mut s, "save", json!({"path": project}));
+    run(&mut s, "point_cloud", json!({"path": path, "index": true, "origin": "file"}));
+    run(&mut s, "save", json!({}));
+    project
+}
+
+/// The project at `project` opened again, so nothing of its index has been read.
+fn fresh(project: &PathBuf) -> Session {
+    let mut t = Session::new();
+    run(&mut t, "open", json!({"path": project}));
+    t
+}
+
+/// How many nodes of the index a plan of Level 1 of the same 4 m square about (3, 3) m, at `scale` px a mm, reads, opened afresh.
+fn read_at(project: &PathBuf, scale: f64) -> u64 {
+    let s = fresh(project);
+    let level = s.model.levels().first().map(|l| l.0).unwrap();
+    let px = (4000.0 * scale) as u32;
+    render::draw(&s.model, level, render::View { scale, cx: 3000.0, cy: 3000.0, width: px, height: px, angle: 0.0 });
+    s.model.clouds.values().next().unwrap().indexed().unwrap().loads()
+}
+
+#[test]
+fn a_plan_reads_more_of_an_index_the_finer_its_output_and_finest_where_its_cut_cuts() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let low = indexed_project("output", &floor());
+    // An export at a finer scale or resolution reads deeper: each pixel is less of the model.
+    let (coarse, fine) = (read_at(&low, 0.02), read_at(&low, 0.4));
+    assert!(fine > coarse, "{coarse} {fine}");
+    // The same floor where Level 1's cut cuts it (at 1150 mm, within the band below the cut at 1200) is read finer than at
+    // 500 mm, well below it.
+    let mut band = String::new();
+    for line in floor().lines() {
+        band += &line.replacen(" 0.5 ", " 1.15 ", 1);
+        band.push('\n');
+    }
+    let cut = indexed_project("band", &band);
+    assert!(read_at(&cut, 0.02) > read_at(&low, 0.02), "{} {}", read_at(&cut, 0.02), read_at(&low, 0.02));
+}
+
+#[test]
+fn a_section_draws_the_points_of_a_scan_s_index_it_shows() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let mut s = fresh(&indexed_project("section-index", &face_at(0.0)));
+    let v = run(&mut s, "section", json!({"start": [-500, -1000], "end": [6500, -1000]}))["id"].as_u64().unwrap();
+    let view = render::section_fit(&s.model, v, 1200, 600);
+    // Drawn from what's read only, it shows the top the project holds; drawn as an export draws it, every point it shows.
+    let (top, missing) = render::from_cache(|| render::section_image(&s.model, &Scene::new(&s.model), v, view, &[]).unwrap());
+    let full = render::section_image(&s.model, &Scene::new(&s.model), v, view, &[]).unwrap();
+    assert!(missing > 0 && pixels(&full, red) > pixels(&top, red) + 1000, "{missing} {} {}", pixels(&full, red), pixels(&top, red));
+}

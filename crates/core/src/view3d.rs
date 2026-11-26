@@ -3921,6 +3921,23 @@ impl Scene {
         self.picture(cam, Some(clip), tints, look)
     }
 
+    /// [`Scene::cut_in`], with the points `detail` read of the scans' indexes drawn as theirs.
+    pub fn cut_detailed(&self, cam: &Camera, clip: &Clip, tints: &[(Id, Rgb)], look: &Look, detail: &Detail) -> Image {
+        self.picture_with(cam, Some(clip), tints, look, &|| false, &detail.scans)
+    }
+
+    /// [`Scene::cut_detailed`], stopping with an empty picture once `cancelled`.
+    pub(crate) fn cut_detailed_cancellable(
+        &self,
+        (cam, clip): (&Camera, &Clip),
+        tints: &[(Id, Rgb)],
+        look: &Look,
+        cancelled: &(dyn Fn() -> bool + Sync),
+        detail: &Detail,
+    ) -> Image {
+        self.picture_with(cam, Some(clip), tints, look, cancelled, &detail.scans)
+    }
+
     /// The triangles `keep` takes, drawn into `into`'s depths and hits: the nearest at each pixel of a
     /// `size` picture through `cam`; with `front`, only where they are nearer than its depths. Where
     /// `lights` says how lit a triangle's corners are (a curve's), its pixels take the blend of the three.

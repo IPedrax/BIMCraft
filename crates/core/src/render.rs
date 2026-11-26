@@ -2354,7 +2354,9 @@ pub fn section_camera(m: &Model, id: impl Key, view: View) -> Option<(Camera, Cl
 /// picture its cut, levels and grids ([`section`]) go over.
 pub fn section_image(m: &Model, scene: &Scene, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     let (cam, clip) = section_camera(m, id, view)?;
-    Some(scene.cut_in(&cam, &clip, tints, &Look::of(m, id)))
+    let look = Look::of(m, id);
+    let detail = scan_detail_for(m, &cam, &look);
+    Some(scene.cut_detailed(&cam, &clip, tints, &look, &detail))
 }
 
 /// What section or elevation `id` sees past its line through `view`, in hidden line, as [`section_image`] draws it from
@@ -2415,7 +2417,8 @@ pub fn section_picture_cancellable(
     let (cam, clip) = section_camera(m, id, view)?;
     let look = Look::of(m, id);
     let scene = Scene::section_cancellable(m, (&work.solids, &work.ranges, &work.placed, &work.boxes), &cam, &clip, &look, cancelled)?;
-    let image = scene.picture_cancellable(&cam, Some(&clip), tints, &look, cancelled);
+    let detail = scan_detail_for(m, &cam, &look);
+    let image = scene.cut_detailed_cancellable((&cam, &clip), tints, &look, cancelled, &detail);
     (!cancelled()).then_some(image)
 }
 
@@ -2423,10 +2426,12 @@ pub fn section_picture_cancellable(
 pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     let (cam, clip) = section_camera(m, id, view)?;
     let look = Look::of(m, id);
-    let picture = Scene::section(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), &cam, &clip, &look).cut_in(&cam, &clip, tints, &look);
+    let detail = scan_detail_for(m, &cam, &look);
+    let picture =
+        Scene::section(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), &cam, &clip, &look).cut_detailed(&cam, &clip, tints, &look, &detail);
     // Its twin, which tests hold it to: the picture of the whole scene.
     #[cfg(test)]
-    if let Err(e) = picture.same_as(&Scene::new(m).cut_in(&cam, &clip, tints, &look)) {
+    if let Err(e) = picture.same_as(&Scene::new(m).cut_detailed(&cam, &clip, tints, &look, &detail)) {
         panic!("a section's picture from what can show in it isn't the whole scene's: {e}");
     }
     Some(picture)
@@ -3450,6 +3455,30 @@ pub fn detail_at(m: &Model, id: impl Key, view: View, k: f32) -> Drawing {
     }
 }
 
+/// How much finer a plan reads a scan's index where its cut plane cuts it, within [`crate::snap::CUT_BAND`], than elsewhere.
+const BAND: f64 = 3.0;
+
+/// The most points of scans' indexes a picture `w` by `h` px draws: half a point a pixel, between [`crate::cloud::lod::DRAWN`]
+/// and four times it, so a sheet exported at a high resolution reads what it shows, and a small picture doesn't read less than
+/// a screen's.
+fn output_points(w: usize, h: usize) -> usize {
+    let most = crate::cloud::lod::DRAWN;
+    (w.saturating_mul(h) / 2).clamp(most, 4 * most)
+}
+
+/// The points of the scans' indexes a section's or an elevation's picture from `cam` reads, as a plan's are read: from the cache
+/// only where [`from_cache`] says, counting what it didn't have.
+fn scan_detail_for(m: &Model, cam: &view3d::Camera, look: &Look) -> view3d::Detail {
+    if m.clouds.values().all(|c| c.indexed().is_none()) {
+        return view3d::Detail::default();
+    }
+    let load = FROM_CACHE.with(|c| !c.get());
+    let most = output_points(cam.width as usize, cam.height as usize);
+    let detail = view3d::scan_detail(m, cam, look, most, load);
+    MISSING.with(|n| n.set(n.get() + detail.missing));
+    detail
+}
+
 thread_local! {
     /// Whether plans drawn on this thread take only the nodes of scans' indexes read already ([`from_cache`]).
     static FROM_CACHE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -3507,14 +3536,16 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
                         (z0, z1) = (z0.min(z), z1.max(z));
                     }
                     let shows = z1 >= depth - TOL && z0 <= cut && x1 >= 0.0 && y1 >= 0.0 && x0 <= w as f64 && y0 <= h as f64;
-                    shows.then_some(view.scale)
+                    // Where the cut cuts what was measured, what's traced, read finer: a third of the spacing elsewhere.
+                    let band = z1 >= cut - crate::snap::CUT_BAND && z0 <= cut;
+                    shows.then_some(if band { view.scale * BAND } else { view.scale })
                 }) as Box<crate::cloud::lod::Seen<'static>>
             })
             .collect();
         let asked: Vec<(&crate::cloud::lod::Indexed, &crate::cloud::lod::Seen<'_>)> =
             indexed.iter().zip(&seens).map(|((_, ix), seen)| (ix.as_ref(), seen.as_ref())).collect();
         let load = FROM_CACHE.with(|c| !c.get());
-        for (s, i) in crate::cloud::lod::select(&asked, crate::cloud::lod::DRAWN) {
+        for (s, i) in crate::cloud::lod::select(&asked, output_points(w as usize, h as usize)) {
             let Some(&(k, ix)) = indexed.get(s) else { continue };
             match if load { ix.fetch(i) } else { ix.cached(i) } {
                 Some(p) => chosen[k].push(p),

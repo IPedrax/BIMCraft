@@ -215,7 +215,11 @@ are kept in one cache for every index (`lod::Cache`), the node asked for longest
 they together take more than `lod::memory()`: what the app set, or a quarter of the memory the machine has free, between 256 MB
 and 8 GB, halved while it runs short. A node two threads ask for is read once, the second waiting for it. The 3D view (`view3d::scan_detail`, drawn by
 `Scene::render_detailed` or as the mesh's dots by `Detail::dots`) and plans (`render::scans`) draw a node's points as the scan's.
-A plan and an export read the nodes they show; the window draws a plan from what's read (`render::from_cache`, which says how
+What a plan, a section or an export reads follows its output, not the screen's: its pixels a millimetre (an export's resolution
+and scale), and a budget of half a point a pixel between `lod::DRAWN` and four times it (`render::output_points`), so a sheet at 300
+dpi reads deeper than the window's view of it. Where a plan's cut plane cuts what was measured, within `snap::CUT_BAND` below it,
+nodes are read three times finer (`render::BAND`), which is what's traced. Sections and elevations draw the points of the
+indexes too (`Scene::cut_detailed`, `render::scan_detail_for`). A plan and an export read the nodes they show; the window draws a plan from what's read (`render::from_cache`, which says how
 many it didn't have) and has a thread read the rest. A snap looks among every point near the cursor (`Cloud::nearest_of_all`,
 a few nodes read).
 
