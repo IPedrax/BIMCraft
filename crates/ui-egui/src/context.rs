@@ -56,6 +56,7 @@ pub(crate) enum Action {
     /// The Family Editor on the family of what is selected.
     EditFamily,
     EditType,
+    PickNewHost,
     SelectAllInstances,
     SelectInstances(InstanceScope),
     HideElement,
@@ -104,6 +105,7 @@ impl Action {
             Action::HomeView => "Home View",
             Action::EditFamily => "Edit Family",
             Action::EditType => "Edit Type",
+            Action::PickNewHost => msg!("Pick New Host"),
             Action::SelectAllInstances => msg!("Select All Instances"),
             Action::SelectInstances(InstanceScope::View) => msg!("Visible in View"),
             Action::SelectInstances(InstanceScope::Project) => msg!("In Entire Project"),
@@ -227,6 +229,9 @@ impl BimApp {
                 // A family instance selected: its family, as Revit offers it.
                 let family = self.selection.iter().any(|id| m.elements.get(id).is_some_and(|e| e.family().is_some()));
                 let mut edits = Vec::new();
+                if self.rehost_selected() {
+                    edits.push(Item::new(Action::PickNewHost, self.rehost_available()));
+                }
                 if family {
                     edits.push(Item::new(Action::EditFamily, true));
                 }
@@ -351,6 +356,7 @@ impl BimApp {
             Action::ExcludeMember => self.exclude_selected(),
             Action::RestoreExcluded => self.restore_excluded(),
             Action::Delete => self.delete(),
+            Action::PickNewHost => self.start_rehost(),
             Action::WorkPlane => self.open_work_plane(),
             Action::SelectAlongGrid => self.select_along_grid(),
             Action::ReloadCad => {

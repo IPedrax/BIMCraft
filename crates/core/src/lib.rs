@@ -252,6 +252,9 @@ pub mod rebar_detail;
 mod rebar_detail_tests;
 #[cfg(test)]
 mod rebar_tests;
+pub mod rehost;
+#[cfg(test)]
+mod rehost_tests;
 pub mod reinforce;
 #[cfg(test)]
 mod reinforce_tests;

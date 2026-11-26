@@ -541,3 +541,27 @@ fn desktop_context_identifies_ceiling_3d_sections_sheets_and_dependent_plan_view
         assert_eq!(context["guid"], json!(id.map(|id| h.state().session.model.guid(id))));
     }
 }
+
+#[test]
+fn pick_new_host_uses_the_connected_command_and_cancels_a_stale_user_pick() {
+    let (mut h, file) = controlled("rehost");
+    let walls = ids(&h, "wall");
+    let id = h.state_mut().exec("window", &json!({"wall": walls[0], "offset": 2000})).unwrap()["id"].as_u64().unwrap();
+    h.state_mut().selection = vec![id];
+    h.state_mut().act(Action::PickNewHost);
+    h.run();
+    let source = field(&h, id, "host");
+    let guid = h.state().session.model.guid(id);
+    let target = h.state().session.model.guid(walls[2]);
+    let params = json!({"id": guid, "wall": target, "offset": 3000});
+    let request = request(&h, json!({"op": "execute", "command": "pick_new_host", "params": params}));
+    let replies = ask(&mut h, vec![request]);
+    assert!(replies[0]["ok"].is_object(), "{replies:?}");
+    h.run();
+    assert_eq!(h.state().tool, Tool::Modify);
+    assert_eq!(field(&h, id, "host"), json!(walls[2]));
+    h.state_mut().exec("undo", &json!({})).unwrap();
+    assert_eq!(field(&h, id, "host"), source);
+    h.state_mut().control = None;
+    let _ = std::fs::remove_dir_all(file.parent().unwrap());
+}
