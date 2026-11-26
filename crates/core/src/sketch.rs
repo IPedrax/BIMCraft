@@ -61,6 +61,47 @@ pub fn extrusion_profile(lines: &[SketchLine]) -> Result<Vec<P2>, String> {
     Ok(profile)
 }
 
+/// A railing's path: the lines (an arc or a curve as the points it is drawn through) joined end to end into one open line,
+/// in the order and the direction they meet from the first line's start; drawn in any direction and order, a closed
+/// shape on its own, or lines closing a loop, too.
+pub fn open_path(lines: &[SketchLine]) -> Result<Vec<P2>, String> {
+    let mut pieces: Vec<Vec<P2>> = lines.iter().map(SketchLine::points).filter(|p| p.len() >= 2).collect();
+    if pieces.is_empty() {
+        return Err("Draw the railing's path: one or more lines, joined end to end".into());
+    }
+    let mut path = pieces.remove(0);
+    while !pieces.is_empty() {
+        let (Some(&first), Some(&last)) = (path.first(), path.last()) else { break };
+        let next = pieces.iter().position(|p| {
+            let (a, b) = (p.first().copied().unwrap_or(first), p.last().copied().unwrap_or(first));
+            a.dist(last) <= TOL || b.dist(last) <= TOL || a.dist(first) <= TOL || b.dist(first) <= TOL
+        });
+        let Some(k) = next else {
+            return Err("The path's lines must join end to end, in one line, with no gaps and no branches".into());
+        };
+        let mut piece = pieces.remove(k);
+        let (a, b) = (piece.first().copied().unwrap_or(first), piece.last().copied().unwrap_or(first));
+        if a.dist(last) <= TOL {
+            path.extend(piece.into_iter().skip(1));
+        } else if b.dist(last) <= TOL {
+            piece.reverse();
+            path.extend(piece.into_iter().skip(1));
+        } else {
+            if a.dist(first) <= TOL {
+                piece.reverse();
+            }
+            piece.pop();
+            piece.extend(path);
+            path = piece;
+        }
+    }
+    path.dedup_by(|b, a| a.dist(*b) <= TOL);
+    if path.len() < 2 || path.len() > MAX_POINTS {
+        return Err(format!("A railing's path has 2 to {MAX_POINTS} points"));
+    }
+    Ok(path)
+}
+
 /// A sketch line: any [`Curve`], a line, an arc, a polyline, a circle, an ellipse or a spline. Its id and GUID are its
 /// own, given when what it draws is made or edited and kept while it stays in the sketch. In a file and a command it is
 /// one flat object: its `id` and `guid` and its curve's fields.

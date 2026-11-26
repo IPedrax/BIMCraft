@@ -240,6 +240,7 @@ mod publish_tests;
 pub mod quantities;
 #[cfg(test)]
 mod quantities_tests;
+pub mod railings;
 #[cfg(test)]
 mod raised_wall_room_tests;
 pub mod ral;

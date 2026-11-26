@@ -4252,18 +4252,20 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                     }
                 }
             }
-            Element::Railing(rl) if m.level_of(e) == Some(level) => railing(&mut d, m, rl, range.cut),
-            // Another level's railing the plan sees from above: in projection, or in its underlay.
+            // A railing of this level, the one below or the one above, as its type's plan says; another level's the plan
+            // sees from above, in projection or in its underlay, as its plan below says.
             Element::Railing(rl) => {
-                let z = stairs::railing(m, rl)
-                    .into_iter()
-                    .map(|(_, z)| z)
-                    .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
-                if matches!(range.zone(z.0, z.1), Some(Zone::Projection | Zone::Underlay)) {
-                    if range.under(z.1) {
-                        underlay.insert(id);
+                if !railing(&mut d, m, rl, m.level_of(e), level, range.cut, &stair_subs.railing, false) {
+                    let z = stairs::railing(m, rl)
+                        .into_iter()
+                        .map(|(_, z)| z)
+                        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+                    if matches!(range.zone(z.0, z.1), Some(Zone::Projection | Zone::Underlay)) {
+                        if range.under(z.1) {
+                            underlay.insert(id);
+                        }
+                        railing(&mut d, m, rl, m.level_of(e), level, range.cut, &stair_subs.railing, true);
                     }
-                    railing(&mut d, m, rl, range.cut);
                 }
             }
             Element::PropertyLine(pl) if pl.level == level => property_outline(&mut d, pl),
@@ -5561,6 +5563,8 @@ pub(crate) struct StairSubs {
     hidden: [bool; 9],
     paint: [Option<crate::graphics::Override>; 9],
     ways: Option<crate::model::PlanShows>,
+    /// Which of a railing's parts' subcategories ([`crate::graphics::RAILING_SUBS`]) it hides.
+    railing: [bool; 4],
     fade: crate::graphics::Fade,
 }
 
@@ -5575,6 +5579,7 @@ impl StairSubs {
             out.hidden[i] = g.hides(sub);
             out.paint[i] = g.categories.get(*sub).filter(|o| !o.projection.is_empty() || o.halftone).cloned();
         }
+        out.railing = crate::graphics::RAILING_SUBS.map(|sub| g.hides(sub));
         out
     }
 
@@ -6163,22 +6168,92 @@ fn ramp_below(d: &mut Drawing, m: &Model, r: &Ramp, range: &PlanRange) -> bool {
     true
 }
 
-/// A railing in a plan cutting at height `cut`: its line, solid where what it runs along is under
-/// the cut plane, dashed over it.
-fn railing(d: &mut Drawing, m: &Model, rl: &Railing, cut: f64) {
-    for w in stairs::railing(m, rl).windows(2) {
-        let &[(a, za), (b, zb)] = w else { continue };
-        let parts = if (za > cut) != (zb > cut) {
-            let mid = a + (b - a) * ((cut - za) / (zb - za));
-            vec![(a, mid, za > cut), (mid, b, zb > cut)]
-        } else {
-            vec![(a, b, za > cut)]
+/// A railing in the plan of `level`, as its type shows it there (its plan display for the level it stands on, the level
+/// above and the level below; a railing of no type as on its own level): what each of its parts covers in plan, its
+/// rails by their two sides, those under the cut plane at height `cut` in the type's visible line style and those over it
+/// in its hidden one, as the way it is shown says; `far`, a level further down the plan sees, as on the level below.
+/// Whether it is one the plan shows by its type (on its level or the next).
+#[allow(clippy::too_many_arguments)]
+fn railing(d: &mut Drawing, m: &Model, rl: &Railing, on: Option<Guid>, level: Guid, cut: f64, off: &[bool; 4], far: bool) -> bool {
+    let Some(on) = on else { return false };
+    let t = m.types.railing.get(&rl.type_name);
+    let ways = t.map(|t| t.plan).unwrap_or_default();
+    let way = if on == level {
+        ways.same
+    } else if m.level_above(on) == Some(level) {
+        ways.above
+    } else if m.level_above(level) == Some(on) || far {
+        ways.below
+    } else {
+        return false;
+    };
+    let Some((below, above, _)) = way.look() else { return true };
+    let style = |name: Option<&String>, usual: &str| {
+        name.and_then(|n| m.line_styles.get(n)).or_else(|| m.line_styles.get(m.language.word(usual))).or_else(|| m.line_styles.get(usual))
+    };
+    let (full, hidden) = (style(t.map(|t| &t.line_visible), crate::lines::MEDIUM), style(t.map(|t| &t.line_hidden), crate::lines::HIDDEN));
+    let draw = |d: &mut Drawing, pts: Vec<P2>, closed: bool, over: bool| {
+        let (style, dash) = match if over { above } else { below } {
+            Shown::Full => (full, None),
+            Shown::Hidden => (hidden, Some(vec![6.0, 4.0])),
+            Shown::Out => return,
         };
-        for (p, q, over) in parts {
-            let pts = vec![d.view.px(p), d.view.px(q)];
-            d.stroke(pts, BY_CATEGORY, INK, over.then(|| vec![6.0, 4.0]), false);
+        let px: Vec<(f32, f32)> = pts.into_iter().map(|q| d.view.px(q)).collect();
+        match style {
+            Some(s) => d.styled(m, s, px, closed),
+            None => d.stroke(px, BY_CATEGORY, INK, dash, closed),
+        }
+    };
+    let mut parts = crate::railings::parts(m, rl);
+    // What the view hides of its parts, by their subcategories.
+    parts.retain(|p| !off.get(p.at.kind as usize).copied().unwrap_or(false));
+    // Posts, balusters and panels first; over the cut plane none of them shows (a railing seen from above is its rails).
+    for part in &parts {
+        match &part.piece {
+            crate::railings::Piece::Prism(ring, bottom, _) => {
+                let low = ring.iter().map(|q| bottom.at(*q)).fold(f64::MAX, f64::min);
+                if low < cut {
+                    draw(d, ring.clone(), true, false);
+                }
+            }
+            crate::railings::Piece::Tube(g) if g.a[2].min(g.b[2]) < cut => draw(d, g.footprint(), true, false),
+            _ => {}
         }
     }
+    // The rails over them, each stretch filled with the paper's white, hiding what is under it, and its two sides.
+    for part in &parts {
+        match &part.piece {
+            crate::railings::Piece::Prism(..) | crate::railings::Piece::Tube(_) => {}
+            crate::railings::Piece::Sweep { path, width, .. } => {
+                // Each stretch's two sides, and its ends across.
+                let half = width / 2.0;
+                let flat: Vec<(P2, f64)> = path.iter().map(|q| (P2(q[0], q[1]), q[2])).collect();
+                for w in flat.windows(2) {
+                    let (&(a, za), &(b, zb)) = (&w[0], &w[1]);
+                    if a.dist(b) < 1e-6 {
+                        continue;
+                    }
+                    let n = (b - a).unit().perp() * half;
+                    let over = za.min(zb) >= cut;
+                    if !(over && above == Shown::Out) && !(!over && below == Shown::Out) {
+                        d.fill(&[vec![a - n, b - n, b + n, a + n]], PAPER);
+                    }
+                    draw(d, vec![a + n, b + n], false, over);
+                    draw(d, vec![a - n, b - n], false, over);
+                }
+                let ends = [(flat.first(), flat.get(1)), (flat.last(), flat.len().checked_sub(2).and_then(|i| flat.get(i)))];
+                for (end, next) in ends {
+                    if let (Some(&(a, za)), Some(&(b, _))) = (end, next)
+                        && a.dist(b) > 1e-6
+                    {
+                        let n = (b - a).unit().perp() * half;
+                        draw(d, vec![a + n, a - n], false, za >= cut);
+                    }
+                }
+            }
+        }
+    }
+    true
 }
 
 /// A stair's or a ramp's walk line, its arrow at the top, marked UP at its foot; from above, the

@@ -50,6 +50,7 @@ mod plugin_panels;
 mod printsets;
 mod profile;
 mod publisher;
+mod railingtype;
 mod stairgrips;
 mod stairtype;
 mod viewrange;
@@ -980,6 +981,12 @@ pub struct BimApp {
     /// Insert > PDF's page picker, while a PDF of several pages waits for its page.
     pub(crate) pdf_page_box: Option<mesh::PdfPageBox>,
     curtain_editor: Option<curtain::CurtainEditor>,
+    /// Edit Railing: a railing type's rails, posts, balusters and panel.
+    railing_editor: Option<railingtype::RailingEditor>,
+    /// Edit Hosts: the railing whose hosts are being picked, and whether a click adds one or takes one out.
+    railing_hosts: Option<railingtype::HostEdit>,
+    /// The one part of the selected railing Tab has gone to: what Properties and Delete then act on.
+    railing_part: Option<(Id, bimcraft_core::model::PartAt)>,
     /// Go To View, while Edit Profile begun in a plan asks for a view that looks at the wall.
     go_to_view: Option<profile::GoToView>,
     /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
@@ -2043,8 +2050,11 @@ impl BimApp {
             image_grip: None,
             pdf_page_box: None,
             curtain_editor: None,
+            railing_editor: None,
+            railing_hosts: None,
             go_to_view: None,
             curtain_part: None,
+            railing_part: None,
             curtain_more: Vec::new(),
             curtain_hover: None,
             curtain_aim: None,
@@ -2836,6 +2846,10 @@ impl BimApp {
         self.selection.retain(|id| m.elements.contains_key(id) || bimcraft_core::coordinates::Point::of(m, *id).is_some());
         let selected = self.selection.as_slice();
         self.curtain_part = self.curtain_part.filter(|(id, at)| selected == [*id] && self.curtain_laid.of(m, *id).has(*at));
+        self.railing_part = self.railing_part.take().filter(|(id, at)| {
+            selected == [*id]
+                && matches!(m.elements.get(*id), Some(Element::Railing(rl)) if bimcraft_core::railings::parts(m, rl).iter().any(|p| p.at == *at))
+        });
         if self.curtain_part.is_none() {
             self.curtain_more.clear();
         }
@@ -2889,6 +2903,7 @@ impl BimApp {
             || self.dimension_type_dialog.is_some()
             || self.spot_type_dialog.is_some()
             || self.curtain_editor.is_some()
+            || self.railing_editor.is_some()
             || self.go_to_view.is_some()
             || !self.curtain_asking.is_empty()
             || self.grid_type_dialog.is_some()
@@ -4182,6 +4197,10 @@ impl BimApp {
             self.delete_curtain_part(id, at);
             return;
         }
+        // With one part of a railing picked, that part left out of its pattern, and never the railing.
+        if self.delete_railing_part() {
+            return;
+        }
         // Under Modify Sub Elements, what of the shape is selected.
         if self.shape_delete() {
             return;
@@ -4765,9 +4784,12 @@ impl BimApp {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 // A family document's Undo and Redo are its own: the project's steps are not offered while it is open.
                 let family = self.family_doc();
+                // While sketching, Undo takes back the sketch's last change, as Ctrl+Z does; the model's waits for Finish.
                 if icon_button(ui, Icon::Undo, "Undo").clicked() {
                     if family {
                         self.family_undo();
+                    } else if self.sketch.is_some() {
+                        self.unsketch();
                     } else {
                         self.run("undo", json!({}));
                     }
@@ -6154,6 +6176,8 @@ impl BimApp {
         self.clipboard_panel(ui);
         // Create Group, and with a group or a member selected, Revit's Group panel.
         self.group_panels(ui);
+        // A railing selected: Edit Hosts, and while it's on, Add, Remove and Finish.
+        self.railing_panel(ui);
         // A dimension selected: its references are picked again from the Modify tab, as from its right-click menu.
         let dimension = matches!(self.selection.as_slice(), [id]
             if matches!(self.session.model.elements.get(*id), Some(Element::Dimension(d)) if !d.alignment));
@@ -7230,6 +7254,9 @@ impl BimApp {
         if let Some(hint) = self.sketch_prompt() {
             return hint;
         }
+        if let Some(hint) = self.railing_hosts_prompt() {
+            return hint;
+        }
         match self.group_pick() {
             Some(groups::GroupPick::Add) if self.tool == Tool::Modify => {
                 return msg!("Add to Group: click a greyed element, or drag a box, to add it to the group. Esc or Add again stops.");
@@ -7860,6 +7887,7 @@ impl BimApp {
         self.dimension_type_window(ctx);
         self.spot_type_window(ctx);
         self.curtain_editor_window(ctx);
+        self.railing_editor_window(ctx);
         self.go_to_view_window(ctx);
         self.curtain_message(ctx);
         self.grid_type_window(ctx);

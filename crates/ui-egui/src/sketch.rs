@@ -43,6 +43,8 @@ pub enum Of {
     Profile(Id),
     /// An existing extrusion roof's open profile, in its upright reference plane.
     RoofProfile(Id),
+    /// A railing's path, redrawn in plan: lines joined end to end into one open line.
+    RailingPath(Id),
     /// A new ramp on the level, sketched: its sides, and its run lines.
     Ramp(Id),
     /// A sketched ramp's sketch, redrawn.
@@ -175,6 +177,7 @@ impl Sketch {
             Of::Edit(_) => "Edit Boundary",
             Of::Profile(_) => msg!("Modify | Walls > Edit Profile"),
             Of::RoofProfile(_) => msg!("Edit Profile"),
+            Of::RailingPath(_) => msg!("Edit Railing Path"),
             Of::Form { revolve: false, void: false, edit: false } => msg!("Modify | Create Extrusion"),
             Of::Form { revolve: true, void: false, edit: false } => msg!("Modify | Create Revolve"),
             Of::Form { revolve: false, void: true, edit: false } => msg!("Modify | Create Void Extrusion"),
@@ -238,6 +241,25 @@ impl Sketch {
             .flat_map(|l| l.curve.handles())
             .filter(|q| q.dist(p) <= reach)
             .min_by(|a, b| a.dist(p).total_cmp(&b.dist(p)))
+    }
+
+    /// What a grip at `grip` being dragged is measured from, for Shift's square step and the guides: the far end of a
+    /// line ending there.
+    pub fn grip_anchor(&self, grip: P2) -> Vec<P2> {
+        self.lines
+            .iter()
+            .find_map(|l| {
+                let (a, b) = (l.start(), l.end());
+                if a.dist(grip) <= TOL {
+                    Some(b)
+                } else if b.dist(grip) <= TOL {
+                    Some(a)
+                } else {
+                    None
+                }
+            })
+            .into_iter()
+            .collect()
     }
 
     /// Every line end at `from` moved to `to`: the lines joined there stay joined.
@@ -720,6 +742,18 @@ impl BimApp {
         self.tool = Tool::Modify;
     }
 
+    /// Edit Path: the selected railing's line redrawn in plan, each stretch of it a line, its arcs as drawn.
+    pub(crate) fn edit_railing_path(&mut self, id: Id) {
+        let Some(Element::Railing(rl)) = self.session.model.elements.get(id) else { return };
+        // The line as it was drawn, a flight one line: not the points its heights are found at.
+        let plan = bimcraft_core::stairs::railing_plan(&self.session.model, rl);
+        let mut pts = plan;
+        pts.dedup_by(|b, a| a.dist(*b) <= TOL);
+        let lines = pts.windows(2).map(|w| SketchLine::new(w[0], w[1])).collect();
+        self.start_sketch(Of::RailingPath(id), lines);
+        self.drawing.sketch = draw::Shape::Line;
+    }
+
     /// The one element selected, when it has an outline Edit Boundary redraws.
     pub(crate) fn boundary_selected(&self) -> bool {
         match self.selection.as_slice() {
@@ -754,6 +788,23 @@ impl BimApp {
             return;
         }
         let Some(sk) = &mut self.sketch else { return };
+        if let Of::RailingPath(id) = sk.of {
+            let path = match solver::open_path(&sk.lines) {
+                Ok(path) => path,
+                Err(text) => {
+                    sk.wrong = (0..sk.lines.len()).collect();
+                    self.status = Status { text, error: true };
+                    return;
+                }
+            };
+            if self.run("modify", json!({"id": id, "path": path})).is_some() {
+                self.sketch = None;
+                self.tool = Tool::Modify;
+                self.forget_picks();
+                self.selection = vec![id];
+            }
+            return;
+        }
         // A ramp's sketch: its sides and its run lines, which the core lays as flights and landings or says what's wrong.
         if let Of::Ramp(_) | Of::RampEdit(_) = sk.of {
             let lines = json!(sk.lines.iter().map(sent).collect::<Vec<_>>());
@@ -879,7 +930,7 @@ impl BimApp {
                 ("modify", json!({"id": id, "profile": if plain { json!([]) } else { json!(loops) }}))
             }
             // A family's form is the family document's to finish (`editor/sketch.rs`), never the project's.
-            Of::Form { .. } | Of::RoofProfile(_) | Of::Ramp(_) | Of::RampEdit(_) => return,
+            Of::Form { .. } | Of::RoofProfile(_) | Of::RailingPath(_) | Of::Ramp(_) | Of::RampEdit(_) => return,
         };
         // Edit Profile's wall stays selected.
         let profiled = match self.sketch.as_ref().map(|sk| sk.of) {
@@ -928,7 +979,7 @@ impl BimApp {
     pub(crate) fn cancel_sketch(&mut self) {
         self.leave_walls_outline();
         let edited = match self.sketch.take() {
-            Some(Sketch { of: Of::Edit(id) | Of::RoofProfile(id), .. }) => Some(id),
+            Some(Sketch { of: Of::Edit(id) | Of::RoofProfile(id) | Of::RailingPath(id), .. }) => Some(id),
             _ => None,
         };
         self.tool = Tool::Modify;
@@ -1201,8 +1252,13 @@ impl BimApp {
         let Some(drag) = self.sketch.as_mut().and_then(|sk| sk.drag.take()) else { return false };
         let Some(at) = ui.input(|i| i.pointer.latest_pos()).map(local) else { return true };
         let m = std::sync::Arc::clone(&self.session.model);
-        let to = self.snap(&m, level, view, at, &[], false).at;
         let mods = ui.input(|i| i.modifiers);
+        // A grip lands as the cursor showed it: from the far end of its line, square with Shift, on the guides.
+        let anchor = match (drag, &self.sketch) {
+            (Drag::Grip(g), Some(sk)) => sk.grip_anchor(g),
+            _ => Vec::new(),
+        };
+        let to = self.snap(&m, level, view, at, &anchor, mods.shift).at;
         let Some(sk) = &mut self.sketch else { return true };
         match drag {
             Drag::Grip(from) => sk.move_end(from, to),

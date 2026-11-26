@@ -2379,7 +2379,16 @@ impl BimApp {
             let id = crate::curtain::tab_wall(&model, &self.selection, &c.under, on_cursor, free)?;
             crate::curtain::parts_under(&model, &self.curtain_laid.of(&model, id), key, id, view.mm(q), view.scale)
         });
-        if let Some((id, list)) = parts {
+        // On the railing that's selected and under the cursor, Tab goes through its rails, posts, balusters and panels there.
+        let railing_parts = local.filter(|_| tabbed && !reference_tabbed && !segment_tabbed).and_then(|q| {
+            let id = crate::railingtype::railing_alone(&model, &self.selection).filter(|id| c.under.contains(id))?;
+            let Some(Element::Railing(rl)) = model.elements.get(id) else { return None };
+            let list = bimcraft_core::railings::parts_near(&model, rl, view.mm(q), f64::from(PICK) / view.scale);
+            (!list.is_empty()).then_some((id, list))
+        });
+        if let Some((id, list)) = railing_parts {
+            self.railing_tab(id, &list);
+        } else if let Some((id, list)) = parts {
             self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
             self.curtain_more.clear();
             if self.curtain_part.is_some() {
@@ -2774,6 +2783,8 @@ impl BimApp {
             .into_iter()
             .filter(|id| Some(*id) != shaped)
             .collect();
+        // A railing's hosts, while they are edited.
+        marked.extend(self.railing_hosts_lit());
         // Walls picked for Walls' Outline are lit as the selection is.
         if self.outline_pending {
             marked.extend(self.outline_walls.iter().copied());
@@ -2863,6 +2874,10 @@ impl BimApp {
                 plan_mark(&p, id, at, true);
             }
         }
+        // The part of a railing Tab has picked.
+        crate::railingtype::mark_part(&p, &model, self.railing_part.as_ref(), &self.selection, |q| {
+            Some(pos(rect.min, view.px(P2(q[0], q[1]))))
+        });
         // The Curtain Grid tool: where the cursor would place a line.
         if let Tool::CurtainGrid { wall, way } = self.tool {
             let aim = self.canvas.cursor.zip(model.wall(wall)).and_then(|(q, w)| {
@@ -2894,9 +2909,14 @@ impl BimApp {
             let over = local
                 .filter(|_| matches!(self.tool, Tool::Modify | Tool::Trim(_) | Tool::TrimTo { .. }) && sk.drag.is_none())
                 .and_then(|q| sk.line_at(view.mm(q), f64::from(PICK) / view.scale));
+            // A grip dragged is measured from the far end of its line, as a line drawn is from its last point.
+            let anchor = match sk.drag {
+                Some(crate::sketch::Drag::Grip(g)) => sk.grip_anchor(g),
+                _ => Vec::new(),
+            };
             let from: &[P2] = match &self.tool {
                 Tool::SketchLine(chain) if self.shape() == draw::Shape::Line || chain.len() < 2 => chain,
-                _ => &[],
+                _ => &anchor,
             };
             let shift = ui.input(|i| i.modifiers.shift);
             // The snapped cursor is for a grip being dragged and for what a sketch tool shows; Modify's idle frames need none.
@@ -3324,6 +3344,10 @@ impl BimApp {
     }
 
     pub(crate) fn pick_up(&mut self, found: Vec<Id>, mods: Modifiers) {
+        // Edit Hosts' Add or Remove: the stair, ramp or floor picked joins the railing's hosts or leaves them.
+        if self.railing_host_pick_up(&found) {
+            return;
+        }
         // Edit Group's Add or Remove: what is picked joins the group or leaves it, and isn't selected.
         if self.group_pick_up(&found) {
             return;

@@ -207,6 +207,7 @@ fn scratch(test: &str) -> (std::path::PathBuf, std::path::PathBuf) {
 fn standard_colours_are_found_by_code_or_by_name() {
     let (kept, _) = scratch("find");
     let mut s = Session::new();
+    let had: Vec<String> = s.model.materials.keys().cloned().collect();
     let mut list = |p: Value| {
         let mut p = p;
         p["path"] = json!(kept);
@@ -226,7 +227,8 @@ fn standard_colours_are_found_by_code_or_by_name() {
     assert!(reply["source"].as_str().unwrap().contains("Color library"));
     assert_eq!(reply["collections"].as_array().unwrap().len(), 2);
     assert!(list(json!({"collection": "css"}))["source"].as_str().unwrap().contains("W3C"));
-    assert!(s.model.materials.keys().all(|n| !n.starts_with("RAL")));
+    // Looking adds no material.
+    assert_eq!(s.model.materials.keys().cloned().collect::<Vec<_>>(), had);
 }
 
 #[test]

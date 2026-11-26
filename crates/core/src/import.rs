@@ -2187,8 +2187,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         Some((t, layers))
     };
     let e = |id: u64| r.get(id);
+    // A railing's parts (its rails, posts, balusters and panels) come in with it, as its type makes them: none on its own.
+    let railing_part = |id: u64| l.whole.get(&id).and_then(|w| e(*w)).is_some_and(|w| w.name == "IFCRAILING");
     let named = |names: &[&str]| -> Vec<u64> {
-        ids.iter().copied().filter(|id| e(*id).is_some_and(|x| names.contains(&x.name.as_str()))).collect()
+        ids.iter().copied().filter(|id| e(*id).is_some_and(|x| names.contains(&x.name.as_str())) && !railing_part(*id)).collect()
     };
     let who = |id: u64| {
         e(id).map_or_else(
@@ -4018,6 +4020,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
     for id in named(&["IFCRAILING"]) {
         let Some(x) = e(id) else { continue };
         seen.insert(id);
+        seen.extend(l.parts.get(&id).into_iter().flatten().copied());
         let Some(axis) = r.axis(x).filter(|a| a.len() >= 2).or_else(|| straight(&r, x)) else {
             leave(&mut skipped, &mut seen, id, "it has no axis for BIMCraft to follow, and it isn't straight");
             continue;
@@ -4035,6 +4038,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     base_offset: 0.0,
                     host: Some(Guid::of_id(host)),
                     side: Some(side),
+                    hosts: Vec::new(),
+                    flip: false,
+                    parts: Vec::new(),
                 };
                 let start = |side| stairs::railing(&m, &on(side)).first().copied();
                 let side = [Side::Left, Side::Right]
@@ -4049,7 +4055,12 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 }
                 let base = named.clone().unwrap_or_else(|| format!("Imported - {}mm", num(h)));
                 Railing {
-                    type_name: kind(&mut m.types.railing, &base, |t| (t.height - h).abs() < 0.5, RailingType { height: h, spacing: 0.0 }),
+                    type_name: kind(
+                        &mut m.types.railing,
+                        &base,
+                        |t| (t.height - h).abs() < 0.5,
+                        RailingType { height: h, spacing: 0.0, ..RailingType::default() },
+                    ),
                     ..on(side)
                 }
             }
@@ -4062,11 +4073,27 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     continue;
                 }
                 let base = named.clone().unwrap_or_else(|| format!("Imported - {}mm", num(h)));
-                let type_name = kind(&mut m.types.railing, &base, |t| (t.height - h).abs() < 0.5, RailingType { height: h, spacing: 0.0 });
+                let type_name = kind(
+                    &mut m.types.railing,
+                    &base,
+                    |t| (t.height - h).abs() < 0.5,
+                    RailingType { height: h, spacing: 0.0, ..RailingType::default() },
+                );
                 let level = level_for(id, first[2] - h);
                 let path = axis.iter().map(|p| micron(r.flat(*p))).collect();
                 let base_offset = ((first[2] - h - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
-                Railing { params: Default::default(), type_name, level, path, base_offset, host: None, side: None }
+                Railing {
+                    params: Default::default(),
+                    type_name,
+                    level,
+                    path,
+                    base_offset,
+                    host: None,
+                    side: None,
+                    hosts: Vec::new(),
+                    flip: false,
+                    parts: Vec::new(),
+                }
             }
         };
         let rid = m.insert(Element::Railing(railing));

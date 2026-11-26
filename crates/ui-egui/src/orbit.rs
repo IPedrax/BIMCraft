@@ -32,7 +32,7 @@ use bimcraft_core::dims3d;
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::graphics::{Look, VisualStyle};
 use bimcraft_core::handles::{self, Handle};
-use bimcraft_core::model::{Dimension3D, Id, Model, Ref3, TOL, ViewCamera};
+use bimcraft_core::model::{Dimension3D, Element, Id, Model, Ref3, TOL, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
 use bimcraft_core::view3d;
@@ -2095,9 +2095,26 @@ impl BimApp {
             .map(|h| h.id)
             .filter(|id| !attaching || attach_target(&model, *id))
             .filter(|id| !trimming || model.wall(*id).is_some());
-        // On the selected curtain wall under the cursor, Tab goes through its parts there.
+        // On the selected curtain wall under the cursor, Tab goes through its parts there; on the selected railing, through
+        // its rails, posts, balusters and panels there.
         let tab = ui.input(|i| i.key_pressed(egui::Key::Tab));
-        if (std::mem::take(&mut self.tab_cycle) | std::mem::take(&mut self.face_cycle) || tab)
+        let tabbed = std::mem::take(&mut self.tab_cycle) | std::mem::take(&mut self.face_cycle) || tab;
+        let railing_tabbed = tabbed
+            && hover.is_some_and(|at| {
+                let Some(id) = crate::railingtype::railing_alone(&model, &selection).filter(|id| hovered == Some(*id)) else {
+                    return false;
+                };
+                let Some(Element::Railing(rl)) = model.elements.get(id) else { return false };
+                let list = bimcraft_core::railings::parts_on_ray(&model, rl, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0));
+                if list.is_empty() {
+                    return false;
+                }
+                self.railing_part = crate::railingtype::next_part(self.railing_part.as_ref(), id, &list);
+                self.selection = vec![id];
+                true
+            });
+        if tabbed
+            && !railing_tabbed
             && let (Some(at), Some(id)) = (hover, hovered)
             && crate::curtain::tab_wall(&model, &selection, &[id], Some(id), self.tool == Tool::Modify) == Some(id)
             && let Some(w) = model.wall(id)
@@ -2331,6 +2348,11 @@ impl BimApp {
                 }
             }
         }
+        // The part of a railing Tab has picked.
+        crate::railingtype::mark_part(&p, &model, self.railing_part.as_ref(), &self.selection, |q| {
+            let at = screen(q);
+            at.is_finite().then_some(at)
+        });
         // The Curtain Grid tool: where the cursor would place a line on the wall's plane.
         let face_wall = match self.tool {
             Tool::CurtainGrid { wall, .. } | Tool::CurtainSegment { wall } => Some(wall),

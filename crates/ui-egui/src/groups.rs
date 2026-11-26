@@ -175,7 +175,9 @@ impl BimApp {
 
     /// What the selection lights: it, and the members of the groups in it.
     pub(crate) fn lit_selection(&self) -> Vec<Id> {
-        core_groups::with_members(&self.session.model, &self.selection)
+        let mut lit = core_groups::with_members(&self.session.model, &self.selection);
+        lit.extend(self.railing_hosts_lit());
+        lit
     }
 
     /// The group instances selected.

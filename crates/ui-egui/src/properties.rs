@@ -478,6 +478,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "base_offset", "Base Offset", Length),
             ("Constraints", "host", "Host", Link),
             ("Constraints", "side", msg!("Side"), Shown),
+            ("Constraints", "flip", msg!("Flipped"), Flag),
             ("Dimensions", "height", "Height", LengthShown),
         ],
         "roof" => &[
@@ -1163,6 +1164,10 @@ pub(crate) struct TypeDialog {
     ramp: Option<crate::stairtype::RampDraft>,
     /// A curtain wall type's pattern and how thick that makes it: it has no fields or layers to type.
     curtain: Option<(bimcraft_core::curtain::CurtainLayout, f64)>,
+    /// A railing type as it is: its parts are made in Edit Railing, so it has no fields; a duplicate copies them.
+    railing: Option<bimcraft_core::model::RailingType>,
+    /// Its connection, straight sections and plan display, as typed.
+    railing_rows: Option<crate::railingtype::RailingRows>,
 }
 
 /// A room type's parameters, as picked and typed: the floor type and the ceiling type its rooms have of their own ("" for
@@ -1467,7 +1472,8 @@ impl TypeDialog {
         };
         let curtain =
             (category == "wall").then(|| m.types.wall.get(&name)).flatten().and_then(|t| t.curtain.clone().map(|l| (l, t.thickness)));
-        let fields = if curtain.is_some() { Vec::new() } else { fields };
+        let railing = (category == "railing").then(|| m.types.railing.get(&name).cloned()).flatten();
+        let fields = if curtain.is_some() || railing.is_some() { Vec::new() } else { fields };
         let name_of = name.clone();
         let project = type_values(m, category, m.library.guid(&LibKind::Type(category.to_string()), &name));
         let stair = (category == "stair").then(|| crate::stairtype::StairDraft::new(m, &name_of));
@@ -1489,6 +1495,8 @@ impl TypeDialog {
             stair,
             ramp,
             curtain,
+            railing_rows: railing.as_ref().map(|t| crate::railingtype::RailingRows::new(m, t)),
+            railing,
         }
     }
 
@@ -1604,6 +1612,17 @@ impl TypeDialog {
         }
         if let Some(framing) = &self.framing {
             framing.params(&mut p, units)?;
+        }
+        if let Some(r) = &self.railing {
+            p["height"] = json!(r.height);
+            p["spacing"] = json!(r.spacing);
+            p["rails"] = json!(r.rails);
+            p["posts"] = json!(r.posts);
+            p["panel"] = json!(r.panel);
+            p["transition"] = json!(r.transition);
+        }
+        if let Some(rows) = &self.railing_rows {
+            rows.params(&mut p, units)?;
         }
         Ok(p)
     }
@@ -1937,6 +1956,7 @@ impl BimApp {
                 self.connected_finishes(ui, &model, id);
             }
             self.curtain_part_panel(ui, &model);
+            self.railing_part_panel(ui, &model);
             self.layer_picture(ui, &model);
             self.opening_picker(ui, &model);
             self.floor_slope(ui, &model);
@@ -3794,6 +3814,7 @@ impl BimApp {
         let names: Vec<String> = model.type_names(d.category).into_iter().map(String::from).collect();
         let (mut ok, mut cancel, mut apply, mut asked) = (false, false, false, None);
         let mut edit_pattern = false;
+        let mut edit_railing = false;
         let r = Modal::new(UiId::new("type-properties"), t("Type Properties")).width(crate::typeprops::WIDTH).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 let family = tf("System Family: {}", &[&lang::category(d.category, true)]);
@@ -3805,11 +3826,12 @@ impl BimApp {
                 // The groups in the order their first row comes; a run's roundness is a dimension, its material its own group.
                 let mut groups: Vec<&str> = Vec::new();
                 let extra = [
-                    (layered || d.curtain.is_some(), "Construction"),
+                    (layered || d.curtain.is_some() || d.railing.is_some(), "Construction"),
                     (d.shape.is_some(), "Dimensions"),
                     (d.shape.is_some(), msg!("Materials and Finishes")),
                     (d.room.is_some(), ROOM_FINISHES),
                     (d.room.is_some(), GRAPHICS),
+                    (d.railing.is_some(), GRAPHICS),
                 ];
                 let part = d.curtain_part();
                 let framing = d.framing.as_ref().map_or(&[][..], |_| &FRAMING_GROUPS[..]);
@@ -3889,8 +3911,21 @@ impl BimApp {
                             });
                             tb.shown(t("Thickness"), &model.length(*thickness));
                         }
+                        if g == "Construction"
+                            && let Some(height) = d.railing.as_ref().map(bimcraft_core::railings::height)
+                        {
+                            tb.row(t("Structure"), |ui, _| {
+                                if wide_button(ui, t("Edit…")).clicked() {
+                                    edit_railing = true;
+                                }
+                            });
+                            tb.shown(t("Height"), &model.length(height));
+                        }
                         if let Some(framing) = &mut d.framing {
                             framing.rows(tb, g, &materials, model.units);
+                        }
+                        if let Some(rows) = &mut d.railing_rows {
+                            rows.rows(tb, g, &model);
                         }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
@@ -3912,6 +3947,10 @@ impl BimApp {
         if edit_pattern {
             let name = d.name.clone();
             self.open_curtain_editor(&name);
+        }
+        if edit_railing {
+            let name = d.name.clone();
+            self.open_railing_editor(&name);
         }
         let switch = match &asked {
             Some(Head::Switch(n)) => Some(n.clone()),

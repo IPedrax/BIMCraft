@@ -1416,6 +1416,9 @@ impl Model {
                 c.parts.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
                 c.grids.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             }
+            if let crate::model::Element::Railing(rl) = e {
+                rl.parts.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            }
             if let Some(lines) = e.sketch_mut() {
                 lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
             }
@@ -1575,7 +1578,12 @@ impl crate::model::Element {
                 }
             }
             Element::Toposolid(x) => f(&Kind::Type(category), &mut x.type_name),
-            Element::Railing(x) => f(&Kind::Type(category), &mut x.type_name),
+            Element::Railing(x) => {
+                f(&Kind::Type(category), &mut x.type_name);
+                for material in x.parts.iter_mut().filter_map(|p| p.material.as_mut()).filter(|m| !m.is_empty()) {
+                    f(&Kind::Material, material);
+                }
+            }
             Element::Room(x) => f(&Kind::Type(category), &mut x.type_name),
             // A stair of no type names none.
             Element::Stair(x) if !x.type_name.is_empty() => f(&Kind::Type(category), &mut x.type_name),
@@ -1714,6 +1722,16 @@ impl Model {
                 f(&Kind::Material, material);
             }
         }
+        // A railing type's parts' materials.
+        for r in t.railing.values_mut() {
+            let rails = r.rails.iter_mut().map(|x| &mut x.material);
+            let posts = r.posts.iter_mut().map(|x| &mut x.material);
+            for material in rails.chain(posts).chain(r.panel.iter_mut().map(|x| &mut x.material)) {
+                if !material.is_empty() {
+                    f(&Kind::Material, material);
+                }
+            }
+        }
         for m in self.materials.values_mut() {
             for tx in m.pictures_mut().filter(|tx| !tx.image.is_empty()) {
                 f(&Kind::Picture, &mut tx.image);
@@ -1850,10 +1868,10 @@ impl Model {
 }
 
 /// The kinds of part an element holds, as [`element_parts`] names them.
-const ELEMENT_PARTS: [&str; 5] = ["sketch line", "shape point", "split line", "curtain part", "curtain grid"];
+const ELEMENT_PARTS: [&str; 6] = ["sketch line", "shape point", "split line", "curtain part", "curtain grid", "railing part"];
 
 /// An element's own parts, in the order [`Model::parts_now`] walks them: its sketch lines, then a floor's or a roof's shape's
-/// points and its split lines, then a curtain wall's edited parts, each with what it is, its place in its list, its id and its
+/// points and its split lines, then a curtain wall's edited parts, then a railing's, each with what it is, its place in its list, its id and its
 /// GUID.
 fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
     let mut out: Vec<(&'static str, usize, Id, Guid)> = Vec::new();
@@ -1867,6 +1885,9 @@ fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
     if let Element::Wall(Wall { curtain: Some(c), .. }) = e {
         out.extend(c.parts.iter().enumerate().map(|(k, x)| ("curtain part", k, x.id, x.guid)));
         out.extend(c.grids.iter().enumerate().map(|(k, x)| ("curtain grid", k, x.id, x.guid)));
+    }
+    if let Element::Railing(rl) = e {
+        out.extend(rl.parts.iter().enumerate().map(|(k, x)| ("railing part", k, x.id, x.guid)));
     }
     out
 }
@@ -1883,6 +1904,9 @@ fn element_parts_mut(e: &mut Element, f: &mut dyn FnMut(&mut Id, &mut Guid)) {
     if let Element::Wall(Wall { curtain: Some(c), .. }) = e {
         c.parts.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
         c.grids.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
+    }
+    if let Element::Railing(rl) = e {
+        rl.parts.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
     }
 }
 

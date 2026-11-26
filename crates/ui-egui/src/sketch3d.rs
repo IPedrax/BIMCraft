@@ -139,6 +139,7 @@ impl BimApp {
             Of::Profile(id) => Surface::of_wall(&self.session.model, id),
             _ if sheet != Sheet::View3D => None,
             Of::Edit(id) => self.session.model.sketch_plane(id).map(Surface::Plan),
+            Of::RailingPath(id) => crate::railingtype::path_plane(&self.session.model, id).map(Surface::Plan),
             Of::RoofProfile(id) => workplane::roof_profile(&self.session.model, id).map(Surface::Profile),
             _ => sk.surface.map(Surface::Plan),
         }
@@ -163,7 +164,7 @@ impl BimApp {
             return on_lines(&[]);
         }
         let (level, editing) = match sk.of {
-            Of::Edit(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
+            Of::Edit(id) | Of::RailingPath(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
             Of::Floor(level) | Of::Ceiling(level) | Of::Roof(level) | Of::Shaft(level) | Of::Ramp(level) => (Some(level), None),
             Of::RampEdit(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
             Of::Region { .. } | Of::Form { .. } | Of::Profile(_) | Of::RoofProfile(_) => (None, None),
