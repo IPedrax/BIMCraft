@@ -7384,15 +7384,15 @@ mod tests {
     fn graphic_display_options_are_set_read_kept_in_the_file_undone_and_refused_when_wrong() {
         use serde_json::json;
         let mut s = house();
-        let none = json!({"view": null, "edges": true, "silhouette": 0, "ambient_shadows": false});
+        let none = json!({"view": null, "edges": true, "silhouette": 0, "ambient_shadows": false, "eye_dome": false});
         assert_eq!(s.execute("graphic_display_options", &json!({})).unwrap(), none);
         assert!(s.model.default_3d().is_none(), "reading makes no view");
         let r = s.execute("graphic_display_options", &json!({"silhouette": 3, "ambient_shadows": true})).unwrap();
         let v = s.model.default_3d().unwrap();
-        assert_eq!(r, json!({"view": v, "edges": true, "silhouette": 3, "ambient_shadows": true}));
+        assert_eq!(r, json!({"view": v, "edges": true, "silhouette": 3, "ambient_shadows": true, "eye_dome": false}));
         // What is left out stays; by GD, as Revit's shortcut, and by the view's name.
         let r = s.execute("GD", &json!({"view": "{3D}", "edges": false})).unwrap();
-        assert_eq!(r, json!({"view": v, "edges": false, "silhouette": 3, "ambient_shadows": true}));
+        assert_eq!(r, json!({"view": v, "edges": false, "silhouette": 3, "ambient_shadows": true, "eye_dome": false}));
         let shown = Look::of_3d(&s.model).display();
         assert_eq!(shown, DisplayOptions { edges: false, silhouette: 3, ambient_shadows: true, eye_dome: false });
         // Kept in the file, and read back.
