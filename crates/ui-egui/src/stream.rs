@@ -515,6 +515,7 @@ pub(crate) mod testing {
             levels: built.levels,
             sources: Vec::new(),
             scale: Some(1000.0),
+            kind: None,
         };
         let indexed = Cloud::new("face.xyz", built.scan).unwrap().with_index(r).unwrap();
         indexed.attach(None).unwrap();

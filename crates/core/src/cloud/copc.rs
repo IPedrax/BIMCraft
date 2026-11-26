@@ -268,7 +268,7 @@ fn hierarchy(src: &mut dyn Source, size: u64, at: u64, bytes: u64, h: &LasHead) 
         let mut b = vec![0u8; bytes as usize];
         src.seek(SeekFrom::Start(at)).map_err(unread)?;
         src.read_exact(&mut b).map_err(unread)?;
-        for e in b.chunks_exact(32) {
+        for e in b.as_chunks::<32>().0 {
             let (level, key) = (i32_at(e, 0), [i32_at(e, 4), i32_at(e, 8), i32_at(e, 12)]);
             let (offset, size_of, points) = (u64_at(e, 16), i32_at(e, 24), i32_at(e, 28));
             let Ok(level) = u8::try_from(level) else { return Err(broken("a node's level isn't one")) };
