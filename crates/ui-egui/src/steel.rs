@@ -387,6 +387,7 @@ impl BimApp {
         let parameters: Vec<String> = self.session.model.parameters.keys().cloned().collect();
         let has_selection = !self.selection.is_empty();
         let (mut calculate, mut export, mut make, mut close) = (false, false, false, false);
+        let mut takeoff = false;
         let r = Modal::new(UiId::new("steel"), t("Quantities")).width(780.0).min_height(420.0).show(ctx, |ui| {
             popup::body(ui, |ui| {
                 ui.add_space(4.0);
@@ -465,6 +466,10 @@ impl BimApp {
                                 .button(t("Create Schedules"))
                                 .on_hover_text(t("Make the Materials Summary as a schedule in the project"))
                                 .clicked();
+                            takeoff = ui
+                                .button(t("Material Takeoff…"))
+                                .on_hover_text(t("Count the layers of the walls, floors, roofs and ceilings, by material, layer or type"))
+                                .clicked();
                         }
                         Page::List => {
                             make = ui
@@ -481,6 +486,11 @@ impl BimApp {
             });
         });
         let mut keep = !(close || r.should_close());
+        if takeoff {
+            // Its own dialog, next frame, once this one has closed: two modals at once is one too many.
+            self.new_takeoff = Some(crate::takeoff::NewTakeoff::new(&self.session.model));
+            keep = false;
+        }
         if calculate || (d.page != Page::Plan && d.reply(d.page).is_none() && d.error.is_empty()) {
             self.steel_calculate(&mut d, calculate);
         }

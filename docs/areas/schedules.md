@@ -38,6 +38,10 @@ every stock length of its framing type), Level, Key and Count. Grouped by Role, 
 A table goes to a file as CSV (`schedule::to_csv`, text a spreadsheet would read as a formula guarded with `'`) or, for a path
 ending `.xlsx`, as a workbook of one sheet (`schedule::to_xlsx` over `xlsx.rs`, which writes the parts and the zip by hand on
 `flate2`): headings in bold, numbers as numbers so they sum, text as inline strings, which a spreadsheet never takes for a formula.
+A **material takeoff** is a schedule of `of: "takeoff"` with its own `Takeoff` spec (`takeoff.rs`): it lists not elements but
+the layers of their types, as materials with an area, a volume and a mass, with waste, grouped by material, layer or type
+([quantities](quantities.md#material-takeoff)). It is no schedule's fields, filters or sort (`schedule::check` refuses them),
+and it is worked out from the model each time it is drawn, never kept.
 
 ## The same numbers as Revit
 

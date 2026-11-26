@@ -115,6 +115,7 @@ mod steel;
 mod structure;
 mod style;
 mod swap;
+mod takeoff;
 mod templates;
 #[cfg(test)]
 mod tests;
@@ -1251,6 +1252,8 @@ pub struct BimApp {
     pub(crate) scaling: scale::Options,
     active_option: Option<String>,
     new_schedule: Option<properties::NewSchedule>,
+    /// The Material Takeoff dialog, while it's open.
+    new_takeoff: Option<takeoff::NewTakeoff>,
     /// The material the Paint tool lays; the first of the library's while it isn't one it has.
     paint_material: String,
     /// The family and type the Component tool places, as picked, and how far it's turned, degrees.
@@ -2197,6 +2200,7 @@ impl BimApp {
             scaling: scale::Options { percent: "100".into(), ..Default::default() },
             active_option: None,
             new_schedule: None,
+            new_takeoff: None,
             component: None,
             component_angle: 0.0,
             door_flip_hand: false,
@@ -5733,6 +5737,9 @@ impl BimApp {
                 if ui.button(t("Schedule/Quantities…")).clicked() {
                     self.new_schedule = Some(properties::NewSchedule::default());
                 }
+                if ui.button(t("Material Takeoff…")).clicked() {
+                    self.new_takeoff = Some(takeoff::NewTakeoff::new(&self.session.model));
+                }
                 ui.separator();
                 for (cat, name) in SCHEDULES {
                     if ui.button(t(name)).clicked() {
@@ -7839,6 +7846,7 @@ impl BimApp {
         self.parameters_window(ctx);
         self.classification_window(ctx);
         self.new_schedule_window(ctx);
+        self.new_takeoff_window(ctx);
         self.schedule_window(ctx);
         self.graphics_window(ctx);
         self.filters_window(ctx);

@@ -864,6 +864,15 @@ pub(crate) fn holding(k: Kind) -> &'static str {
 /// or calculated from them (each once, formulas reading numbers, none coming back to itself), its
 /// totals of numbers; filtering and sorting by its fields, filters comparing what the field holds.
 pub fn check(m: &Model, sc: &Schedule) -> Result<(), String> {
+    if let Some(t) = &sc.takeoff {
+        if category(&sc.of) != "takeoff" {
+            return Err(format!("a takeoff's `of` is `takeoff`, not `{}`", sc.of));
+        }
+        if !sc.fields.is_empty() || !sc.filters.is_empty() || !sc.sort.is_empty() || sc.grouped {
+            return Err("a takeoff has no fields, filters or sort of its own: it groups them by its `by`".to_string());
+        }
+        return crate::takeoff::check(m, t);
+    }
     let cat = category(&sc.of);
     if own(&cat).1.is_empty() {
         return Err(format!("there's no schedule of `{}`; there are schedules of: {}, {MULTI}", sc.of, categories().join(", ")));
@@ -1332,6 +1341,11 @@ fn curtain_parts<'a>(m: &'a Model, cat: &str) -> Vec<(Id, &'a Element, Value)> {
 /// the schedule `sc` is: the element's id, or `None` for a schedule every project has. A command's copy of the model makes
 /// the table again.
 pub fn table_kept(m: &Model, view: Option<Id>, sc: &Schedule) -> Result<Arc<Table>, String> {
+    // A takeoff reads the materials' densities and the types' layers, which an edit to them doesn't reach through the
+    // elements' state the cache is kept by: it is worked out each time.
+    if let Some(t) = &sc.takeoff {
+        return crate::takeoff::table(m, t).map(Arc::new);
+    }
     let key = match view {
         Some(id) => TableKey::Element(m.guid(id)),
         None => TableKey::Builtin(sc.of.clone()),
@@ -1379,6 +1393,9 @@ fn framing_members(m: &Model) -> Vec<(Id, &Element, Value)> {
 /// sorted by its sort fields (by its first column unless it says; a phase field in the project's
 /// order of phases) or, grouped, a row for each set of their values; its totals under them.
 pub fn table(m: &Model, sc: &Schedule) -> Result<Table, String> {
+    if let Some(t) = &sc.takeoff {
+        return crate::takeoff::table(m, t);
+    }
     let cat = category(&sc.of);
     if own(&cat).1.is_empty() {
         return Err(format!("no schedule of `{}`; there are schedules of: {}, {MULTI}", sc.of, categories().join(", ")));
