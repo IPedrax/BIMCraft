@@ -371,7 +371,10 @@ pub fn rounded(units: Units, decimals: Option<u8>, mm: f64) -> String {
     };
     let x = mm / per;
     let k = 10f64.powi(i32::from(places));
-    format!("{:.*}{mark}", usize::from(places), (x * k).round() / k + 0.0)
+    let scaled = x * k;
+    // Half a place rounds away from zero, whatever the platform's floating point makes of it.
+    let rounded = if scaled == 0.0 { 0.0 } else { (scaled + scaled.signum() * 1e-9).round() };
+    format!("{:.*}{mark}", usize::from(places), rounded / k + 0.0)
 }
 
 /// A length in `units` to `decimals`, signed as `signs` says. Rounding comes first: -0.0004 m at three places is

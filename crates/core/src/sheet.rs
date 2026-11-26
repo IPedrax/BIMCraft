@@ -885,8 +885,8 @@ mod tests {
         let (id, sc) =
             s.model.elements.iter().find_map(|(id, e)| if let Element::Schedule(sc) = e { Some((*id, sc.clone())) } else { None }).unwrap();
         let t = table_of(&s.model, Some(id), &sc);
-        assert_eq!(t.headings, ["Name", "Area (m²)", "Big"]);
-        assert_eq!(t.rows, [vec!["Living", "48.00", "Yes"], vec!["Total", "48.00", ""]]);
+        assert_eq!(t.headings, ["Name", "Area", "Big"]);
+        assert_eq!(t.rows, [vec!["Living", "48.00 m²", "Yes"], vec!["Total", "48.00 m²", ""]]);
         assert!(t.totals);
         // A row more than its rows and headings: its totals.
         let vp = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Viewport(_)).then_some(*id)).unwrap();

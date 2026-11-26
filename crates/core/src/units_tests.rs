@@ -194,8 +194,8 @@ fn each_kind_of_value_keeps_its_own_units_and_they_are_saved_with_the_project() 
         }),
     );
     assert_eq!(said["display"]["area"], "cm2");
-    assert_eq!(s.model.area(1e6), (100.0, "cm²"));
-    assert_eq!(s.model.volume_shown(1e9), (1000.0, "cm³"));
+    assert_eq!(s.model.area(1e6), (10_000.0, "cm²"));
+    assert_eq!(s.model.volume_shown(1e9), (1_000_000.0, "cm³"));
     assert_eq!(s.model.slope(45.0).1, "%");
     assert!((s.model.slope(45.0).0 - 100.0).abs() < 1e-9);
     assert_eq!(s.model.mass_density(1.0).1, "lb/ft³");
