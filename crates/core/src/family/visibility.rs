@@ -175,6 +175,23 @@ pub const FLOOR: u32 = 1 << 28;
 /// With [`MEMBER`] or [`FRAMED`]: a framed roof's piece, which Roofs > Framing shows and hides in place of Walls > Framing.
 pub const ROOF: u32 = 1 << 27;
 
+/// A wall's layer: the function it has, one more than its place in [`crate::model::Function::ALL`], in these bits. Walls >
+/// Structure, Substrate, Thermal, Membrane and Finish ([`crate::graphics::WALL_LAYERS`]) show and hide each function's layers.
+const LAYER_SHIFT: u32 = 24;
+const LAYER_MASK: u32 = 0b111 << LAYER_SHIFT;
+
+/// `bits` of a wall's layer of function `f`.
+pub fn with_layer(bits: u32, f: crate::model::Function) -> u32 {
+    let k = crate::model::Function::ALL.iter().position(|g| *g == f).map_or(0, |k| k as u32 + 1);
+    (bits & !LAYER_MASK) | (k << LAYER_SHIFT)
+}
+
+/// The function of the wall's layer a piece packed as `bits` is, if it is one.
+pub fn layer(bits: u32) -> Option<crate::model::Function> {
+    let k = (bits & LAYER_MASK) >> LAYER_SHIFT;
+    crate::model::Function::ALL.get((k as usize).checked_sub(1)?).copied()
+}
+
 /// Of a piece packed as `bits`: whether it is a framing member (true) or the structure layer they stand in (false); none for
 /// anything else.
 pub fn framing(bits: u32) -> Option<bool> {

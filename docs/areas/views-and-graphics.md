@@ -79,6 +79,12 @@ template or Object Styles naming either key is part of what FORMAT 18 says an ol
 Walls > Framing (`framing`) is a framed wall's members ([wood framing](structure-and-mep.md#wood-framing)): shown, the 3D view
 and sections draw the members and not the structure layer they stand in, and a plan at medium or fine detail clears that layer's
 band and fills and outlines the members its cut plane crosses (coarse draws the wall as before); hidden, the layer comes back.
+Walls > Structure, Substrate, Thermal, Membrane and Finish (`wallstructure`, `wallsubstrate`, `wallthermal`, `wallmembrane`,
+`wallfinish`; `graphics::WALL_LAYERS`) are a compound wall's layers of each function: hidden, a view draws the wall as its other
+layers, so a framing plan can show a wall's members without its finishes. The 3D view and a section's projection leave out each
+layer's solid, which carries its function in its visibility bits (`family::visibility::with_layer`, set in `view3d::layered_with`;
+`Look::forms_show` asks); a section cuts such a wall from its layers' solids, and a plan outlines it by its shown layers' bands,
+with no line between a layer shown and one hidden. A framed wall's members are Walls > Framing's whatever its structure layer is.
 Floors > Framing (`floorframing`) is a framed floor's joists, rims, trimmers, headers and blocking in the 3D view and sections, in
 place of its structure layer (hidden, the layer comes back whole); Floors > Framing Lines (`floorframingline`), off unless a view
 shows it, draws their outlines dashed in a plan, as hidden lines under the floor's top: the framing plan. It is a subcategory of

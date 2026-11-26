@@ -23,7 +23,9 @@ layers from the exterior in, and a floor, roof or ceiling type from the top down
 layers over, by the way its layer set's usage stacks them). A layer's material is a name in the project's library
 (`Model::materials`): its colour shades the layer in 3D, its cut pattern is a drafting pattern (`GAP` px apart on screen and
 paper, where the layer is `PATTERN_ROOM` px wide), its surface pattern a model pattern (`MODULE` mm, its real size). A curved wall turns `arc` degrees, counter-clockwise positive (`walls::Axis`). Where walls meet,
-their faces meet in mitred caps at any angle, and a wall ending on another stops at its face (`walls::cap`); plans, 3D,
+their faces meet in mitred caps at any angle, and a wall ending on another stops at its face (`walls::cap`). Two ends meet when
+their location lines' ends do, or when the lines across their ends cross (`walls::ends_meet`): a wall put on another of its
+location lines moves its line across it, never its body, and keeps its joins, as `move` keeps stretching what ends on it; plans, 3D,
 sections and IFC all draw that outline (`walls::outline`, `walls::prisms`). A wall's `join` (on unless turned off, written in
 a file only when it is off) says it joins at its ends, Revit's Allow Join: a wall refusing to join neither mitres against a
 neighbour nor stretches with one whose end is dragged (`walls::arms` leaves it out of both; `relocate` passes it by), though

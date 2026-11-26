@@ -54,7 +54,7 @@ fn a_new_project_has_north_american_and_european_framing_types_of_pine_and_timbe
     close(eu.spacing, 625.0, "KVH studs at 62.5 cm");
     close(eu.thickness, 60.0, "KVH 60 mm");
     assert_eq!((eu.top_plates, eu.stock.clone()), (1, vec![5000.0, 13000.0]));
-    for (name, depth) in [("Timber Frame - 114mm", 89.0), ("Timber Frame - 185mm", 160.0)] {
+    for (name, depth) in [("Timber Frame - 134mm", 89.0), ("Timber Frame - 205mm", 160.0)] {
         let layers = s.model.type_layers("wall", name);
         let k = crate::framing::framed_layer(layers).unwrap_or_else(|| panic!("{name}: no framed layer"));
         assert!(layers[k].framed && layers[k].material == "Pine");
@@ -65,7 +65,7 @@ fn a_new_project_has_north_american_and_european_framing_types_of_pine_and_timbe
 #[test]
 fn a_european_wall_is_framed_in_kvh_60x160_at_625_of_pine() {
     let mut s = Session::new();
-    let (w, _) = framed(&mut s, "Timber Frame - 185mm", crate::framing::EUROPEAN_TYPE);
+    let (w, _) = framed(&mut s, "Timber Frame - 205mm", crate::framing::EUROPEAN_TYPE);
     let reply = run(&mut s, "framing", json!({"id": w}));
     assert_eq!(reply["material"], "Pine");
     let ms = reply["members"].as_array().cloned().unwrap_or_default();
@@ -109,7 +109,7 @@ fn a_type_with_two_structure_layers_frames_the_one_it_marks_and_only_one_structu
 #[test]
 fn a_member_left_out_is_gone_from_every_output_and_taken_back_comes_back() {
     let mut s = Session::new();
-    let (w, _) = framed(&mut s, "Timber Frame - 114mm", crate::framing::DEFAULT_TYPE);
+    let (w, _) = framed(&mut s, "Timber Frame - 134mm", crate::framing::DEFAULT_TYPE);
     let before = members(&mut s, w);
     let key = before
         .iter()
@@ -146,7 +146,7 @@ fn a_member_left_out_is_gone_from_every_output_and_taken_back_comes_back() {
 #[test]
 fn a_member_resized_keeps_its_place_and_is_warned_of_where_it_no_longer_fits() {
     let mut s = Session::new();
-    let (w, win) = framed(&mut s, "Timber Frame - 114mm", crate::framing::DEFAULT_TYPE);
+    let (w, win) = framed(&mut s, "Timber Frame - 134mm", crate::framing::DEFAULT_TYPE);
     let g = s.model.guid(win);
     let before = members(&mut s, w);
     // A grid stud doubled: two plies side by side, centred where it stood.
@@ -188,7 +188,7 @@ fn a_member_resized_keeps_its_place_and_is_warned_of_where_it_no_longer_fits() {
 #[test]
 fn an_edit_of_a_member_that_goes_sleeps_and_wakes_when_it_comes_back_and_a_wrong_key_is_refused() {
     let mut s = Session::new();
-    let (w, _) = framed(&mut s, "Timber Frame - 114mm", crate::framing::DEFAULT_TYPE);
+    let (w, _) = framed(&mut s, "Timber Frame - 134mm", crate::framing::DEFAULT_TYPE);
     let e = s.execute("framing_member", &json!({"id": w, "key": "stud/nowhere", "exclude": true})).err().unwrap_or_default();
     assert!(e.contains("no framing member `stud/nowhere`"), "{e}");
     let e = s.execute("framing_member", &json!({"id": w, "key": "stud/start", "section": [0, 89]})).err().unwrap_or_default();
@@ -213,20 +213,20 @@ fn an_edit_of_a_member_that_goes_sleeps_and_wakes_when_it_comes_back_and_a_wrong
 #[test]
 fn edits_and_the_marked_layer_last_through_a_file() {
     let mut s = Session::new();
-    let (w, _) = framed(&mut s, "Timber Frame - 114mm", crate::framing::DEFAULT_TYPE);
+    let (w, _) = framed(&mut s, "Timber Frame - 134mm", crate::framing::DEFAULT_TYPE);
     run(&mut s, "framing_member", json!({"id": w, "key": "stud/start", "plies": 2}));
     let text = s.model.to_json().unwrap_or_else(|e| panic!("{e}"));
     let back = crate::model::Model::read(&text).unwrap_or_else(|e| panic!("{e}")).0;
     let e = back.wall(w).map(|x| x.framing_edits.clone()).unwrap_or_default();
     assert_eq!((e.len(), e[0].key.as_str(), e[0].plies), (1, "stud/start", Some(2)));
     assert_eq!(e[0].guid, s.model.wall(w).map(|x| x.framing_edits[0].guid).unwrap_or_default(), "its GUID kept");
-    assert!(back.type_layers("wall", "Timber Frame - 114mm").iter().any(|l| l.framed));
+    assert!(back.type_layers("wall", "Timber Frame - 134mm").iter().any(|l| l.framed));
 }
 
 #[test]
 fn a_walls_framing_is_kept_until_the_model_changes() {
     let mut s = Session::new();
-    let (w, win) = framed(&mut s, "Timber Frame - 114mm", crate::framing::DEFAULT_TYPE);
+    let (w, win) = framed(&mut s, "Timber Frame - 134mm", crate::framing::DEFAULT_TYPE);
     let once = crate::framing::wall(&s.model, w).ok().flatten().unwrap_or_else(|| panic!("not framed"));
     let again = crate::framing::wall(&s.model, w).ok().flatten().unwrap_or_else(|| panic!("not framed"));
     assert!(Arc::ptr_eq(&once, &again), "worked out once");
@@ -242,7 +242,7 @@ fn a_walls_framing_is_kept_until_the_model_changes() {
 #[test]
 fn tab_finds_the_members_under_a_ray_nearest_first_and_in_a_plan_round_a_point() {
     let mut s = Session::new();
-    let (w, _) = framed(&mut s, "Timber Frame - 114mm", crate::framing::DEFAULT_TYPE);
+    let (w, _) = framed(&mut s, "Timber Frame - 134mm", crate::framing::DEFAULT_TYPE);
     let f = crate::framing::wall(&s.model, w).ok().flatten().unwrap_or_else(|| panic!("not framed"));
     // The wall runs east from the origin, its exterior north: from the north through it at 19 mm along, 1200 up, the start stud.
     let hits = crate::framing::edit::on_ray(&f, [19.0, -2000.0, 1200.0], [19.0, 2000.0, 1200.0], &|_| true);
@@ -265,7 +265,7 @@ fn a_plan_draws_every_member_of_framed_walls_that_mitre_over_the_other_walls_ban
     run(
         &mut s,
         "wall",
-        json!({"points": [[1200, 0], [0, 0], [0, 1200]], "type": "Timber Frame - 114mm", "height": 2700, "location": "exterior-finish"}),
+        json!({"points": [[1200, 0], [0, 0], [0, 1200]], "type": "Timber Frame - 134mm", "height": 2700, "location": "exterior-finish"}),
     );
     let walls: Vec<u64> = s.model.elements.iter().filter(|(_, e)| e.category() == "wall").map(|(id, _)| *id).collect();
     run(&mut s, "frame", json!({"ids": walls}));
@@ -303,4 +303,33 @@ fn a_plan_draws_every_member_of_framed_walls_that_mitre_over_the_other_walls_ban
         }
     }
     assert!(seen >= 4, "{seen} members looked at");
+}
+
+#[test]
+fn a_stud_doubled_is_two_plies_apart_in_3d_and_in_plan() {
+    let mut s = Session::new();
+    let (w, _) = framed(&mut s, "Timber Frame - 134mm", crate::framing::DEFAULT_TYPE);
+    let solids = |s: &Session| crate::view3d::solids(&s.model).into_iter().filter(|x| x.owner() == w).count();
+    let n = solids(&s);
+    run(&mut s, "framing_member", json!({"id": w, "key": "stud/start", "plies": 2}));
+    assert_eq!(solids(&s), n + 1, "two studs side by side, each its own");
+    // In plan the two are outlined each: a line down between them, 38 mm from the wall's start where they meet.
+    let stud = run(&mut s, "framing", json!({"id": w}))["members"]
+        .as_array()
+        .and_then(|ms| ms.iter().find(|m| m["key"] == "stud/start").cloned())
+        .unwrap_or_default();
+    let (s0, s1) = (f(&stud["s"], 0), f(&stud["s"], 1));
+    close(s1 - s0, 76.0, "two plies of 38");
+    let joint = (s0 + s1) / 2.0;
+    run(&mut s, "detail", json!({"view": "Level 1", "detail": "fine"}));
+    let view = crate::render::View { angle: 0.0, scale: 2.0, cx: joint, cy: 0.0, width: 400, height: 400 };
+    let d = crate::render::draw(&s.model, 100000, view);
+    let across_at_joint = d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(w)).any(|(p, _)| match p {
+        crate::render::Prim::Line { pts, .. } => pts.windows(2).any(|q| {
+            let (a, b) = (view.mm(q[0]), view.mm(q[1]));
+            (a.0 - joint).abs() < 0.5 && (b.0 - joint).abs() < 0.5 && (a.1 - b.1).abs() > 30.0
+        }),
+        _ => false,
+    });
+    assert!(across_at_joint, "a line between the two plies");
 }

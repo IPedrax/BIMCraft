@@ -133,6 +133,35 @@ fn extents(m: &Member, section: [f64; 2], plies: u32) -> (Option<f64>, f64, Opti
     }
 }
 
+/// `m`'s plies, each a member of one ply where it lies in `m`: side by side along the wall for an upright one, across it for a
+/// header on edge, stacked for the rest ([`extents`]). Drawn one by one, a doubled stud shows the joint between its two.
+pub fn plies(m: &Member) -> Vec<Member> {
+    let n = m.plies.max(1);
+    if n == 1 {
+        return vec![m.clone()];
+    }
+    let part = |r: [f64; 2], i: u32| {
+        let k = (r[1] - r[0]) / f64::from(n);
+        [r[0] + k * f64::from(i), r[0] + k * f64::from(i + 1)]
+    };
+    (0..n)
+        .map(|i| {
+            let mut ply = Member { plies: 1, ..m.clone() };
+            match (m.grain, m.role) {
+                (Grain::Up, _) => ply.s = part(m.s, i),
+                (_, Role::Header) if !flat_header(m) => ply.across = part(m.across, i),
+                // Stacked, each end's height shared out alike, a sloped top's too.
+                _ => {
+                    let at = |end: usize, j: u32| m.bottom[end] + (m.top[end] - m.bottom[end]) * f64::from(j) / f64::from(n);
+                    ply.bottom = [at(0, i), at(1, i)];
+                    ply.top = [at(0, i + 1), at(1, i + 1)];
+                }
+            }
+            ply
+        })
+        .collect()
+}
+
 /// Whether header `m` lies flat: as wide across the wall as its section is deep, not its plies side by side.
 fn flat_header(m: &Member) -> bool {
     let wide = m.across[1] - m.across[0];

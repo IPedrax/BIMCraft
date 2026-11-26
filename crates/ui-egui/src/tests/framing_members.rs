@@ -5,7 +5,7 @@ use super::*;
 use egui_kittest::kittest::{By, NodeT};
 
 /// A framed 2x4 wall, 4 m east from the origin, 2700 tall, selected.
-const FRAMED: &str = r#"wall {"points": [[0, 0], [4000, 0]], "type": "Timber Frame - 114mm", "height": 2700}
+const FRAMED: &str = r#"wall {"points": [[0, 0], [4000, 0]], "type": "Timber Frame - 134mm", "height": 2700}
 frame {"ids": [100002]}"#;
 
 fn framed() -> (Harness<'static, BimApp>, Id) {
@@ -132,8 +132,8 @@ fn frame_opens_the_wall_types_properties_whose_framing_needs_a_layer_marked_fram
 #[test]
 fn framing_a_wall_type_frames_every_wall_of_it_and_its_framed_layer_takes_the_framing_depth() {
     // KVH's 160 mm layer framed as 2x6s, 140 deep: the layer and the type follow.
-    let mut h = app(r#"wall {"points": [[0, 0], [4000, 0]], "type": "Timber Frame - 185mm"}
-wall {"points": [[0, 3000], [4000, 3000]], "type": "Timber Frame - 185mm"}"#);
+    let mut h = app(r#"wall {"points": [[0, 0], [4000, 0]], "type": "Timber Frame - 205mm"}
+wall {"points": [[0, 3000], [4000, 3000]], "type": "Timber Frame - 205mm"}"#);
     h.state_mut().selection = vec![100002];
     h.run();
     press(&mut h, "Structure");
@@ -141,9 +141,9 @@ wall {"points": [[0, 3000], [4000, 3000]], "type": "Timber Frame - 185mm"}"#);
     choose(&mut h, "Framing", bimcraft_core::framing::EXTERIOR_TYPE);
     press(&mut h, "OK");
     let m = &h.state().session.model;
-    let t = &m.types.wall["Timber Frame - 185mm"];
+    let t = &m.types.wall["Timber Frame - 205mm"];
     assert_eq!(t.framing.as_deref(), Some(bimcraft_core::framing::EXTERIOR_TYPE), "{}", h.state().status.text);
-    assert_eq!((t.layers[1].thickness, t.thickness), (140.0, 165.0), "the framed layer as deep as 2x6s");
+    assert_eq!((t.layers[2].thickness, t.thickness), (140.0, 185.0), "the framed layer as deep as 2x6s");
     for id in [100002, 100003] {
         assert!(bimcraft_core::framing::wall(m, id).ok().flatten().is_some(), "wall {id} framed with its type");
     }

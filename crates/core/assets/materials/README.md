@@ -1,6 +1,6 @@
 # The starter materials' pictures
 
-The pictures of the starter library's Grass, Gravel, Wood, Paving, Water, Pine, OSB, MDF and Marble: each an image fill on their surfaces in plan and
+The pictures of the starter library's Grass, Gravel, Wood, Paving, Water, Pine, OSB, MDF, Marble and Siding: each an image fill on their surfaces in plan and
 their texture in 3D. Each was shrunk to 128 px on its longest side and saved as a JPEG of quality 82, which a project keeps as it is.
 
 | File | Source | Author | Licence |
@@ -14,6 +14,7 @@ their texture in 3D. Each was shrunk to 128 px on its longest side and saved as 
 | `osb.jpg` | Generated for BIMCraft (seamless) | BIMCraft contributors | BIMCraft's own |
 | `mdf.jpg` | Generated for BIMCraft (seamless) | BIMCraft contributors | BIMCraft's own |
 | `marble.jpg` | Generated for BIMCraft (seamless) | BIMCraft contributors | BIMCraft's own |
+| `siding.jpg` | AI-generated for BIMCraft (seamless) | BIMCraft contributors | BIMCraft's own |
 
 `paving.jpg` is a changed (shrunk and re-encoded) copy of Keith333's work under CC BY 3.0; NOTICE credits it, and goes in every
 package. A new picture here is original or openly licensed, credited in this table and, when its licence asks, in NOTICE.

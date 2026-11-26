@@ -622,7 +622,7 @@ fn a_material_with_image_fills_saved_and_read_keeps_them() {
 #[test]
 fn the_starter_library_has_ground_and_finishes_shown_by_a_picture() {
     let s = Session::new();
-    for name in ["Grass", "Gravel", "Wood", "Paving", "Water", "Pine", "OSB", "MDF", "Marble"] {
+    for name in ["Grass", "Gravel", "Wood", "Paving", "Water", "Pine", "OSB", "MDF", "Marble", "Siding"] {
         let m = &s.model.materials[name];
         let fill = m.surface_image.as_ref().unwrap_or_else(|| panic!("{name} has an image fill"));
         let (w, h) = s.model.images[&fill.image].size();
@@ -631,7 +631,7 @@ fn the_starter_library_has_ground_and_finishes_shown_by_a_picture() {
     }
     assert_eq!(s.model.materials["Water"].transparency, 50, "water is half see-through");
     assert_eq!(s.model.materials["Grass"].transparency, 0);
-    // Held as the JPEGs they ship as: a new project stays small, its nine pictures under 48 kB.
+    // Held as the JPEGs they ship as: a new project stays small, its ten pictures under 48 kB.
     let text = serde_json::to_string(&s.model.images).unwrap();
     assert!(text.len() < 48_000, "{} bytes", text.len());
     let back = crate::model::Model::read(&serde_json::to_string(&s.model).unwrap()).unwrap().0;

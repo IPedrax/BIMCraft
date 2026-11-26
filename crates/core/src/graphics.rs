@@ -162,8 +162,24 @@ pub const SUBCATEGORIES: &[Sub] = &[
     Sub { key: "staircutmark", parent: "stair", name: ui_msg!("Cut Marks"), off: false },
     Sub { key: "stairnumber", parent: "stair", name: ui_msg!("Tread Numbers"), off: false },
     Sub { key: "stairheadroom", parent: "stair", name: ui_msg!("Headroom"), off: true },
+    // A compound wall's layers of each function ([`WALL_LAYERS`]): hidden, in plans, sections, elevations and 3D the wall is
+    // its other layers, so a framing plan can show a wall's studs without its finishes.
+    Sub { key: "wallstructure", parent: "wall", name: ui_msg!("Structure"), off: false },
+    Sub { key: "wallsubstrate", parent: "wall", name: ui_msg!("Substrate"), off: false },
+    Sub { key: "wallthermal", parent: "wall", name: ui_msg!("Thermal"), off: false },
+    Sub { key: "wallmembrane", parent: "wall", name: ui_msg!("Membrane"), off: false },
+    Sub { key: "wallfinish", parent: "wall", name: ui_msg!("Finish"), off: false },
     Sub { key: "curtainpanel", parent: "wall", name: ui_msg!("Curtain Panels"), off: false },
     Sub { key: "mullion", parent: "wall", name: ui_msg!("Mullions"), off: false },
+];
+
+/// Walls' subcategories of their layers' functions, each function's.
+pub const WALL_LAYERS: [(crate::model::Function, &str); 5] = [
+    (crate::model::Function::Structure, "wallstructure"),
+    (crate::model::Function::Substrate, "wallsubstrate"),
+    (crate::model::Function::Thermal, "wallthermal"),
+    (crate::model::Function::Membrane, "wallmembrane"),
+    (crate::model::Function::Finish, "wallfinish"),
 ];
 
 /// A stair's subcategories, in the order a part of a stair's solid or its plan names one by (`StairPart as usize`).
@@ -1162,6 +1178,8 @@ pub struct Look {
     fade: Fade,
     /// Walls > Framing hidden: a framed wall's structure layer is drawn in place of its members.
     unframed: bool,
+    /// The functions of walls' layers it hides, a bit each by [`WALL_LAYERS`]' order.
+    hidden_functions: u8,
     /// Floors > Framing hidden: a framed floor's structure layer is drawn in place of its members.
     unframed_floors: bool,
     /// Roofs > Framing hidden: a framed roof's structure layer is drawn in place of its members.
@@ -1265,12 +1283,25 @@ impl Look {
     /// Whether it draws a triangle or a solid whose Visibility Settings are packed as `vis`
     /// ([`crate::family::visibility::packed`]): in projection, or (`cut`) as a section's poché.
     pub fn forms_show(&self, vis: u32, cut: bool) -> bool {
+        if crate::family::visibility::layer(vis).is_some_and(|f| self.hides_layer(f)) {
+            return false;
+        }
         match crate::family::visibility::framing(vis) {
             Some(member) if vis & crate::family::visibility::FLOOR != 0 => member != self.unframed_floors,
             Some(member) if vis & crate::family::visibility::ROOF != 0 => member != self.unframed_roofs,
             Some(member) => member != self.unframed,
             None => vis == 0 || self.forms.shows(vis, cut),
         }
+    }
+
+    /// Whether it hides walls' layers of function `f`: Walls > Finish, say, hidden.
+    pub fn hides_layer(&self, f: crate::model::Function) -> bool {
+        WALL_LAYERS.iter().position(|(g, _)| *g == f).is_some_and(|k| self.hidden_functions & (1 << k) != 0)
+    }
+
+    /// Whether it hides any wall layers' function: then a wall is drawn as its other layers.
+    pub fn hides_layers(&self) -> bool {
+        self.hidden_functions != 0
     }
 
     /// Whether it draws a framed wall's structure layer in place of its members: Walls > Framing hidden.
@@ -1331,6 +1362,7 @@ impl Look {
             parts_hidden: Some(parts_mask(Some(&g))),
             fade: Fade::of(m),
             unframed: g.hides("framing"),
+            hidden_functions: WALL_LAYERS.iter().enumerate().filter(|(_, (_, key))| g.hides(key)).fold(0, |bits, (k, _)| bits | 1 << k),
             unframed_floors: g.hides("floorframing"),
             unframed_roofs: g.hides("roofframing"),
             ..Look::default()

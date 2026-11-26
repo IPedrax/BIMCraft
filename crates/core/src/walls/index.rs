@@ -40,6 +40,8 @@ pub(crate) struct Index {
     tiles: HashMap<(i64, i64), Tile>,
     /// Walls in no tile: too long for them, or of no finite size.
     everywhere: Vec<Id>,
+    /// The thickest wall's thickness: how far from a wall's end another's end may lie across it ([`crate::walls::across_end`]).
+    thickest: f64,
     /// The runs' own spans, tiles and the runs in no tile, kept apart from the walls' so that a
     /// wall query never meets a run and a run query never meets a wall.
     run_spans: BTreeMap<Id, (f64, f64)>,
@@ -54,6 +56,7 @@ impl Index {
             hosts: BTreeMap::new(),
             tiles: HashMap::new(),
             everywhere: Vec::new(),
+            thickest: 0.0,
             run_spans: BTreeMap::new(),
             run_tiles: HashMap::new(),
             run_everywhere: Vec::new(),
@@ -64,6 +67,10 @@ impl Index {
                 Element::Wall(w) => {
                     let (lo, hi) = (m.base_z(w), m.top_z(w));
                     index.spans.insert(id, (lo, hi));
+                    let (ext, int) = super::faces(m, w);
+                    if (ext - int).is_finite() {
+                        index.thickest = index.thickest.max(ext - int);
+                    }
                     match reach(m, w).map(|[x0, y0, x1, y1]| ([tile(x0), tile(y0)], [tile(x1), tile(y1)])) {
                         Some(([a, b], [c, d])) if (c - a + 1).saturating_mul(d - b + 1) <= MAX_TILES && tiled < MAX_REFERENCES => {
                             for x in a..=c {
@@ -120,9 +127,15 @@ impl Index {
     pub(crate) fn neighbours_at(&self, id: Id, node: P2) -> Vec<Id> {
         let Some(&(lo, hi)) = self.spans.get(&id) else { return Vec::new() };
         let mut ids = self.everywhere.clone();
-        if node.0.is_finite() && node.1.is_finite() {
-            if let Some(tile) = self.tiles.get(&(tile(node.0), tile(node.1))) {
-                ids.extend(tile.may_overlap(lo, hi));
+        // Every tile within the thickest wall of the node: a wall whose end lies across this one's may be in the next.
+        let g = self.thickest + 2.0 * TOL;
+        if node.0.is_finite() && node.1.is_finite() && g < TILE {
+            for x in tile(node.0 - g)..=tile(node.0 + g) {
+                for y in tile(node.1 - g)..=tile(node.1 + g) {
+                    if let Some(tile) = self.tiles.get(&(x, y)) {
+                        ids.extend(tile.may_overlap(lo, hi));
+                    }
+                }
             }
         } else {
             ids = self.spans.keys().copied().collect();
