@@ -1,6 +1,7 @@
 //! A corpus of synthetic laser scans, the same every time, for measuring how point clouds are read
 //! (`scripts/bench-clouds.sh`): a room 10 m by 8 m by 3 m, its floor, ceiling and walls scanned from its middle, each point with
-//! an intensity and a colour by the surface it lies on, written as PTS, XYZ, binary PLY, LAS 1.4 and E57.
+//! an intensity and a colour by the surface it lies on, written as PTS, XYZ, binary PLY, LAS 1.4, E57 and (with the `laz`
+//! feature, on by default) LAZ.
 //!
 //! `cargo run --release -p bimcraft-core --example cloud_corpus -- OUT_DIR [POINTS]` (10 million points unless given). Each file is
 //! written as it's made, a point at a time, so a corpus of billions takes no more memory than one of thousands.
@@ -118,6 +119,52 @@ fn las(path: &Path, n: u64) -> std::io::Result<()> {
     h[247..255].copy_from_slice(&n.to_le_bytes());
     f.seek(SeekFrom::Start(0))?;
     f.write_all(&h)
+}
+
+/// LAZ: the corpus's LAS file, its points compressed by the laz crate a batch at a time, in LASzip's chunks of 50,000.
+#[cfg(feature = "laz")]
+fn laz(las: &Path, path: &Path) -> std::io::Result<()> {
+    use std::io::Read;
+    let bad = |e: laz::LasZipError| std::io::Error::other(e.to_string());
+    let mut r = std::io::BufReader::with_capacity(1 << 20, File::open(las)?);
+    let mut head = vec![0u8; 375];
+    r.read_exact(&mut head)?;
+    let vlr = laz::LazVlrBuilder::default().with_point_format(7, 0).map_err(bad)?.with_fixed_chunk_size(50_000).build();
+    let len = vlr.items_size() as usize;
+    let mut data = Vec::new();
+    vlr.write_to(&mut data)?;
+    let mut record = vec![0u8; 54];
+    record[2..16].copy_from_slice(b"laszip encoded");
+    record[18..20].copy_from_slice(&22204u16.to_le_bytes());
+    record[20..22].copy_from_slice(&(data.len() as u16).to_le_bytes());
+    record.extend(data);
+    head[96..100].copy_from_slice(&((375 + record.len()) as u32).to_le_bytes());
+    head[100..104].copy_from_slice(&1u32.to_le_bytes());
+    head[104] |= 0x80;
+    let mut out = BufWriter::with_capacity(1 << 20, File::create(path)?);
+    out.write_all(&head)?;
+    out.write_all(&record)?;
+    let mut c = laz::LasZipCompressor::new(out, vlr).map_err(bad)?;
+    let mut buf = vec![0u8; len * 50_000];
+    loop {
+        let mut n = 0;
+        while n < buf.len() {
+            let k = r.read(&mut buf[n..])?;
+            if k == 0 {
+                break;
+            }
+            n += k;
+        }
+        if n == 0 {
+            break;
+        }
+        c.compress_many(&buf[..n - n % len])?;
+        if n < buf.len() {
+            break;
+        }
+    }
+    c.done()?;
+    c.into_inner().flush()
 }
 
 /// An E57 file's pages, written as they fill: 1020 bytes of each page are the file's, the last four its checksum (left nought,
@@ -242,8 +289,10 @@ fn main() {
         .and_then(|()| ply(&dir.join("corpus.ply"), n))
         .and_then(|()| las(&dir.join("corpus.las"), n))
         .and_then(|()| e57(&dir.join("corpus.e57"), n));
+    #[cfg(feature = "laz")]
+    let made = made.and_then(|()| laz(&dir.join("corpus.las"), &dir.join("corpus.laz")));
     match made {
-        Ok(()) => println!("{n} points as corpus.pts, .xyz, .ply, .las and .e57 in {}", dir.display()),
+        Ok(()) => println!("{n} points as corpus.pts, .xyz, .ply, .las, .laz and .e57 in {}", dir.display()),
         Err(e) => {
             eprintln!("the corpus couldn't be written: {e}");
             std::process::exit(1);

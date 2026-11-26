@@ -12,7 +12,7 @@ dir="${1:-target/cloud-corpus}"
 points="${2:-10000000}"
 cargo build --release -p bimcraft-cli >&2
 cargo build --release -p bimcraft-core --example cloud_corpus >&2
-if [ ! -f "$dir/corpus.las" ]; then
+if [ ! -f "$dir/corpus.laz" ]; then
   target/release/examples/cloud_corpus "$dir" "$points" >&2
 fi
 printf '%-28s %12s %10s %12s %12s\n' file bytes seconds 'peak MB' points

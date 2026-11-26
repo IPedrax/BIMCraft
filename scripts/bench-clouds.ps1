@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 cargo build --release -p bimcraft-cli
 cargo build --release -p bimcraft-core --example cloud_corpus
-if (-not (Test-Path (Join-Path $Dir "corpus.las"))) {
+if (-not (Test-Path (Join-Path $Dir "corpus.laz"))) {
     & target\release\examples\cloud_corpus.exe $Dir $Points
 }
 "{0,-28} {1,12} {2,10} {3,12}" -f "file", "bytes", "seconds", "peak MB"
