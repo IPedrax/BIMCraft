@@ -42,9 +42,12 @@ impl BimApp {
         // Where the pointer is on the paper, for the others in a Co-Work session.
         self.cowork_seen.pointer = local.map(|q| (id, view.mm(q)));
         let writing = self.writing();
+        let stale = !matches!(&self.paper.drawn, Some((m, s, _)) if Arc::ptr_eq(m, &model) && *s == id);
+        // Its sections', elevations' and 3D views' pictures drawn on the card where the window has one.
+        let card = if stale { self.view_card() } else { None };
         let papers = &mut self.paper;
-        if !matches!(&papers.drawn, Some((m, s, _)) if Arc::ptr_eq(m, &model) && *s == id) {
-            let d = sheet::draw(&model, id).unwrap_or_else(|| Drawing::new(view));
+        if stale {
+            let d = sheet::draw_on(&model, id, card.as_deref()).unwrap_or_else(|| Drawing::new(view));
             papers.pictures = d
                 .prims
                 .iter()

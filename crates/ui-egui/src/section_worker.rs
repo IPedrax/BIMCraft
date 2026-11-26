@@ -2,7 +2,7 @@
 use crate::view_worker::Cancel;
 use bimcraft_core::model::{Id, Model};
 use bimcraft_core::render::{self, Rgb, View};
-use bimcraft_core::view3d::{Image, MAX_SIDE};
+use bimcraft_core::view3d::{Image, MAX_SIDE, Raster};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -14,6 +14,8 @@ pub(super) struct Request {
     pub fit_height: u32,
     pub ppp: f64,
     pub tints: Vec<(Id, Rgb)>,
+    /// The graphics card the picture's triangles are rasterized on, if the window has one (`BimApp::view_card`).
+    pub card: Option<Arc<dyn Raster>>,
 }
 
 impl Request {
@@ -25,6 +27,11 @@ impl Request {
             && self.fit_height == other.fit_height
             && self.ppp == other.ppp
             && self.tints == other.tints
+            && match (&self.card, &other.card) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            }
     }
 }
 
@@ -84,7 +91,11 @@ impl Renderer {
         if rebuilt {
             self.base = None;
             let overlay = render::SectionOverlay::new_cancellable(m, work, request.id, view, cancelled)?;
-            let picture = render::section_picture_cancellable(m, work, request.id, pixels, &[], cancelled).map(Arc::new);
+            let picture = match &request.card {
+                Some(card) => render::section_picture_on(m, work, request.id, pixels, &[], card.as_ref(), cancelled),
+                None => render::section_picture_cancellable(m, work, request.id, pixels, &[], cancelled),
+            }
+            .map(Arc::new);
             if cancelled() {
                 return None;
             }
@@ -109,7 +120,7 @@ mod tests {
         let mut s = Session::new();
         s.script(r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}"#).unwrap();
         let id = s.execute("section", &json!({"start": [-1000,3000], "end": [9000,3000]})).unwrap()["id"].as_u64().unwrap();
-        Request { model: s.model, id, view: None, size: [400, 300], fit_height: 280, ppp: 1.0, tints: Vec::new() }
+        Request { model: s.model, id, view: None, size: [400, 300], fit_height: 280, ppp: 1.0, tints: Vec::new(), card: None }
     }
 
     /// A desk inside the walls and one past them: only the far one's exact points decide the frame.
@@ -122,7 +133,7 @@ component {"family":"Desk","type":"1400 x 700","at":[30000,3000],"angle":37,"off
         )
         .unwrap();
         let id = s.execute("section", &json!({"start": [-1000,-1000], "end": [9000,-1000]})).unwrap()["id"].as_u64().unwrap();
-        Request { model: s.model, id, view: None, size: [400, 300], fit_height: 280, ppp: 1.0, tints: Vec::new() }
+        Request { model: s.model, id, view: None, size: [400, 300], fit_height: 280, ppp: 1.0, tints: Vec::new(), card: None }
     }
 
     fn assert_fresh(frame: &Frame) {

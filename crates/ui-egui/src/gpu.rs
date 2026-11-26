@@ -12,7 +12,7 @@ use std::sync::Arc;
 use bimcraft_core::model::Id;
 use bimcraft_core::render::Rgb;
 use bimcraft_core::view3d::gpu::{Instance, Mesh, Vertex, Visible};
-use bimcraft_core::view3d::{Camera, Caps, MAX_SIDE, PlaneMark};
+use bimcraft_core::view3d::{Camera, Caps, Clip, MAX_SIDE, PlaneMark, Rastered};
 use eframe::egui_wgpu::{RenderState, wgpu};
 use egui::TextureId;
 
@@ -115,11 +115,13 @@ struct Targets {
     color_texture: wgpu::Texture,
     ids: wgpu::TextureView,
     depth: wgpu::TextureView,
+    /// The ids and the depth themselves, which a section's raster is read back from (`Gpu::raster_section`).
+    ids_texture: wgpu::Texture,
+    depth_texture: wgpu::Texture,
     clear_color: wgpu::TextureView,
     clear_ids: wgpu::TextureView,
     clear_depth: wgpu::TextureView,
-    // Kept for a test to read back.
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// Read back for a sheet's 3D view (`Gpu::picture_of`), and by a test.
     picture: wgpu::Texture,
     picture_view: wgpu::TextureView,
     /// The opaque targets, as the later passes read them; and those seen through, as the picture's pass does.
@@ -480,6 +482,9 @@ pub struct Gpu {
     marking: wgpu::RenderPipeline,
 }
 
+/// How many parts a picture read back may take before the card is given up for the processor: a card that holds very little.
+const PARTS: usize = 4096;
+
 /// The most bytes a buffer of vertices holds, whatever the card allows: some drivers place a very large buffer badly.
 const VERTEX_BUFFER: u64 = 256 << 20;
 
@@ -754,6 +759,30 @@ fn entry(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
 fn put_unit(into: &mut Words, v: &[f32; 3]) {
     let q = |x: f32| (x.clamp(-1.0, 1.0) * 32767.0).round() as i16;
     into.extend([q(v[0]), q(v[1]), q(v[2]), 0].iter().flat_map(|q| q.to_ne_bytes()));
+}
+
+/// The pixels a section's `clip` keeps of a `size` picture, as a scissor: x, y, width and height. The processor keeps a pixel
+/// whose middle lies between the clip's columns and rows (`Clip`), ends included.
+fn scissor(clip: &Clip, (w, h): (u32, u32)) -> (u32, u32, u32, u32) {
+    let span = |(a, b): (f64, f64), n: u32| {
+        let first = if a.is_finite() {
+            (a - 0.5).ceil().clamp(0.0, f64::from(n)) as u32
+        } else if a < 0.0 {
+            0
+        } else {
+            n
+        };
+        let end = if b.is_finite() {
+            ((b - 0.5).floor() + 1.0).clamp(0.0, f64::from(n)) as u32
+        } else if b > 0.0 {
+            n
+        } else {
+            0
+        };
+        (first.min(n), end.max(first.min(n)).min(n))
+    };
+    let ((x0, x1), (y0, y1)) = (span(clip.x, w), span(clip.y, h));
+    (x0, y0, x1 - x0, y1 - y0)
 }
 
 fn rgb(c: Rgb) -> [f32; 3] {
@@ -1098,8 +1127,22 @@ impl Gpu {
         cut: Cut,
         caps: Option<&Arc<Caps>>,
     ) -> Result<bool, String> {
+        self.draw_any(mesh, cam, tints, ground, (cut, caps), None)
+    }
+
+    /// [`draw_capped`](Self::draw_capped); with `section`, only the opaque surfaces into the targets, in a section's
+    /// depths, kept as its clip keeps them (see [`raster_section`](Self::raster_section)).
+    fn draw_any(
+        &mut self,
+        mesh: &Arc<Mesh>,
+        cam: &Camera,
+        tints: &[(Id, Rgb)],
+        ground: Rgb,
+        (cut, caps): (Cut, Option<&Arc<Caps>>),
+        section: Option<&Clip>,
+    ) -> Result<bool, String> {
         let guard = scopes(&self.device);
-        let drawn = self.encode(mesh, cam, tints, ground, cut, caps);
+        let drawn = self.encode(mesh, cam, tints, ground, cut, caps, section);
         let full = out_of_memory(guard);
         if let Some(up) = &self.mesh {
             self.card_bytes = self.card_bytes.min(up.room.saturating_add(self.parked_bytes()));
@@ -1117,6 +1160,95 @@ impl Gpu {
             (self.mesh, self.parked, self.parked_owner, self.targets) = (None, None, None, None);
         }
         caught.and(drawn)
+    }
+
+    /// What a section's or an elevation's picture shows, rasterized here for the processor to finish (core
+    /// `render::section_picture_on`): `mesh` ([`Mesh::section`]) through `cam`, kept as `clip` keeps it, each pixel's depth and
+    /// the plane and element of its nearest triangle, read back from the card. An error leaves the card with nothing kept.
+    pub(crate) fn raster_section(&mut self, mesh: &Arc<Mesh>, cam: &Camera, clip: &Clip) -> Result<Rastered, String> {
+        let (w, h) = (cam.width.clamp(1, MAX_SIDE), cam.height.clamp(1, MAX_SIDE));
+        let blank = || Rastered { width: w, height: h, depth: vec![0.0; (w * h) as usize], ids: vec![[0; 2]; (w * h) as usize] };
+        if scissor(clip, (w, h)).2 == 0 || scissor(clip, (w, h)).3 == 0 || mesh.triangles() == 0 {
+            return Ok(blank());
+        }
+        // Each raster from the first: a clip that changed under the same camera draws again.
+        self.forget_progress();
+        self.finish(mesh, cam, Some(clip))?;
+        let targets = self.targets.as_ref().ok_or("nothing was drawn")?;
+        let ids = self.read_back(&targets.ids_texture, wgpu::TextureAspect::All, 8)?;
+        let depth = self.read_back(&targets.depth_texture, wgpu::TextureAspect::DepthOnly, 4)?;
+        let word = |b: &[u8; 4]| u32::from_le_bytes(*b);
+        Ok(Rastered {
+            width: w,
+            height: h,
+            depth: depth.as_chunks::<4>().0.iter().map(|b| f32::from_bits(word(b))).collect(),
+            ids: ids.as_chunks::<4>().0.as_chunks::<2>().0.iter().map(|[plane, owner]| [word(plane), word(owner)]).collect(),
+        })
+    }
+
+    /// The 3D view's picture of `mesh` through `cam` on paper, with the caps of its section box, read back from the card: what a
+    /// sheet's 3D view shows (core `sheet::draw_on`). An error leaves the card with nothing kept.
+    pub(crate) fn picture_of(&mut self, mesh: &Arc<Mesh>, cam: &Camera, caps: Option<&Arc<Caps>>) -> Result<Vec<u8>, String> {
+        self.forget_progress();
+        let cut = mesh.section_box;
+        let mut parts = 0;
+        while !self.draw_any(mesh, cam, &[], bimcraft_core::render::PAPER, (cut, caps), None)? {
+            parts += 1;
+            if parts > PARTS {
+                return Err(TOO_LITTLE.into());
+            }
+        }
+        let targets = self.targets.as_ref().ok_or("nothing was drawn")?;
+        let mut rgba = self.read_back(&targets.picture, wgpu::TextureAspect::All, 4)?;
+        for px in rgba.as_chunks_mut::<4>().0 {
+            px[3] = 255;
+        }
+        Ok(rgba)
+    }
+
+    /// Draws `mesh` through `cam` (a section's, with `section`) until the picture is the exact one.
+    fn finish(&mut self, mesh: &Arc<Mesh>, cam: &Camera, section: Option<&Clip>) -> Result<(), String> {
+        let mut parts = 0;
+        while !self.draw_any(mesh, cam, &[], bimcraft_core::render::PAPER, (None, None), section)? {
+            parts += 1;
+            if parts > PARTS {
+                return Err(TOO_LITTLE.into());
+            }
+        }
+        Ok(())
+    }
+
+    /// `texture` (of `per` bytes a pixel, its `aspect`) copied back from the card, row by row, with no padding.
+    fn read_back(&self, texture: &wgpu::Texture, aspect: wgpu::TextureAspect, per: u32) -> Result<Vec<u8>, String> {
+        let guard = scopes(&self.device);
+        let (w, h) = (texture.width(), texture.height());
+        let row = (w * per).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bimcraft-read-back"),
+            size: u64::from(row) * u64::from(h),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("bimcraft-read-back") });
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo { texture, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: None },
+            },
+            texture.size(),
+        );
+        self.queue.submit([encoder.finish()]);
+        let (sent, mapped) = std::sync::mpsc::channel();
+        buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+            let _ = sent.send(r);
+        });
+        self.device.poll(wgpu::PollType::wait_indefinitely()).map_err(|e| e.to_string())?;
+        caught(guard)?;
+        mapped.recv().map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
+        let view = buffer.slice(..).get_mapped_range().map_err(|e| e.to_string())?;
+        let tight = (w * per) as usize;
+        Ok(view.chunks_exact(row as usize).flat_map(|r| r[..tight].iter().copied()).collect())
     }
 
     /// Asks the card to hold half of what it does, and starts the picture again: a parked mesh is let go of first. False where it
@@ -1269,6 +1401,7 @@ impl Gpu {
         self.parked.as_ref().is_some_and(|u| Arc::ptr_eq(&u.mesh, mesh))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn encode(
         &mut self,
         mesh: &Arc<Mesh>,
@@ -1277,6 +1410,7 @@ impl Gpu {
         ground: Rgb,
         cut: Cut,
         caps: Option<&Arc<Caps>>,
+        section: Option<&Clip>,
     ) -> Result<bool, String> {
         let (w, h) = (cam.width.clamp(1, MAX_SIDE), cam.height.clamp(1, MAX_SIDE));
         if w.max(h) > self.device.limits().max_texture_dimension_2d {
@@ -1390,8 +1524,12 @@ impl Gpu {
             up.bind = None;
         }
         write(&self.segments.0, &lines);
-        // The view: scaled so that a mm is as many pixels in clip space as in the picture, and the mesh's depth is 0 to 1.
-        let view = mesh.view(cam);
+        // The view: scaled so that a mm is as many pixels in clip space as in the picture, and the mesh's depth is 0 to 1; a
+        // section's, what lies past its line up to its far clip.
+        let view = match section {
+            Some(clip) => mesh.section_view(cam, clip.far),
+            None => mesh.view(cam),
+        };
         let (width, height) = (w as f32, h as f32);
         let through = up.clear_from < up.count || mesh.shapes.iter().any(|s| s.clear_from < s.vertices.end && !s.instances.is_empty());
         let mut globals = Words::new();
@@ -1412,7 +1550,7 @@ impl Gpu {
         // The view's edges, silhouettes and ambient shadows, as the processor draws them.
         let d = mesh.display;
         let silhouette = d.silhouette.min(bimcraft_core::view3d::MAX_SILHOUETTE) as f32;
-        put(&mut globals, &[if d.edges { 1.0 } else { 0.0 }, silhouette, if d.ambient_shadows { 1.0 } else { 0.0 }, 0.0]);
+        put(&mut globals, &[if d.edges { 1.0 } else { 0.0 }, silhouette, if d.ambient_shadows { 1.0 } else { 0.0 }, view.aim]);
         // The section box from the mesh's origin, as a surface's point is.
         let (lo, hi) = cut.unwrap_or_default();
         let from = |p: [f64; 3]| std::array::from_fn::<f32, 3, _>(|i| (p[i] - mesh.origin[i]) as f32);
@@ -1558,6 +1696,11 @@ impl Gpu {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            // A section's crop keeps the pixels whose middles lie between its columns and rows, as the processor's clip does.
+            if let Some(clip) = section.filter(|_| !clear) {
+                let (x, y, w, h) = scissor(clip, targets.size);
+                pass.set_scissor_rect(x, y, w, h);
+            }
             let (own, copies) = match (clear, cut.is_some()) {
                 (true, _) => (&self.clear, &self.instanced_clear),
                 (false, true) => (&self.scene_cut, &self.instanced_cut),
@@ -1991,11 +2134,10 @@ impl Gpu {
         let (render, sampled) = (wgpu::TextureUsages::RENDER_ATTACHMENT, wgpu::TextureUsages::TEXTURE_BINDING);
         let view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor::default());
         let color_texture = texture("bimcraft-3d-color", COLOR, render | sampled | wgpu::TextureUsages::COPY_SRC);
-        let (color, ids, depth) = (
-            view(&color_texture),
-            view(&texture("bimcraft-3d-ids", IDS, render | sampled)),
-            view(&texture("bimcraft-3d-depth", DEPTH, render | sampled)),
-        );
+        let read = wgpu::TextureUsages::COPY_SRC;
+        let ids_texture = texture("bimcraft-3d-ids", IDS, render | sampled | read);
+        let depth_texture = texture("bimcraft-3d-depth", DEPTH, render | sampled | read);
+        let (color, ids, depth) = (view(&color_texture), view(&ids_texture), view(&depth_texture));
         let (clear_color, clear_ids, clear_depth) = (
             view(&texture("bimcraft-3d-clear-color", COLOR, render | sampled)),
             view(&texture("bimcraft-3d-clear-ids", CLEAR_IDS, render | sampled)),
@@ -2034,6 +2176,8 @@ impl Gpu {
             color_texture,
             ids,
             depth,
+            ids_texture,
+            depth_texture,
             clear_color,
             clear_ids,
             clear_depth,

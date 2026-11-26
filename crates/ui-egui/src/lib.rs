@@ -52,6 +52,7 @@ mod profile;
 mod publisher;
 mod stairgrips;
 mod stairtype;
+mod viewcard;
 mod viewrange;
 pub use gpu::limits_for;
 mod asset_manager;
@@ -1096,6 +1097,9 @@ pub struct BimApp {
     active_3d: Option<Id>,
     /// The graphics card the 3D view may be drawn on (Settings > Performance).
     card: gpu::Card,
+    /// The card sections, elevations and sheets are drawn on (`viewcard.rs`), made the first time one asks while the user lets
+    /// the 3D view use the card: none until then, and `Some(None)` where the device couldn't make one.
+    view_card: Option<Option<std::sync::Arc<viewcard::ViewCard>>>,
     cut: section::Cut,
     minimap: minimap::Minimap,
     paper: paper::Papers,
@@ -2110,6 +2114,7 @@ impl BimApp {
             orbit: orbit::Orbit::default(),
             active_3d: None,
             card: gpu::Card::default(),
+            view_card: None,
             cut: section::Cut::default(),
             minimap: minimap::Minimap::default(),
             paper: paper::Papers::default(),

@@ -240,6 +240,7 @@ impl BimApp {
                         fit_height: (rect.height() - self.canvas.room).max(1.0) as u32,
                         ppp: f64::from(ui.ctx().pixels_per_point()),
                         tints: self.lit_selection().iter().map(|id| (*id, rgb(canvas_pal().accent))).collect(),
+                        card: self.view_card(),
                     };
                     if let Err(error) = self.cut.request(ui.ctx(), request) {
                         self.status = Status { text: error, error: true };
@@ -375,6 +376,7 @@ impl BimApp {
                 fit_height: (rect.height() - self.canvas.room).max(1.0) as u32,
                 ppp,
                 tints,
+                card: self.view_card(),
             };
             if let Err(error) = self.cut.request(ui.ctx(), request) {
                 self.status = Status { text: error, error: true };

@@ -570,6 +570,25 @@ nothing is; the wheel zooms toward it (`Camera::zoom_about` closes the target an
 cursor zooms about the cursor as before. `the_surface_under_a_pixel_is_the_same_through_the_mesh_as_the_picture_and_an_orbit_or_a_zoom_about_it_keeps_it_there`
 checks the two painters agree, and `tests/working3d.rs` drives it in both profiles, on the card where the machine has one.
 
+**Sections, elevations, callouts and sheets on the card.** A section's or an elevation's picture (a callout of one is one too) and a
+sheet's pictures are drawn on the card as well, under the same setting, but the card only rasterizes and the processor finishes, so the
+picture is the processor's: edges, tints and picks alike. The one difference is a face seen all but edge on, a sliver a pixel wide, which
+may cover a pixel's middle on one and not the other (the card snaps corners to a 256th of a pixel); the tests allow one pixel in 2,000. For a section, `SectionWork` keeps a card scene (`CardScene`) for each of the last few
+sections asked for: `Scene::section_whole`, everything past the line and before the far clip with nothing left out for lying behind
+something else (which depends on the picture), and `Mesh::section` of it (hidden line whatever the view's style, without masses, a
+scan's points, levels' marks or a section box). A pan or a zoom only rasterizes again (`render::section_picture_on`, through the
+core's `view3d::Raster`, which the desktop's `viewcard.rs` implements): the card draws the opaque surfaces in a section's depths
+(`Mesh::section_view`: 1 on the line, 0 at the far clip, so the card's own clipping keeps what the processor's `Clip` keeps; its
+columns and rows a scissor), and reads back each pixel's depth and the plane and element there (`Rastered`).
+`Scene::section_picture_from` turns those into the scene's triangle the processor would have drawn there (the first on that plane of
+that element) and draws the rest as ever: edges, tints, a scan's points, what picks, what regions keep. A sheet's 3D view is the card's
+whole 3D picture of it, read back (`Raster::picture`); `sheet::draw_on` takes the card, and `sheet::draw` (the export, the CLI) none.
+The card is a second one on the window's device (`ViewCard`, `BimApp::view_card`), apart from the 3D view's, so the section worker
+rasterizes on it while the window draws. Anything that fails (the card, a mesh too big, a raster that doesn't fit) is drawn on the
+processor instead, and a card that failed isn't tried again. `what_a_card_rasters_of_a_section_s_whole_scene_makes_the_processor_s_picture`
+(core, no card needed) holds the processor's own raster to the picture exactly, and `viewcard::tests` (on the machine's card)
+holds the card's to it but for slivers.
+
 The 3D view's tools draw on a **work plane**, as Revit's (`workplane.rs`): `work_plane` takes the surface under the cursor and,
 for a face that is level and turned up (a floor's top, a flat roof's, a level's plane), gives the level its points go on (the face's
 element's own level, a level's plane that level, else the highest level at or below it) and the offset over it, to the micron;

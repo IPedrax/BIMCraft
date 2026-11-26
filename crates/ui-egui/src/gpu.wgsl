@@ -38,7 +38,8 @@ struct Globals {
     // in front of the eye.
     lens: vec4<f32>,
     // The view's Graphic Display Options: x 1 where it shows its edges, y a silhouette's width (px, 0 for none), z 1 where it
-    // shows ambient shadows.
+    // shows ambient shadows. w: the depth (0 to 1) of the aim in a parallel view, 0.5 in a 3D view and 1 in a section's
+    // raster, which keeps only what lies past its line.
     display: vec4<f32>,
     // The section box from the mesh's origin: its least corner (w: 1 where there is one) and its greatest.
     cut_lo: vec4<f32>,
@@ -72,7 +73,7 @@ fn to_clip(d: vec3<f32>) -> vec4<f32> {
         let ahead = g.lens.y - z;
         return vec4<f32>(x * g.right.w, y * g.up.w, g.lens.z * ahead + g.lens.w, ahead);
     }
-    return vec4<f32>(x * g.right.w, y * g.up.w, 0.5 + z * g.back.w, 1.0);
+    return vec4<f32>(x * g.right.w, y * g.up.w, g.display.w + z * g.back.w, 1.0);
 }
 
 struct Owner {
@@ -603,7 +604,7 @@ fn to_pixel(p: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(
         g.size.x * 0.5 + dot(d, g.right.xyz) * g.aim.w,
         g.size.y * 0.5 - dot(d, g.up.xyz) * g.aim.w,
-        0.5 + dot(d, g.back.xyz) * g.back.w,
+        g.display.w + dot(d, g.back.xyz) * g.back.w,
     );
 }
 
