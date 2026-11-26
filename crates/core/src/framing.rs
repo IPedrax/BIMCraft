@@ -16,6 +16,7 @@
 //! what it belongs to stays: grid studs by their station from the layout's origin, an opening's members by its GUID.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -26,11 +27,16 @@ use crate::geom::{self, P2};
 use crate::model::{Element, Function, Guid, Id, MAX_COORD, Model, TOL, Wall};
 use crate::walls::{self, Axis, Plane, Prism};
 
+pub mod edit;
 pub mod floor;
 pub mod roof;
 
 /// The framing type `frame` makes when the project has none: 2x4 studs 16 inches apart.
 pub const DEFAULT_TYPE: &str = "2x4 @ 406";
+/// The framing type for exterior walls a new project has: 2x6s (38 x 140) 16" on centre.
+pub const EXTERIOR_TYPE: &str = "2x6 @ 406";
+/// The European framing type a new project has: German timber frame (Holzrahmenbau), KVH studs 60 mm thick at 625 mm.
+pub const EUROPEAN_TYPE: &str = "KVH 60x160 @ 625";
 /// The most grid stations a framed wall may have: one longer than this many `spacing`s is refused.
 pub const MAX_STATIONS: f64 = 1024.0;
 /// How far apart, mm, the splices of two top plates are at least, as IRC R602.3.2 has a double top plate's end joints offset
@@ -107,6 +113,9 @@ pub struct FramingType {
     pub layout: Layout,
     /// A stud's or a plate's thickness, a 2x's 38 (1.5").
     pub thickness: f64,
+    /// How deep a stud is (a 2x4's 89, a 60x160's 160): a wall type framed with it has the layer it marks `framed` kept this
+    /// thick ([`sync_wall_types`]), so the members, as deep as that layer, are.
+    pub depth: f64,
     /// What the members are made of: a material of the library; none, the structure layer's.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub material: Option<String>,
@@ -151,6 +160,7 @@ impl Default for FramingType {
             spacing: 406.4,
             layout: Layout::Start,
             thickness: 38.0,
+            depth: 89.0,
             material: None,
             bottom_plates: 1,
             top_plates: 2,
@@ -400,6 +410,40 @@ impl Framing {
     }
 }
 
+impl FramingType {
+    /// North American light framing: 2x4s (38 x 89) 16 inches (406.4 mm) on centre, a double top plate, 2x headers,
+    /// lumber in 8 to 20 foot stock. The default, in `material`.
+    pub fn american(material: Option<String>) -> FramingType {
+        FramingType { material, ..FramingType::default() }
+    }
+
+    /// North American exterior framing: 2x6s (38 x 140) 16 inches on centre, deep enough for the cavity insulation an exterior
+    /// wall holds; otherwise as [`FramingType::american`].
+    pub fn exterior(material: Option<String>) -> FramingType {
+        FramingType { depth: 140.0, ..FramingType::american(material) }
+    }
+
+    /// German timber frame (Holzrahmenbau): KVH (Konstruktionsvollholz) studs 60 mm thick, their centres 625 mm apart so a
+    /// 1250 mm board spans two bays, as Baunetz Wissen gives the usual grid (Tafelbau, Rahmenbau); one sill (Schwelle) and one
+    /// top plate (Rähm); headers of two KVH 60 mm plies 200 deep up to a 1250 mm rough opening and 240 deep above; KVH stock in
+    /// Rettenmeier's lengths, 5 m and 13 m. As deep across as the structure layer: 160 mm for 60x160, in `material`.
+    pub fn european(material: Option<String>) -> FramingType {
+        FramingType {
+            spacing: 625.0,
+            thickness: 60.0,
+            depth: 160.0,
+            material,
+            top_plates: 1,
+            headers: vec![
+                Header { up_to: Some(1250.0), depth: 200.0, plies: 2, flat: false },
+                Header { up_to: None, depth: 240.0, plies: 2, flat: false },
+            ],
+            stock: vec![5000.0, 13000.0],
+            ..FramingType::default()
+        }
+    }
+}
+
 /// A cut list row's members alike: role, section and length to the millimetre, and plies.
 type CutKey = (Role, [i64; 2], u32, i64);
 
@@ -408,23 +452,83 @@ pub fn stock(length: f64, stock: &[f64]) -> Option<f64> {
     stock.iter().copied().find(|s| *s >= length - EPS)
 }
 
-/// The thickest structure layer of wall `w`'s type (the first of the thickest): its index and where it lies across the
-/// wall, `[interior side, exterior side]` to the left of its location line.
+/// Wall type `name`, about to be framed, with a layer marked `framed`: where none is, its thickest structure layer (the first of
+/// the thickest), as framing it by a command does; the window asks for the mark itself. Nothing where it has no structure layer,
+/// which `Model::check` then refuses.
+pub(crate) fn mark_framed(m: &mut Model, name: &str) {
+    let Some(k) = m.types.wall.get(name).filter(|t| !t.layers.iter().any(|l| l.framed)).and_then(|t| framed_layer(&t.layers)) else {
+        return;
+    };
+    if let Some(l) = m.types.wall.get_mut(name).and_then(|t| t.layers.get_mut(k)) {
+        l.framed = true;
+    }
+}
+
+/// Every framed wall type's layer marked `framed` as thick as its framing type's `depth`, and the type as thick as its layers:
+/// what `type`, `frame` and `unframe` do after they change a wall type or a framing type. Nothing changes where all are.
+pub(crate) fn sync_wall_types(m: &mut Model) {
+    let off = |m: &Model| {
+        m.types
+            .wall
+            .iter()
+            .filter_map(|(n, t)| {
+                let depth = m.types.framing.get(t.framing.as_ref()?)?.depth;
+                let k = t.layers.iter().position(|l| l.framed)?;
+                ((t.layers[k].thickness - depth).abs() > 1e-9).then(|| (n.clone(), k, depth))
+            })
+            .collect::<Vec<_>>()
+    };
+    for (name, k, depth) in off(m) {
+        if let Some(t) = m.types.wall.get_mut(&name)
+            && let Some(l) = t.layers.get_mut(k)
+        {
+            l.thickness = depth;
+            t.thickness = t.layers.iter().map(|l| l.thickness).sum();
+        }
+    }
+}
+
+/// What a framed wall type must be, which `Model::check` asks of each: a framing type that exists, no curtain wall, and a
+/// structure layer marked `framed` for its members to stand in.
+pub(crate) fn check_wall_type(m: &Model, name: &str, t: &crate::model::WallType) -> Result<(), String> {
+    let Some(f) = &t.framing else { return Ok(()) };
+    if !m.types.framing.contains_key(f) {
+        let names: Vec<&str> = m.types.framing.keys().map(String::as_str).collect();
+        return Err(format!("wall type `{name}`: framing type `{f}` doesn't exist (there are: {})", names.join(", ")));
+    }
+    if t.curtain.is_some() {
+        return Err(format!("wall type `{name}` is a curtain wall: it isn't framed"));
+    }
+    if !t.layers.iter().any(|l| l.framed && l.function == Function::Structure) {
+        return Err(format!(
+            "wall type `{name}` has no layer marked framed for its framing members to stand in: mark one structure layer `framed` \
+             before framing it"
+        ));
+    }
+    Ok(())
+}
+
+/// The structure layer a type's members stand in: the one marked `framed`, else the thickest (the first of the thickest).
+pub(crate) fn framed_layer(layers: &[crate::model::Layer]) -> Option<usize> {
+    let structure = || layers.iter().enumerate().filter(|(_, l)| l.function == Function::Structure);
+    if let Some((k, _)) = structure().find(|(_, l)| l.framed) {
+        return Some(k);
+    }
+    structure().max_by(|(i, a), (j, b)| a.thickness.total_cmp(&b.thickness).then(j.cmp(i))).map(|(k, _)| k)
+}
+
+/// The structure layer wall `w`'s members stand in ([`framed_layer`]): its index and where it lies across the wall,
+/// `[interior side, exterior side]` to the left of its location line.
 pub(crate) fn structure(m: &Model, w: &Wall) -> Option<(usize, [f64; 2])> {
     let t = m.types.wall.get(&w.type_name)?;
-    let (k, _) = t
-        .layers
-        .iter()
-        .enumerate()
-        .filter(|(_, l)| l.function == Function::Structure)
-        .max_by(|(i, a), (j, b)| a.thickness.total_cmp(&b.thickness).then(j.cmp(i)))?;
+    let k = framed_layer(&t.layers)?;
     let b = walls::boundaries(m, w);
     Some((k, [*b.get(k + 1)?, *b.get(k)?]))
 }
 
 /// The material wall `w`'s framing type names for its members, if it names one: else they're its structure layer's.
 pub(crate) fn material<'a>(m: &'a Model, w: &Wall) -> Option<&'a str> {
-    m.types.framing.get(w.framing.as_ref()?)?.material.as_deref()
+    m.types.framing.get(m.wall_framing(w)?)?.material.as_deref()
 }
 
 /// The material host `id`'s framing type names for its members (a wall's, a floor's or a roof's), if it names one: else they're its
@@ -448,6 +552,7 @@ pub(crate) fn check_type(m: &Model, name: &str, t: &FramingType) -> Result<(), S
         if (lo..=hi).contains(&n) { Ok(()) } else { Err(format!("{who}: {n} {what}; it has {lo} to {hi}")) }
     };
     within("thickness (mm)", t.thickness, 10.0, 300.0)?;
+    within("depth (mm)", t.depth, 10.0, 1000.0)?;
     within("spacing (mm)", t.spacing, 0.0, 3000.0)?;
     if t.spacing <= t.thickness {
         return Err(format!("{who}: its studs {} mm apart must be farther apart than they are thick ({} mm)", t.spacing, t.thickness));
@@ -470,6 +575,12 @@ pub(crate) fn check_type(m: &Model, name: &str, t: &FramingType) -> Result<(), S
         if let Some(u) = h.up_to {
             within(&format!("header {i} up_to (mm)"), u, 0.0, MAX_COORD)?;
         }
+    }
+    if let Some(h) = t.headers.iter().find(|h| !h.flat && f64::from(h.plies) * t.thickness > t.depth + EPS) {
+        return Err(format!(
+            "{who}: a header of {} plies {} mm thick is wider than its {} mm depth: use fewer plies or a greater depth",
+            h.plies, t.thickness, t.depth
+        ));
     }
     if t.blocking.len() > 8 {
         return Err(format!("{who}: {} rows of blocking; it has 8 at most", t.blocking.len()));
@@ -499,11 +610,11 @@ pub(crate) fn check_type(m: &Model, name: &str, t: &FramingType) -> Result<(), S
     Ok(())
 }
 
-/// What a framed wall must be, which `Model::check` asks of each: straight, of a type with a structure layer its headers fit,
-/// of a known framing type, and no longer than [`MAX_STATIONS`] studs. Nothing an opening or a join does is refused: what
-/// doesn't fit is left unframed.
+/// What a wall of a framed type must be to be framed, which [`wall`] asks: straight, of a type with a structure layer its headers
+/// fit, of a known framing type, and no longer than [`MAX_STATIONS`] studs. One that isn't is left unframed, and `framing` and
+/// `frame` say why; nothing an opening or a join does is refused: what doesn't fit is left unframed.
 pub(crate) fn check(m: &Model, w: &Wall) -> Result<(), String> {
-    let Some(name) = &w.framing else { return Ok(()) };
+    let Some(name) = m.wall_framing(w) else { return Ok(()) };
     let t = m.types.framing.get(name).ok_or_else(|| {
         let names: Vec<&str> = m.types.framing.keys().map(String::as_str).collect();
         format!("framing type `{name}` doesn't exist (there are: {}); make it with `type` {{category: framing, name}}", names.join(", "))
@@ -636,7 +747,7 @@ struct End {
 /// Whether framed walls `w` and `o` lap their upper top plates where they meet, as IRC R602.3.2 has a double top plate do: both
 /// framed with two top plates or more of one thickness, neither attached to a roof or floor, their tops at one height.
 fn laps(m: &Model, w: &Wall, o: &Wall) -> bool {
-    let plates = |x: &Wall| x.framing.as_ref().and_then(|n| m.types.framing.get(n)).filter(|t| t.top_plates >= 2).map(|t| t.thickness);
+    let plates = |x: &Wall| m.wall_framing(x).and_then(|n| m.types.framing.get(n)).filter(|t| t.top_plates >= 2).map(|t| t.thickness);
     let same = matches!((plates(w), plates(o)), (Some(p), Some(q)) if (p - q).abs() < EPS);
     same && w.attach_top.is_none() && o.attach_top.is_none() && (m.own_top(w) - m.own_top(o)).abs() < EPS
 }
@@ -743,10 +854,24 @@ fn tees(m: &Model, id: Id, w: &Wall, mid: f64) -> Vec<(Guid, [f64; 2], bool)> {
     out
 }
 
-/// Wall `id`'s framing: none when it isn't a framed wall; an error when it can't be framed, as `Model::check` says.
-pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
+/// Wall `id`'s framing, its members' edits laid over it ([`edit`]): none when it isn't a framed wall; an error when it can't be
+/// framed, as `Model::check` says. Kept with the model until its elements or types change (`Derived::framing`).
+pub fn wall(m: &Model, id: Id) -> Result<Option<Arc<Framing>>, String> {
+    m.derived.framing(m, id, || {
+        let mut f = unedited(m, id)?;
+        if let (Some(f), Some(w)) = (f.as_mut(), m.wall(id))
+            && let Some((_, layer)) = structure(m, w)
+        {
+            edit::apply(f, &w.framing_edits, layer);
+        }
+        Ok(f)
+    })
+}
+
+/// Wall `id`'s framing as its type lays it out, before its members' edits ([`edit`]).
+pub(crate) fn unedited(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     let Some(w) = m.wall(id) else { return Ok(None) };
-    let Some(name) = &w.framing else { return Ok(None) };
+    let Some(name) = m.wall_framing(w) else { return Ok(None) };
     check(m, w)?;
     let (Some(t), Some((k, across))) = (m.types.framing.get(name), structure(m, w)) else { return Ok(None) };
     let layer = m.types.wall.get(&w.type_name).and_then(|wt| wt.layers.get(k));
@@ -1314,7 +1439,7 @@ fn hosts_of(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
 /// Host `id`'s framing: a wall's, a floor's or a roof's; none for anything else or what isn't framed.
 pub fn of(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     match m.elements.get(id) {
-        Some(Element::Wall(_)) => wall(m, id),
+        Some(Element::Wall(_)) => Ok(wall(m, id)?.map(|f| (*f).clone())),
         Some(Element::Floor(_)) => floor::floor(m, id),
         Some(Element::Roof(_)) => roof::roof(m, id),
         _ => Ok(None),
@@ -1326,13 +1451,36 @@ fn named(m: &Model, id: Id) -> String {
     format!("{} {id}", m.elements.get(id).map_or("element", Element::category))
 }
 
-/// `frame`: walls, floors and roofs given a framing type, the project's default one (made, if it has none) unless `type`
+/// The framing types a new project starts with ([`DEFAULT_TYPE`], [`EUROPEAN_TYPE`]), by name, of Pine where the project has it:
+/// what `frame` makes in a project without them.
+pub fn preset(m: &Model, name: &str) -> Option<FramingType> {
+    let pine = m.language.word("Pine").to_string();
+    let pine = m.materials.contains_key(&pine).then_some(pine);
+    match name {
+        DEFAULT_TYPE => Some(FramingType::american(pine)),
+        EXTERIOR_TYPE => Some(FramingType::exterior(pine)),
+        EUROPEAN_TYPE => Some(FramingType::european(pine)),
+        _ => None,
+    }
+}
+
+/// The names of the framing types a new project starts with.
+pub const PRESETS: [&str; 3] = [DEFAULT_TYPE, EXTERIOR_TYPE, EUROPEAN_TYPE];
+
+/// `frame`: walls (their types: every wall of each), floors and roofs given a framing type, the project's default one (made, if it has none) unless `type`
 /// names another; floors their joists' direction too, where `angle` is given (a roof's rafters run up its slopes).
 pub(crate) fn frame(s: &mut Session, p: &Value) -> Result<Value, String> {
     let c = "frame";
     crate::commands::only(c, p, &["id", "ids", "type", "angle"])?;
     let ids = hosts_of(c, &s.model, p)?;
     let given = crate::commands::string(c, p, "type")?;
+    // One of the types a new project starts with, which an older project lacks: made as a new project has it.
+    if let Some(n) = given.clone()
+        && !s.model.types.framing.contains_key(&n)
+        && let Some(preset) = preset(&s.model, &n)
+    {
+        s.model_mut().types.framing.insert(n, preset);
+    }
     if let Some(n) = given.as_ref().filter(|n| !s.model.types.framing.contains_key(*n)) {
         let names: Vec<&str> = s.model.types.framing.keys().map(String::as_str).collect();
         return Err(bad(
@@ -1349,13 +1497,25 @@ pub(crate) fn frame(s: &mut Session, p: &Value) -> Result<Value, String> {
         ),
     };
     let m = s.model_mut();
-    if given.is_none() && m.types.framing.is_empty() {
-        m.types.framing.insert(DEFAULT_TYPE.into(), FramingType::default());
+    if given.is_none()
+        && m.types.framing.is_empty()
+        && let Some(t) = preset(m, DEFAULT_TYPE)
+    {
+        m.types.framing.insert(DEFAULT_TYPE.into(), t);
     }
     let name = given.or_else(|| m.default_type("framing").map(String::from)).unwrap_or_else(|| DEFAULT_TYPE.into());
+    // A wall's framing is its type's: every wall of the type is framed with it.
+    let wall_types: std::collections::BTreeSet<String> = ids.iter().filter_map(|id| m.wall(*id)).map(|w| w.type_name.clone()).collect();
+    for t in &wall_types {
+        mark_framed(m, t);
+        if let Some(wt) = m.types.wall.get_mut(t) {
+            wt.framing = Some(name.clone());
+        }
+    }
+    sync_wall_types(m);
     for id in &ids {
         match m.elements.get_mut(*id) {
-            Some(Element::Wall(w)) => w.framing = Some(name.clone()),
+            Some(Element::Wall(_)) => {}
             Some(Element::Floor(f)) => {
                 f.framing = Some(name.clone());
                 if angle.is_some() {
@@ -1367,25 +1527,45 @@ pub(crate) fn frame(s: &mut Session, p: &Value) -> Result<Value, String> {
         }
     }
     let (mut total, mut warnings) = (0, Vec::new());
-    for id in &ids {
+    // Every wall of the types framed: one that can't be (curved, too long) is left unframed, and said.
+    let walls: Vec<Id> = m
+        .elements
+        .iter()
+        .filter_map(|(id, e)| match e {
+            Element::Wall(w) if wall_types.contains(&w.type_name) => Some(*id),
+            _ => None,
+        })
+        .collect();
+    for id in ids.iter().filter(|id| m.wall(**id).is_none()).chain(&walls) {
         let who = named(m, *id);
-        if let Some(f) = of(m, *id).map_err(|e| bad(c, format!("{who}: {e}")))? {
-            total += f.members.len();
-            warnings.extend(f.warnings.into_iter().map(|w| format!("{who}: {w}")));
+        match of(m, *id) {
+            Ok(Some(f)) => {
+                total += f.members.len();
+                warnings.extend(f.warnings.into_iter().map(|w| format!("{who}: {w}")));
+            }
+            Ok(None) => {}
+            Err(e) if m.wall(*id).is_some() => warnings.push(format!("{who} isn't framed: {e}")),
+            Err(e) => return Err(bad(c, format!("{who}: {e}"))),
         }
     }
-    Ok(json!({"ids": ids, "type": name, "members": total, "warnings": warnings}))
+    Ok(json!({"ids": ids, "type": name, "wall_types": wall_types, "members": total, "warnings": warnings}))
 }
 
-/// `unframe`: walls, floors and roofs framed no more.
+/// `unframe`: walls (their types: every wall of each), floors and roofs framed no more.
 pub(crate) fn unframe(s: &mut Session, p: &Value) -> Result<Value, String> {
     let c = "unframe";
     crate::commands::only(c, p, &["id", "ids"])?;
     let ids = hosts_of(c, &s.model, p)?;
     let m = s.model_mut();
+    let wall_types: std::collections::BTreeSet<String> = ids.iter().filter_map(|id| m.wall(*id)).map(|w| w.type_name.clone()).collect();
+    for t in &wall_types {
+        if let Some(wt) = m.types.wall.get_mut(t) {
+            wt.framing = None;
+        }
+    }
     for id in &ids {
         match m.elements.get_mut(*id) {
-            Some(Element::Wall(w)) => w.framing = None,
+            Some(Element::Wall(_)) => {}
             Some(Element::Floor(f)) => f.framing = None,
             Some(Element::Roof(r)) => r.framing = None,
             _ => {}
@@ -1413,6 +1593,9 @@ pub(crate) fn query(s: &mut Session, p: &Value) -> Result<Value, String> {
         "origin": [f.origin.0, f.origin.1], "x_axis": [f.x_axis.0, f.x_axis.1], "depth_axis": [f.depth_axis().0, f.depth_axis().1],
         "members": f.members.iter().map(|m| member_json(&f, m)).collect::<Vec<_>>(), "cut_list": cuts, "warnings": f.warnings,
     });
+    if let Some(w) = m.wall(id).filter(|w| !w.framing_edits.is_empty()) {
+        out["edits"] = serde_json::to_value(&w.framing_edits).unwrap_or(Value::Null);
+    }
     if let Some(span) = f.span {
         let supports: Vec<Id> = f.supports.iter().filter_map(|g| m.elements.id(*g)).collect();
         out["supports"] = json!(supports);

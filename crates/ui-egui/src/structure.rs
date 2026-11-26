@@ -14,7 +14,7 @@ use crate::DimMode;
 use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::steel::Page;
-use crate::{BimApp, Status, Tool, big_button, panel, ribbon, top_params};
+use crate::{BimApp, Status, Tool, big_button, panel, top_params};
 
 /// The command that makes elements of `category`.
 pub(crate) fn command(category: &str) -> &'static str {
@@ -132,25 +132,10 @@ impl BimApp {
         });
         panel(ui, msg!("Framing"), |ui| {
             let tip = msg!(
-                "Frame: the selected walls, floors and roofs framed, a wall's studs, plates and headers, a floor's joists, rims and trimmers and a roof's rafters and ridge boards worked out from each"
+                "Frame: the selected wall's type in Type Properties, where its Framing is set for every wall of it; with floors or roofs selected, they're framed"
             );
-            let r = big_button(ui, Icon::Frame, "Frame", false, tip);
-            // Of several framing types, the button drops them down; of one or none, it frames with the project's default.
-            let types: Vec<String> = self.session.model.types.framing.keys().cloned().collect();
-            if types.len() > 1 {
-                ribbon::choices(ui, &r, false, |ui| {
-                    for name in &types {
-                        if ui.button(name).clicked() {
-                            self.frame_selection(Some(name));
-                        }
-                    }
-                });
-            } else if r.clicked() {
-                self.frame_selection(None);
-            }
-            let tip = msg!("Remove Framing: the selected walls, floors and roofs framed no more; their framing type stays in the project");
-            if big_button(ui, Icon::Unframe, "Remove Framing", false, tip).clicked() {
-                self.unframe_selection();
+            if big_button(ui, Icon::Frame, "Frame", false, tip).clicked() {
+                self.frame_selection();
             }
         });
         panel(ui, msg!("Foundation"), |ui| {
@@ -186,16 +171,25 @@ impl BimApp {
 
     /// Structure > Frame: the selected walls, floors and roofs framed by `ty`, else by the project's default framing type (made
     /// when it has none), as one step.
-    pub(crate) fn frame_selection(&mut self, ty: Option<&str>) {
-        let (hosts, [walls, floors, roofs]) = self.selected_hosts();
-        if hosts.is_empty() {
-            self.status = Status { text: t("Select the walls, floors or roofs to frame first.").into(), error: true };
+    pub(crate) fn frame_selection(&mut self) {
+        // A wall's framing is its type's: Frame opens that type, where Framing is set.
+        let m = std::sync::Arc::clone(&self.session.model);
+        if let Some(w) = self.selection.iter().find_map(|id| m.wall(*id)) {
+            if m.types.wall.get(&w.type_name).is_some_and(|t| t.curtain.is_some()) {
+                self.status = Status { text: t("A curtain wall isn't framed: select a wall of a layered type.").into(), error: true };
+                return;
+            }
+            let of_type: Vec<Id> =
+                self.selection.iter().copied().filter(|id| m.wall(*id).is_some_and(|x| x.type_name == w.type_name)).collect();
+            self.type_dialog = Some(crate::properties::TypeDialog::new(&m, "wall", w.type_name.clone(), of_type));
             return;
         }
-        let mut p = json!({"ids": hosts});
-        if let Some(ty) = ty {
-            p["type"] = json!(ty);
+        let (hosts, [walls, floors, roofs]) = self.selected_hosts();
+        if hosts.is_empty() {
+            self.status = Status { text: t("Select a wall to frame its type, or the floors or roofs to frame first.").into(), error: true };
+            return;
         }
+        let p = json!({"ids": hosts});
         if let Some(done) = self.run("frame", p) {
             let (w, f, r) = (walls.to_string(), floors.to_string(), roofs.to_string());
             let (ty, members) = (done["type"].as_str().unwrap_or_default(), done["members"].as_u64().unwrap_or(0).to_string());
@@ -215,16 +209,6 @@ impl BimApp {
             }
             self.status = Status { text, error: !warnings.is_empty() };
         }
-    }
-
-    /// Structure > Remove Framing: the selected walls, floors and roofs framed no more, as one step.
-    pub(crate) fn unframe_selection(&mut self) {
-        let (hosts, _) = self.selected_hosts();
-        if hosts.is_empty() {
-            self.status = Status { text: t("Select the walls, floors or roofs to remove framing from first.").into(), error: true };
-            return;
-        }
-        self.run("unframe", json!({"ids": hosts}));
     }
 
     /// The Floor tool, making structural floors (SB).

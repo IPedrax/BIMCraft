@@ -1826,13 +1826,15 @@ other_files(
         "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|room|toposolid|framing|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable|curtainpanel|mullion|cornermullion, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
          material?, profile?, shape?, web?, flange?, radius?, clear_section? | height?, spacing? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour?\
-         | spacing?, layout?, thickness?, material?, bottom_plates?, top_plates?, kings?, jacks?, window_rough?, door_rough?, headers?, \
+         | spacing?, layout?, thickness?, depth?, material?, bottom_plates?, top_plates?, kings?, jacks?, window_rough?, door_rough?, headers?, \
          sill_plates?, corner?, tee?, blocking?, stock?, rim?, lap?, bridging?, trimmers?, under_partitions?, ridge?} creates the type, or \
          changes it everywhere it's used. \
-         A framing type (see `frame`; all mm, every field optional, a new one starting from 2x4 at 16\" for a bearing wall) has \
+         A wall type's `framing` (a framing type's name, null for none) frames every wall of it: one of its structure layers \
+         must be marked `framed` (its layers' `framed: true`, one at most), and that layer is kept as thick as the framing \
+         type's `depth`. A framing type (see `frame`; all mm, every field optional, a new one starting from 2x4 at 16\" for a bearing wall) has \
          `spacing` (406.4; the grid's stud centres apart), `layout` (start | end | centre: where the grid is measured from along \
-         the framed length), `thickness` (38: a stud's and a plate's; their depth across the wall is its type's structure \
-         layer's), `material` (null: the structure layer's), `bottom_plates` (1), `top_plates` (2), `kings` and `jacks` (1 each \
+         the framed length), `thickness` (38: a stud's and a plate's), `depth` (89: how deep a stud is across the wall; a \
+         wall type framed with it has its framed layer kept this thick), `material` (null: the structure layer's), `bottom_plates` (1), `top_plates` (2), `kings` and `jacks` (1 each \
          side of an opening), `window_rough` [25, 13] and `door_rough` [50, 41] (what the rough opening adds to the opening's \
          width and on top of its height), `headers` ([{up_to: 1250, depth: 184, plies: 2}, {depth: 235, plies: 2}]: the first \
          whose `up_to` holds the rough opening's width is used, `plies` side by side on edge, or `flat: true` laid flat as wide \
@@ -3220,16 +3222,17 @@ other_files(
         "frame",
         "Framing",
         &[],
-        "{ids | id, type?, angle?} frames walls, floors and roofs: gives each a framing type (`type`, one of the project's, see \
-         `type` {category: framing}; else the project's default, `2x4 @ 406`, made when the project has no framing type), and \
+        "{ids | id, type?, angle?} frames walls, floors and roofs: gives each wall's type (every wall of it), each floor and each roof a framing type (`type`, one of the project's, see \
+         `type` {category: framing}; else the project's default: a new project has `2x4 @ 406` and `KVH 60x160 @ 625`, both of \
+         Pine, and one with none is given `2x4 @ 406`), and \
          each floor its joists' direction where `angle` is given (degrees from +x, the way they run; none, square to the \
          floor's longest edge, spanning the short way; a roof's rafters run up each of its slopes, and a flat roof's square to \
          its longest edge). A wall's studs, plates, kings, jacks, headers, sills, cripples and blocking, a floor's joists, \
          rims, trimmers, headers and blocking, and a roof's rafters, ridge boards, rims, trimmers, headers and blocking, are \
          then worked out from it whenever they're asked for (`framing`), never stored: moving a window, an opening, a beam \
          under a floor or a roof or a wall on it, changing a height or a slope or editing the framing type changes them. A \
-         framed wall is straight, of a wall type with a structure layer (the members stand in its thickest one, as deep \
-         across the wall as it is thick: an 89 mm layer for 2x4s), and its headers' plies fit that layer; a framed floor is \
+         framed wall is straight, of a wall type with a structure layer marked `framed` (the members stand in it, as deep \
+         across the wall as the framing type's `depth`, to which the layer is set: 89 mm for 2x4s), and its headers' plies fit that layer; a framed floor is \
          flat (no slope, no edited shape) and of a floor type with a structure layer (its joists as deep as it is thick: 184 \
          mm for 2x8s); a framed roof is by footprint (not by extrusion, no edited shape) and of a roof type with a structure \
          layer (its rafters as deep square to the slope as it is thick: 235 mm for 2x10s); otherwise it's refused, saying \
@@ -3243,16 +3246,17 @@ other_files(
          over those supports into the fewest pieces it holds (each along the slope with its laps), of those splits the one \
          whose longest piece is shortest (ties: nearest the eave), or where none keeps to the stock the one whose longest \
          piece is shortest, each piece too long warned of. At a square corner of two framed walls the one of \
-         the lower GUID runs through. `modify` {id, framing: name | null, framing_angle?} does the same for one. Replies with \
+         the lower GUID runs through. `modify` {id, framing: name | null, framing_angle?} does the same for one floor or roof; a wall type's `framing` is \
+         set with `type` {category: wall, name, framing}. Replies with \
          the walls, floors and roofs, the type, how many members they have and the `warnings`, each naming its host",
         crate::framing::frame,
     )
     .menu("Structure > Framing"),
     edit(
         "unframe",
-        "Remove Framing",
+        ui_msg!("Remove Framing"),
         &[],
-        "{ids | id} walls, floors and roofs framed no more: their framing type is left in the project",
+        "{ids | id} walls (their types: every wall of each), floors and roofs framed no more: their framing type is left in the project",
         crate::framing::unframe,
     ),
     other(
@@ -3268,7 +3272,9 @@ other_files(
          them), s [from, to] along x_axis from origin, across [from, to] to its left, z [bottom at s from, bottom at s to, top \
          at s from, top at s to], absolute, frame? {origin, x_axis} (a member not square to its host's frame, a rim along a \
          floor's skewed edge, every member of a roof in its slope's frame, up the slope: its s and across are in this frame)}], \
-         cut_list: [{role, section, plies, length (to the mm), stock, count}], warnings; a floor's and a roof's also supports \
+         cut_list: [{role, section, plies, length (to the mm), stock, count}], warnings; a wall's also edits (its members \
+         edited by hand, `framing_member`: [{key, section?, plies?, excluded?}], laid over the members, which leave out the \
+         excluded); a floor's and a roof's also supports \
          (the ids of the beams and walls bearing its joists or rafters) and span (the longest clear span of one between them, \
          in plan, mm); a floor's angle (the way its joists run, degrees); a roof's faces [{index, origin, x_axis, slope \
          (degrees)}], its slopes as framed}. Keys stay while what \
@@ -3286,6 +3292,21 @@ other_files(
          `face/<lower slope>/ridge/<edge>` (a rim or a ridge board spliced at a stock length adds `/<n>`); slopes are numbered as the roof's faces are, so an edit to its footprint that \
          changes how they meet may number them anew",
         crate::framing::query,
+    ),
+    edit(
+        "framing_member",
+        ui_msg!("Framing Member"),
+        &[],
+        "{id, key | keys, section?, plies?, exclude?, reset?} a framed wall's members edited one by one (`framing` lists their \
+         keys): `section` [thickness, depth] mm gives one ply another size and `plies` another number of plies; `exclude: true` \
+         leaves the member out, `exclude: false` takes it back; `reset: true` drops its edits. A member keeps its place: an \
+         upright one stays centred where it stood, along the wall and across it; a lying one stays centred across the wall, on \
+         what it lies on (a top plate and a sill under what they lie under); nothing round it moves, and one that comes out \
+         deeper than the structure layer or runs into another member is warned of. Each edit is kept with the wall by the \
+         member's key and laid over the members whenever they're worked out, so the 3D view, plans, sections, the schedule, \
+         the cut list and IFC take it; one whose member goes (a window moved away, the studs laid out again) sleeps until it \
+         comes back. Replies with the members as `framing` gives them, the wall's `edits` and its `warnings`",
+        crate::framing::edit::command,
     ),
     other(
         "timber_framing",
@@ -12788,7 +12809,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 panel_of: None,
                 slant,
                 profile: Vec::new(),
-                framing: None,
+                framing_edits: Vec::new(),
             }))),
             _ => None,
         })
@@ -15656,7 +15677,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             panel_of: None,
             slant: 0.0,
             profile: Vec::new(),
-            framing: None,
+            framing_edits: Vec::new(),
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));
@@ -19816,14 +19837,32 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                     None => was.unwrap_or_default(),
                 };
                 let thickness = crate::curtain::envelope(m, &curtain).map_or(0.0, |(front, back)| front + back);
-                WallType { thickness, layers: Vec::new(), curtain: Some(curtain) }
+                WallType { thickness, layers: Vec::new(), curtain: Some(curtain), framing: None }
             } else {
                 let (thickness, layers) =
                     layered(c, p, m.types.wall.get(&name).map(|t| (t.thickness, t.layers.as_slice())), thickness, &need)?;
-                WallType { thickness, layers, curtain: None }
+                // Its framing type: given, or none (`null`), or as it was.
+                let framing = match p.get("framing") {
+                    None => m.types.wall.get(&name).and_then(|t| t.framing.clone()),
+                    Some(Value::Null) => None,
+                    Some(Value::String(f)) => {
+                        if !m.types.framing.contains_key(f)
+                            && let Some(preset) = crate::framing::preset(m, f)
+                        {
+                            m.types.framing.insert(f.clone(), preset);
+                        }
+                        Some(f.clone())
+                    }
+                    Some(_) => return Err(bad(c, "`framing` is a framing type's name, or null for none")),
+                };
+                WallType { thickness, layers, curtain: None, framing }
             };
             m.types.wall.insert(name.clone(), t.clone());
-            json!(t)
+            if t.framing.is_some() {
+                crate::framing::mark_framed(m, &name);
+            }
+            crate::framing::sync_wall_types(m);
+            json!(m.types.wall.get(&name).cloned().unwrap_or(t))
         }
         "floor" => {
             let (thickness, layers) =
@@ -20143,6 +20182,8 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             }
             let t: crate::framing::FramingType = serde_json::from_value(v).map_err(|e| bad(c, format!("a framing type: {e}")))?;
             m.types.framing.insert(name.clone(), t.clone());
+            // The wall types framed with it: their framed layer as deep as it.
+            crate::framing::sync_wall_types(m);
             json!(t)
         }
         other => {

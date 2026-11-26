@@ -7016,6 +7016,7 @@ mod filter;
 mod fonts;
 mod framing;
 mod framing_floors;
+mod framing_members;
 mod framing_roofs;
 mod gpu;
 mod graphics;

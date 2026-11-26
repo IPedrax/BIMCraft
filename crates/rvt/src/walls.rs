@@ -321,7 +321,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         &mut cx.model.types.wall,
                         &base,
                         |k| (k.thickness - typ.thickness).abs() < 0.05 && k.layers == typ.layers && k.curtain.is_none(),
-                        WallType { thickness: typ.thickness, layers: typ.layers.clone(), curtain: None },
+                        WallType { thickness: typ.thickness, layers: typ.layers.clone(), curtain: None, framing: None },
                     );
                     made.insert(key, n.clone());
                     n
@@ -333,7 +333,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         &mut cx.model.types.wall,
                         &base,
                         |k| k.curtain.as_ref() == Some(&empty) && k.layers.is_empty(),
-                        WallType { thickness: 0.0, layers: Vec::new(), curtain: Some(empty.clone()) },
+                        WallType { thickness: 0.0, layers: Vec::new(), curtain: Some(empty.clone()), framing: None },
                     );
                     made.insert(key, n.clone());
                     n
@@ -361,7 +361,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 panel_of: None,
                 slant: 0.0,
                 profile: Vec::new(),
-                framing: None,
+                framing_edits: Vec::new(),
             };
             let note = if tid == 0 {
                 "no_type".to_string()

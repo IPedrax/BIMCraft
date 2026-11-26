@@ -2379,10 +2379,22 @@ impl BimApp {
             let id = crate::curtain::tab_wall(&model, &self.selection, &c.under, on_cursor, free)?;
             crate::curtain::parts_under(&model, &self.curtain_laid.of(&model, id), key, id, view.mm(q), view.scale)
         });
+        // On a framed wall, Tab goes through its members the cut plane crosses there, nearest first.
+        let members = local.filter(|_| parts.is_none() && tabbed && !reference_tabbed && !segment_tabbed).and_then(|q| {
+            let id = crate::framing_members::tab_wall(&model, &self.selection, on_cursor, free)?;
+            let reach = f64::from(PICK) / view.scale;
+            let list = crate::framing_members::in_plan(&model, id, view.mm(q), model.plan_range(key).cut, reach);
+            (!list.is_empty()).then_some((id, list))
+        });
         if let Some((id, list)) = parts {
             self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
             self.curtain_more.clear();
             if self.curtain_part.is_some() {
+                self.selection = vec![id];
+            }
+        } else if let Some((id, list)) = members {
+            self.framing_member = crate::framing_members::next_member(self.framing_member.as_ref(), id, &list);
+            if self.framing_member.is_some() {
                 self.selection = vec![id];
             }
         } else if tabbed && !reference_tabbed && !segment_tabbed && !c.under.is_empty() {
@@ -2861,6 +2873,21 @@ impl BimApp {
         if let Some((id, _)) = self.curtain_part {
             for at in self.curtain_parts_picked() {
                 plan_mark(&p, id, at, true);
+            }
+        }
+        // The framing member Tab would go to under the cursor, and the one it has picked.
+        let cut = model.plan_range(key).cut;
+        self.framing_aim = crate::framing_members::tab_wall(&model, &self.selection, hovered, self.tool == Tool::Modify)
+            .zip(self.canvas.cursor)
+            .and_then(|(id, q)| {
+                let list = crate::framing_members::in_plan(&model, id, q, cut, f64::from(PICK) / view.scale);
+                crate::framing_members::next_member(self.framing_member.as_ref(), id, &list)
+            });
+        for (member, picked) in [(self.framing_aim.clone(), false), (self.framing_member.clone(), true)] {
+            if let Some((id, k)) = member
+                && let Some(ring) = crate::framing_members::plan_ring(&model, id, &k, cut)
+            {
+                crate::framing_members::mark_ring(&p, ring.iter().map(|q| pos(rect.min, view.px(*q))).collect(), picked);
             }
         }
         // The Curtain Grid tool: where the cursor would place a line.

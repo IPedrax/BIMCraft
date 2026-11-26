@@ -121,7 +121,7 @@ pub(crate) fn starter_types(m: &mut Model) {
         );
         let l = CurtainLayout { corner: m.default_type("cornermullion").map(String::from), ..l };
         let thickness = thickness(m, &l);
-        m.types.wall.insert(CURTAIN_WALL.into(), WallType { thickness, layers: Vec::new(), curtain: Some(l) });
+        m.types.wall.insert(CURTAIN_WALL.into(), WallType { thickness, layers: Vec::new(), curtain: Some(l), framing: None });
     }
 }
 

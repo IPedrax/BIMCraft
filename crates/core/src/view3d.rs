@@ -1188,7 +1188,7 @@ fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
 /// it ([`crate::family::visibility::framing`]). A wall that isn't framed, or can't be, is its body.
 fn framed(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
     use crate::family::visibility::{FRAMED, MEMBER};
-    let Some(w) = m.wall(id).filter(|w| w.framing.is_some()) else { return body };
+    let Some(w) = m.wall(id).filter(|w| m.wall_framing(w).is_some()) else { return body };
     let (Ok(Some(f)), Some((_, [lo, hi]))) = (crate::framing::wall(m, id), crate::framing::structure(m, w)) else { return body };
     let axis = Axis::of(w);
     let off = |q: P2| axis.project(q).1;
@@ -2104,9 +2104,10 @@ impl PlaneTable {
     /// The number of `t`'s surface: a curtain wall part's own, else its face's, else its curve's, else that of a plane found before within the tolerance,
     /// else a new one.
     fn assign(&mut self, t: &Tri) -> usize {
-        // A curtain wall's pieces are each their own: the joint between two in one plane shows, as a mitre from a butt. A
-        // piece's triangles come together, so a triangle goes with the one before if it lies on it and shares an edge.
-        if t.curtain_part().is_some() {
+        // A curtain wall's pieces are each their own: the joint between two in one plane shows, as a mitre from a butt. So is
+        // each framing member: a king and its jack, a stud on its plate, never run together. A piece's triangles come
+        // together, so a triangle goes with the one before if it lies on it and shares an edge.
+        if t.curtain_part().is_some() || crate::family::visibility::framing(t.vis) == Some(true) {
             let same = self.part.filter(|(before, _)| {
                 let n = cross(sub(before[1], before[0]), sub(before[2], before[0]));
                 let shared = t.p.iter().filter(|p| before.contains(p)).count() >= 2;
@@ -2513,10 +2514,12 @@ impl Streamed {
 pub const BYTES_PER_TRIANGLE: u64 = 600;
 
 /// About how many triangles an element of each kind makes: a component (a family's copy) 114 and a run 96 on the tower, a
-/// wall 161, the rest a dozen.
-fn triangles_of(e: &Element) -> u64 {
+/// wall 161 (a framed one its members' too), the rest a dozen.
+fn triangles_of(m: &Model, e: &Element) -> u64 {
     match e {
         Element::Component(_) => 120,
+        // A framed wall's members are boxes of 12 triangles each, about 30 of them on a 4 m wall with a window.
+        Element::Wall(w) if m.wall_framing(w).is_some() => 160 + 30 * 12,
         Element::Wall(_) => 160,
         e if e.run().is_some() => 100,
         Element::Rebar(_) => 100,
@@ -2532,7 +2535,8 @@ fn detail(e: &Element) -> bool {
 /// What a 3D view of `m` should hold to stay within `budget` bytes, looking at height `focus` (mm): none when the whole model
 /// fits, which is then what it holds, exactly as before.
 pub fn stream(m: &Model, budget: u64, focus: f64) -> Option<Streamed> {
-    let estimate = |ids: &mut dyn Iterator<Item = &Element>| ids.map(triangles_of).sum::<u64>().saturating_mul(BYTES_PER_TRIANGLE);
+    let estimate =
+        |ids: &mut dyn Iterator<Item = &Element>| ids.map(|e| triangles_of(m, e)).sum::<u64>().saturating_mul(BYTES_PER_TRIANGLE);
     if estimate(&mut m.elements.values()) <= budget {
         return None;
     }
@@ -2545,9 +2549,9 @@ pub fn stream(m: &Model, budget: u64, focus: f64) -> Option<Streamed> {
     for (&id, e) in &m.elements {
         if detail(e) {
             let z = m.level_of(e).map_or(0.0, |l| m.elevation(l));
-            by_storey.entry(storey(z)).or_default().push((id, triangles_of(e)));
+            by_storey.entry(storey(z)).or_default().push((id, triangles_of(m, e)));
         } else {
-            fabric += triangles_of(e);
+            fabric += triangles_of(m, e);
             among.insert(id);
         }
     }

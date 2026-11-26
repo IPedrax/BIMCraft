@@ -241,7 +241,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// "saved by a newer BIMCraft".
 /// 21 also: a floor's `framing` and `framing_angle` (its joists worked out as a wall's studs are), and a framing type's `rim`,
 /// `lap`, `bridging`, `trimmers` and `under_partitions`; 21 isn't released, so it holds them with the walls'. And a roof's
-/// `framing` (its rafters worked out as a floor's joists are) and a framing type's `ridge`, held with them.
+/// `framing` (its rafters worked out as a floor's joists are) and a framing type's `ridge`, held with them. And a wall's
+/// `framing_edits` (its members edited one by one) and a layer's `framed` (the structure layer its type's members stand in),
+/// held with them too: a build that reads up to 20 knows no framing to edit.
 /// And a ramp may be drawn along a line (`path`), sketched (`sketch`, its run lines styled `ramp run`) or `flipped`; a build that
 /// reads up to 20 would leave those out and lay it as one straight run. A file of 20 needs no step: it holds none.
 pub const FORMAT: u32 = 21;
@@ -458,10 +460,9 @@ pub struct Wall {
     /// The curtain wall and cell it stands in place of a panel in: kept fitted to that, it joins nothing and bounds no room.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panel_of: Option<crate::curtain::PanelOf>,
-    /// Its framing type (`types.framing`), whose studs, plates and headers are worked out from it ([`crate::framing`]);
-    /// none, it isn't framed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub framing: Option<String>,
+    /// Its framing members edited by hand ([`crate::framing::edit`]): each by its key, given another size or left out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub framing_edits: Vec<crate::framing::edit::MemberEdit>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -611,6 +612,10 @@ pub struct Layer {
     /// it the level underside. One a type at most.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub variable: bool,
+    /// A structure layer the type's framing members stand in ([`crate::framing::framed_layer`]), where it has several: one a
+    /// type at most. None marked, the thickest.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub framed: bool,
 }
 
 /// Where a layer of a type is variable: its index, and how thick the layers above it and below it are, mm.
@@ -3359,6 +3364,10 @@ pub struct WallType {
     /// A curtain wall's pattern: its panels and mullions make it up, and its `thickness` is theirs, worked out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub curtain: Option<crate::curtain::CurtainLayout>,
+    /// Its framing type (`types.framing`): every wall of it is framed, its studs, plates and headers worked out from the wall
+    /// ([`crate::framing`]) in the layer marked `framed`, which is kept as thick as the framing type's `depth`. None, not framed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<String>,
 }
 
 /// A floor type: how thick its floors are and, a compound one, its layers from the top down.
@@ -4919,6 +4928,18 @@ impl Model {
                 [800.0, 512.0],
             ),
             (msg!("Water"), "water", &include_bytes!("../assets/materials/water.jpg")[..], [65, 175, 189], Pattern::None, [2000.0, 2000.0]),
+            // Pine is the starter framing types' members; OSB and MDF sheathe and line them.
+            (msg!("Pine"), "pine", &include_bytes!("../assets/materials/pine.jpg")[..], [218, 203, 167], Pattern::Diagonal, [600.0, 423.0]),
+            (msg!("OSB"), "osb", &include_bytes!("../assets/materials/osb.jpg")[..], [225, 193, 139], Pattern::Diagonal, [600.0, 732.0]),
+            (msg!("MDF"), "mdf", &include_bytes!("../assets/materials/mdf.jpg")[..], [216, 164, 127], Pattern::Diagonal, [600.0, 600.0]),
+            (
+                msg!("Marble"),
+                "marble",
+                &include_bytes!("../assets/materials/marble.jpg")[..],
+                [225, 226, 230],
+                Pattern::None,
+                [1200.0, 692.0],
+            ),
         ] {
             let Some(picture) = Picture::bundled(file, bytes) else { continue };
             let id = picture.id();
@@ -4933,7 +4954,7 @@ impl Model {
         }
         m.families = crate::family::library(language).into();
         for (n, t) in [("Generic - 200mm", 200.0), ("Interior - 100mm", 100.0)] {
-            m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new(), curtain: None });
+            m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new(), curtain: None, framing: None });
         }
         // An exterior wall's layers, outside in: brick, insulation, a block core, plaster.
         let layer = |function, material: &str, thickness| Layer {
@@ -4948,7 +4969,34 @@ impl Model {
             layer(Function::Structure, "Concrete block", 140.0),
             layer(Function::Finish, "Plaster", 10.0),
         ];
-        m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers, curtain: None });
+        m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers, curtain: None, framing: None });
+        // Timber frame walls, gypsum board each side of a stud layer of pine, framed: 89 mm of 2x4s, 160 of KVH 60x160.
+        let pine = language.word(msg!("Pine")).to_string();
+        for (name, studs, framing) in
+            [("Timber Frame - 114mm", 89.0, crate::framing::DEFAULT_TYPE), ("Timber Frame - 185mm", 160.0, crate::framing::EUROPEAN_TYPE)]
+        {
+            let layers = vec![
+                layer(Function::Finish, msg!("Gypsum board"), 12.5),
+                Layer { framed: true, ..layer(Function::Structure, msg!("Pine"), studs) },
+                layer(Function::Finish, msg!("Gypsum board"), 12.5),
+            ];
+            m.types.wall.insert(name.into(), WallType { thickness: studs + 25.0, layers, curtain: None, framing: Some(framing.into()) });
+        }
+        // A framed exterior wall, outside in: rigid insulation over OSB sheathing on 2x6 studs, gypsum board inside.
+        let exterior = vec![
+            layer(Function::Thermal, "Insulation", 50.0),
+            layer(Function::Substrate, msg!("OSB"), 12.0),
+            Layer { framed: true, ..layer(Function::Structure, msg!("Pine"), 140.0) },
+            layer(Function::Finish, msg!("Gypsum board"), 13.0),
+        ];
+        let framing = Some(crate::framing::EXTERIOR_TYPE.into());
+        m.types
+            .wall
+            .insert("Timber Frame Exterior - 215mm".into(), WallType { thickness: 215.0, layers: exterior, curtain: None, framing });
+        // The framing types a new project starts with: North American 2x4s and 2x6s 16" on centre, and German KVH 60x160 at 625.
+        m.types.framing.insert(crate::framing::DEFAULT_TYPE.into(), crate::framing::FramingType::american(Some(pine.clone())));
+        m.types.framing.insert(crate::framing::EXTERIOR_TYPE.into(), crate::framing::FramingType::exterior(Some(pine.clone())));
+        m.types.framing.insert(crate::framing::EUROPEAN_TYPE.into(), crate::framing::FramingType::european(Some(pine)));
         m.types.floor.insert("Generic - 200mm".into(), FloorType { thickness: 200.0, layers: Vec::new() });
         m.types.toposolid.insert("Generic - 300mm".into(), FloorType { thickness: 300.0, layers: Vec::new() });
         for (n, w) in [("Single 900 x 2100", 900.0), ("Single 800 x 2100", 800.0)] {
@@ -6160,6 +6208,11 @@ impl Model {
             Some(Element::Wall(w)) => Some(w),
             _ => None,
         }
+    }
+
+    /// The framing type wall `w` is framed with: its type's ([`WallType::framing`]); none, it isn't framed.
+    pub fn wall_framing(&self, w: &Wall) -> Option<&String> {
+        self.types.wall.get(&w.type_name)?.framing.as_ref()
     }
 
     /// The run `k` finds: a beam, a strip footing, a pipe... whatever its category.
@@ -9771,6 +9824,16 @@ impl Model {
                 1 => {}
                 n => return Err(format!("{who}: {n} variable layers; a type has one variable layer at most")),
             }
+            if let Some((i, l)) = layers.iter().enumerate().find(|(_, l)| l.framed && l.function != Function::Structure) {
+                return Err(format!(
+                    "{who} layer {}: only a structure layer holds the framing members, and this one is {:?}; mark a structure layer",
+                    i + 1,
+                    l.function
+                ));
+            }
+            if let n @ 2.. = layers.iter().filter(|l| l.framed).count() {
+                return Err(format!("{who}: {n} layers hold the framing members; mark one structure layer at most"));
+            }
             let sum: f64 = layers.iter().map(|l| l.thickness).sum();
             if !layers.is_empty() && (sum - thickness).abs() > 1e-6 {
                 return Err(format!("{who}: its layers add up to {sum} mm, not its thickness, {thickness} mm"));
@@ -9827,6 +9890,9 @@ impl Model {
         }
         for (n, t) in &self.types.framing {
             crate::framing::check_type(self, n, t)?;
+        }
+        for (n, t) in self.types.wall.iter() {
+            crate::framing::check_wall_type(self, n, t)?;
         }
         for (n, t) in &self.types.room {
             let who = format!("room type `{n}`");
@@ -10339,7 +10405,8 @@ impl Model {
                         "{who}: its top ({top:.0} mm) must be above its base ({base:.0} mm); it comes out {tall} mm tall, so raise its top constraint, top offset or height by more than {short} mm"
                     ));
                 }
-                crate::framing::check(self, w).map_err(|e| format!("{who}: {e}"))?;
+                // A wall of a framed type that can't be framed (curved, too long) isn't: `framing` says why.
+                crate::framing::edit::check(&w.framing_edits).map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Floor(f) => {
                 point(&format!("{who} pattern origin"), f.pattern_origin)?;
@@ -12256,7 +12323,7 @@ mod tests {
             panel_of: None,
             slant: 0.0,
             profile: Vec::new(),
-            framing: None,
+            framing_edits: Vec::new(),
         })
     }
 

@@ -382,11 +382,10 @@ fn a_framed_walls_json_names_its_framing_type_and_keeps_its_own_types_guid() {
     let mut s = Session::new();
     let w = cabin(&mut s, false);
     let e = crate::commands::element_json(&s.model, w);
-    assert_eq!(e["framing"], "Cabin");
     let guid = |kind: &str, name: &str| json!(s.model.library.guid(&crate::library::Kind::Type(kind.into()), name).unwrap());
     assert_eq!(e["type_guid"], guid("wall", "2x4"), "the wall type's, not the framing type's");
-    assert_eq!(e["framing_guid"], guid("framing", "Cabin"));
-    let q = run(&mut s, "elements", json!({"category": "wall"}));
-    assert!(q.to_string().contains("\"framing\":\"Cabin\""), "{q}");
+    // Its framing is its type's: the wall type names it.
+    assert_eq!(e["framing"], Value::Null);
+    assert_eq!(s.model.types.wall["2x4"].framing.as_deref(), Some("Cabin"));
     assert!(matches!(s.model.elements.get(w), Some(Element::Wall(_))));
 }

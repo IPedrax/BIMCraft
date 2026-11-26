@@ -172,7 +172,8 @@ pub(crate) fn table(ui: &mut Ui, salt: &str, below: f32, add: impl FnOnce(&mut T
             |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let top = ui.cursor().top();
-                let mut table = Table { ui, salt: UiId::new((salt, "table")), split, open: true, rows: Vec::new() };
+                let mut table =
+                    Table { ui, salt: UiId::new((salt, "table")), split, open: true, rows: Vec::new(), lit: Vec::new(), seek: false };
                 add(&mut table);
                 let Table { ui, rows, .. } = table;
                 // The column's rule runs down through the empty rows under the last.
@@ -199,9 +200,18 @@ pub(crate) struct Table<'u> {
     open: bool,
     /// Where each run of two-column rows starts and ends, which the column's rule is drawn down.
     rows: Vec<(f32, f32)>,
+    /// The labels of the rows lit, as a picture beside the table picks what they set; with `seek`, scrolled to the first.
+    lit: Vec<String>,
+    seek: bool,
 }
 
 impl Table<'_> {
+    /// Light the rows of these labels (as shown, translated), and with `seek` scroll the first lit into view.
+    pub(crate) fn light(&mut self, labels: Vec<String>, seek: bool) {
+        self.lit = labels;
+        self.seek = seek;
+    }
+
     /// A group's bar, which folds it; the rows after are in it.
     pub(crate) fn group(&mut self, name: &str) {
         let id = self.salt.with(("folded", name));
@@ -223,6 +233,12 @@ impl Table<'_> {
         match self.rows.last_mut() {
             Some((_, end)) if (*end - r.top()).abs() < 0.5 => *end = r.bottom(),
             _ => self.rows.push((r.top(), r.bottom())),
+        }
+        if self.lit.iter().any(|l| l == label) {
+            self.ui.painter().rect_filled(r, 2.0, pal().accent.gamma_multiply(0.22));
+            if std::mem::take(&mut self.seek) {
+                self.ui.scroll_to_rect(r, Some(Align::Center));
+            }
         }
         self.ui.painter().line_segment([r.left_bottom(), r.right_bottom()], Stroke::new(1.0, pal().border.gamma_multiply(0.6)));
         let name = Rect::from_x_y_ranges(r.left() + 8.0..=x - 6.0, r.y_range());

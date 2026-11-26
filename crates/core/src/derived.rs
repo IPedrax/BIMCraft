@@ -594,6 +594,9 @@ pub struct Derived {
     plans: Mutex<Option<KeptPlans>>,
     /// Each schedule's table, with the token and version of the elements it is of.
     tables: Mutex<Option<KeptTables>>,
+    /// Each framed wall's members ([`crate::framing::wall`]), with the token and version of the elements and the types they were
+    /// worked out from: a plan redrawn as it pans asks every framed wall on its level again.
+    framing: Mutex<Option<KeptFraming>>,
 }
 
 /// A model's box, with the token and version of its elements and the types, families and materials it was made of.
@@ -610,6 +613,9 @@ type KeptShafts = (u64, u64, Arc<Vec<ShaftReach>>);
 type KeptIndex = (u64, u64, crate::shared::Identity<crate::model::Types>, Arc<crate::walls::Index>);
 type KeptPlans = (u64, u64, HashMap<(Guid, bool), Arc<crate::rooms::Plan>>);
 type KeptTables = (u64, u64, HashMap<crate::schedule::TableKey, Arc<crate::schedule::Table>>);
+/// A wall's framing as [`crate::framing::wall`] answers it.
+type Framed = Result<Option<Arc<crate::framing::Framing>>, String>;
+type KeptFraming = (u64, u64, crate::shared::Identity<crate::model::Types>, HashMap<crate::model::Id, Framed>);
 
 /// A shaft as a slab asks of it: its span, its plan box [x0, y0, x1, y1] and its outline.
 #[derive(Debug)]
@@ -741,6 +747,34 @@ impl Derived {
         Ok(made)
     }
 
+    /// Wall `id`'s framing in `m`, worked out by `make` and kept until the elements or the types change.
+    pub(crate) fn framing(
+        &self,
+        m: &crate::model::Model,
+        id: crate::model::Id,
+        make: impl FnOnce() -> Result<Option<crate::framing::Framing>, String>,
+    ) -> Framed {
+        let (token, version) = m.elements.state();
+        if let Ok(now) = self.framing.lock()
+            && let Some((t, v, types, kept)) = now.as_ref()
+            && (*t, *v) == (token, version)
+            && types.is_of(&m.types)
+            && let Some(f) = kept.get(&id)
+        {
+            return f.clone();
+        }
+        let made: Framed = make().map(|f| f.map(Arc::new));
+        if let Ok(mut now) = self.framing.lock() {
+            if now.as_ref().is_none_or(|(t, v, types, _)| (*t, *v) != (token, version) || !types.is_of(&m.types)) {
+                *now = Some((token, version, m.types.identity(), HashMap::new()));
+            }
+            if let Some((_, _, _, kept)) = now.as_mut() {
+                kept.insert(id, made.clone());
+            }
+        }
+        made
+    }
+
     /// Let go of the kept plans and tables: what a model on its way into the undo history need not carry.
     pub(crate) fn forget(&self) {
         if let Ok(mut plans) = self.plans.lock() {
@@ -748,6 +782,9 @@ impl Derived {
         }
         if let Ok(mut tables) = self.tables.lock() {
             *tables = None;
+        }
+        if let Ok(mut framing) = self.framing.lock() {
+            *framing = None;
         }
     }
 
@@ -789,6 +826,7 @@ impl Clone for Derived {
             model_box: Mutex::new(None),
             plans: Mutex::new(None),
             tables: Mutex::new(None),
+            framing: Mutex::new(None),
         }
     }
 }

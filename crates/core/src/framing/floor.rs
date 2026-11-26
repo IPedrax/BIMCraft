@@ -2,7 +2,7 @@
 //! through it, the beams and walls under it, the walls standing on it and its framing type whenever they are asked for, and
 //! never stored, as a framed wall's studs are ([`super::wall`]).
 //!
-//! The members stand in the floor type's structure layer (the thickest, where it has several): as deep as that layer is
+//! The members stand in the floor type's structure layer (the one marked `framed`, else the thickest): as deep as that layer is
 //! thick, so a 2x8 floor is one with a 184 mm structure layer, from its underside to its top; the layers over it (a subfloor,
 //! a finish) stay drawn as layers. The frame: `s` runs the way the joists run ([`angle`]), `across` to its left, both from
 //! the floor's outline's first corner, so each member is a plumb-sided box from `s[0]` to `s[1]` and `across[0]` to
@@ -42,7 +42,7 @@
 use super::{EPS, Framing, Grain, Layout, MAX_STATIONS, Member, Role, spliced};
 use crate::derived::Group;
 use crate::geom::{self, P2};
-use crate::model::{Element, Floor, Function, Guid, Id, Model, TOL};
+use crate::model::{Element, Floor, Guid, Id, Model, TOL};
 use crate::walls::{self, Axis};
 
 /// How near the joists' underside the top of a beam or a wall must lie to bear them, mm.
@@ -54,15 +54,11 @@ pub(super) const MAX_BLOCKS: f64 = 65536.0;
 /// How far inside a joist's sides its ends are found, so a side along an edge isn't taken as on it.
 const NUDGE: f64 = 1e-4;
 
-/// The thickest structure layer of floor `f`'s type (the first of the thickest): its index, and its underside and top,
+/// The structure layer floor `f`'s members stand in ([`super::framed_layer`]): its index, and its underside and top,
 /// absolute.
 pub(crate) fn structure(m: &Model, f: &Floor) -> Option<(usize, [f64; 2])> {
     let layers = m.type_layers("floor", &f.type_name);
-    let (k, _) = layers
-        .iter()
-        .enumerate()
-        .filter(|(_, l)| l.function == Function::Structure)
-        .max_by(|(i, a), (j, b)| a.thickness.total_cmp(&b.thickness).then(j.cmp(i)))?;
+    let k = super::framed_layer(layers)?;
     let z = heights(m, f);
     Some((k, [*z.get(k + 1)?, *z.get(k)?]))
 }

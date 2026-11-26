@@ -2097,7 +2097,21 @@ impl BimApp {
             .filter(|id| !trimming || model.wall(*id).is_some());
         // On the selected curtain wall under the cursor, Tab goes through its parts there.
         let tab = ui.input(|i| i.key_pressed(egui::Key::Tab));
-        if (std::mem::take(&mut self.tab_cycle) | std::mem::take(&mut self.face_cycle) || tab)
+        let tabbed = std::mem::take(&mut self.tab_cycle) | std::mem::take(&mut self.face_cycle) || tab;
+        // On a framed wall under the cursor, Tab goes through its members the cursor's ray passes through, nearest first.
+        if tabbed
+            && let (Some(at), Some(id)) = (hover, hovered)
+            && let Some(id) = crate::framing_members::tab_wall(&model, &selection, Some(id), self.tool == Tool::Modify)
+        {
+            let list = crate::framing_members::on_ray(&model, id, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0));
+            if !list.is_empty() {
+                self.framing_member = crate::framing_members::next_member(self.framing_member.as_ref(), id, &list);
+                if self.framing_member.is_some() {
+                    self.selection = vec![id];
+                }
+            }
+        }
+        if tabbed
             && let (Some(at), Some(id)) = (hover, hovered)
             && crate::curtain::tab_wall(&model, &selection, &[id], Some(id), self.tool == Tool::Modify) == Some(id)
             && let Some(w) = model.wall(id)
@@ -2329,6 +2343,20 @@ impl BimApp {
                 for ring in model.wall(id).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&l, &model, w, part)) {
                     crate::curtain::mark_part(&p, ring.iter().map(|q| screen(*q)).collect(), true);
                 }
+            }
+        }
+        // The framing member a Tab would go to under the cursor, and the one it has picked: their edges.
+        self.framing_aim = crate::framing_members::tab_wall(&model, &self.selection, hovered, self.tool == Tool::Modify)
+            .zip(hover)
+            .and_then(|(id, at)| {
+                let list = crate::framing_members::on_ray(&model, id, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0));
+                crate::framing_members::next_member(self.framing_member.as_ref(), id, &list)
+            });
+        for (member, picked) in [(self.framing_aim.clone(), false), (self.framing_member.clone(), true)] {
+            if let Some((id, k)) = member {
+                let edges: Vec<[egui::Pos2; 2]> =
+                    crate::framing_members::edges(&model, id, &k).into_iter().map(|[a, b]| [screen(a), screen(b)]).collect();
+                crate::framing_members::mark_edges(&p, &edges, picked);
             }
         }
         // The Curtain Grid tool: where the cursor would place a line on the wall's plane.

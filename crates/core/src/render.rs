@@ -2578,6 +2578,8 @@ fn section_base_cancellable(
     d.part(Part::Cut);
     // A bar lies inside the concrete it reinforces, so its cuts are dots over that poché, not pieces of it.
     let mut dots: Vec<(Id, Vec<P2>)> = Vec::new();
+    // Each framing member cut, outlined on its own: members of one material never run together into one piece.
+    let mut members: Vec<(Id, Vec<P2>)> = Vec::new();
     // A mass is outlined where the line cuts it, below, not filled.
     // What lies all on one side of the line's upright plane is cut by none of it, whatever it is made of.
     let side = |q: P2| (q - v.start).dot(u.perp());
@@ -2604,13 +2606,16 @@ fn section_base_cancellable(
             return None;
         }
         let bar = matches!(m.elements.get(s.owner()), Some(Element::Rebar(_)));
-        let joist = crate::family::visibility::framing(s.vis()) == Some(true)
-            && matches!(m.elements.get(s.owner()), Some(Element::Floor(_) | Element::Roof(_)));
+        let member = crate::family::visibility::framing(s.vis()) == Some(true);
+        let joist = member && matches!(m.elements.get(s.owner()), Some(Element::Floor(_) | Element::Roof(_)));
         // Cut from where the view begins, then back along the line from its start.
         for ring in s.cuts(v.start + u * first, u, last - first) {
             let ring: Vec<P2> = ring.into_iter().map(|q| P2(q.0 + first, q.1)).collect();
             if joist {
                 joists.entry(s.owner()).or_default().push(ring.clone());
+            }
+            if member {
+                members.push((s.owner(), ring.clone()));
             }
             if bar { dots.push((s.owner(), ring)) } else { cuts.entry(s.owner()).or_default().push(ring) }
         }
@@ -2746,7 +2751,7 @@ fn section_base_cancellable(
                 .collect()
         };
         // A framed wall's members are cut in the framing type's material, where it names one.
-        let framed = w.framing.as_ref().filter(|_| !look.unframed()).and_then(|_| crate::framing::structure(m, w)).map(|(k, _)| k);
+        let framed = m.wall_framing(w).filter(|_| !look.unframed()).and_then(|_| crate::framing::structure(m, w)).map(|(k, _)| k);
         let timber = framed.and(crate::framing::material(m, w));
         for (k, (layer, spans)) in layers.iter().zip(intervals).enumerate() {
             let own;
@@ -2987,6 +2992,16 @@ fn section_base_cancellable(
                 d.dashed(&[P2(a, z0), P2(b, z0), P2(b, z1), P2(a, z1)], BY_CATEGORY, MASS, true);
             }
         }
+    }
+    // Each framing member cut, outlined over the layers' patterns: members of one material never run together.
+    for (owner, ring) in &members {
+        if cancelled() {
+            return None;
+        }
+        d.owner = Some(*owner);
+        d.sub(Some("framing"));
+        d.line(ring, Pen::PROJECTION, INK, true);
+        d.sub(None);
     }
     d.owner = None;
     d.part(Part::Projection);
@@ -4086,6 +4101,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     // way: its poche is solid, so the layers stop at its outline.
     let columns: Vec<&[P2]> =
         outlines.iter().filter(|(id, _)| m.elements.get(*id).is_some_and(|e| e.column().is_some())).map(|(_, o)| o.as_slice()).collect();
+    // Framed walls' members, drawn once every wall's layers are: a wall that mitres with a framed one would otherwise clear
+    // its own structure band over the end of the other's members.
+    let mut framed_walls: Vec<(Id, std::sync::Arc<crate::framing::Framing>, Layer)> = Vec::new();
     for (&id, e) in all() {
         let Element::Wall(w) = e else { continue };
         let layers = m.type_layers("wall", &w.type_name);
@@ -4098,18 +4116,14 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         // show one hatch, running on through their corners.
         let along = P2(1.0, 0.0);
         // A framed wall's structure layer is its members: those the cut plane passes through, and nothing between them.
-        let framing = w.framing.as_ref().filter(|_| !look.unframed()).and_then(|_| crate::framing::wall(m, id).ok().flatten());
+        let framing = m.wall_framing(w).filter(|_| !look.unframed()).and_then(|_| crate::framing::wall(m, id).ok().flatten());
         let framed = framing.as_ref().and_then(|_| crate::framing::structure(m, w)).map(|(k, _)| k);
         for (k, layer) in layers.iter().enumerate() {
             let rings = walls::profile::clip(w, range.cut - m.own_base(w), &geometry.band(k));
             let room = layer.thickness * d.view.scale;
             if let (Some(f), true) = (&framing, framed == Some(k)) {
-                members_cut(&mut d, m, f, (layer, outside_columns(rings, &columns)), range.cut, &columns);
-                if let Some((_, runs)) = edges.iter().find(|(e, _)| *e == id) {
-                    for run in runs {
-                        ink_cut(&mut d, run);
-                    }
-                }
+                d.fill(&outside_columns(rings, &columns), PAPER);
+                framed_walls.push((id, std::sync::Arc::clone(f), layer.clone()));
                 continue;
             }
             for piece in outside_columns(rings, &columns) {
@@ -4124,6 +4138,15 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             }
         }
         d.part(Part::Cut);
+    }
+    for (id, f, layer) in &framed_walls {
+        d.owner = Some(*id);
+        members_cut(&mut d, m, f, layer, range.cut, &columns);
+        if let Some((_, runs)) = edges.iter().find(|(e, _)| e == id) {
+            for run in runs {
+                ink_cut(&mut d, run);
+            }
+        }
     }
     // What the view's Visibility/Graphics says, as its template has it: the subcategories it hides.
     let graphics = crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned());
@@ -4648,17 +4671,9 @@ fn boxes_meet(a: &[P2], b: &[P2]) -> bool {
     alo.0 <= bhi.0 && blo.0 <= ahi.0 && alo.1 <= bhi.1 && blo.1 <= ahi.1
 }
 
-/// Framing `f`'s structure layer in plan, where it lies in `band` (`layer`'s, outside the columns): cleared, and each member
-/// the cut plane at `cut` passes through filled, in its material's cut pattern where it holds one, and outlined.
-fn members_cut(
-    d: &mut Drawing,
-    m: &Model,
-    f: &crate::framing::Framing,
-    (layer, band): (&Layer, Vec<Vec<P2>>),
-    cut: f64,
-    columns: &[&[P2]],
-) {
-    d.fill(&band, PAPER);
+/// Framing `f`'s members in plan, in its structure layer `layer` (whose band the caller has cleared): each the cut plane at
+/// `cut` passes through filled, in its material's cut pattern where it holds one, and outlined.
+fn members_cut(d: &mut Drawing, m: &Model, f: &crate::framing::Framing, layer: &Layer, cut: f64, columns: &[&[P2]]) {
     let layer = Layer { material: f.material.clone(), ..layer.clone() };
     d.sub(Some("framing"));
     for member in &f.members {

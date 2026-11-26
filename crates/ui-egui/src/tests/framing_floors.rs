@@ -1,4 +1,4 @@
-//! Floor framing in the window: Structure > Frame and Remove Framing on the selected floors with the walls, a floor's Framing
+//! Floor framing in the window: Structure > Frame on the selected floors (a wall among them opens its type), a floor's Framing
 //! and Joist Direction in Properties, a framing type's floor fields in Type Properties, and Floors > Framing and Framing Lines
 //! in Visibility/Graphics.
 
@@ -22,6 +22,10 @@ fn with_type() -> String {
 fn structural(h: &mut Harness<BimApp>, label: &str) {
     press(h, "Structure");
     press(h, label);
+    // A new project has two framing types, so Frame drops them down: the default one, as Frame alone would take.
+    if label == "Frame" && egui::Popup::is_any_open(&h.ctx) {
+        press(h, bimcraft_core::framing::DEFAULT_TYPE);
+    }
 }
 
 fn select(h: &mut Harness<BimApp>, ids: &[Id]) {
@@ -37,37 +41,31 @@ fn framing_type(h: &Harness<BimApp>, name: &str) -> Value {
 const DIRECTION: &str = "Joist Direction (°)";
 
 #[test]
-fn frame_and_remove_framing_act_on_the_selected_walls_and_floors_each_as_one_step() {
+fn frame_frames_the_selected_floors_in_a_step_and_with_a_wall_among_them_opens_its_type() {
     let mut h = app(FLOOR);
     let (wall, floor) = (ids(&h, "wall")[0], ids(&h, "floor")[0]);
-    select(&mut h, &[wall, floor]);
+    select(&mut h, &[floor]);
     let steps = h.state().session.history().len();
     structural(&mut h, "Frame");
-    assert_eq!((field(&h, wall, "framing"), field(&h, floor, "framing")), (json!("2x4 @ 406"), json!("2x4 @ 406")));
+    assert_eq!(field(&h, floor, "framing"), json!("2x4 @ 406"));
     assert_eq!(h.state().session.history().len(), steps + 1, "one undo step");
     let said = &h.state().status;
-    assert!(!said.error && said.text.contains("1 walls and 1 floors"), "{}", said.text);
-    // A floor alone says so.
+    assert!(!said.error && said.text.contains("1 floors framed as 2x4 @ 406"), "{}", said.text);
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.run();
     assert_eq!(field(&h, floor, "framing"), Value::Null);
-    select(&mut h, &[floor]);
-    structural(&mut h, "Frame");
-    let said = &h.state().status;
-    assert!(!said.error && said.text.contains("1 floors framed as 2x4 @ 406"), "{}", said.text);
-    // Remove Framing takes it off the walls and floors selected, in a step.
+    // A wall among them: a wall's framing is its type's, so Frame opens that type.
     select(&mut h, &[wall, floor]);
     structural(&mut h, "Frame");
-    let steps = h.state().session.history().len();
-    structural(&mut h, "Remove Framing");
-    assert_eq!((field(&h, wall, "framing"), field(&h, floor, "framing")), (Value::Null, Value::Null));
-    assert_eq!(h.state().session.history().len(), steps + 1);
+    assert!(h.state().type_dialog.is_some(), "the wall's Type Properties");
+    assert_eq!(field(&h, floor, "framing"), Value::Null, "nothing framed yet");
+    press(&mut h, "Cancel");
     // With nothing to frame selected, it says what to select.
     let beams = ids(&h, "beam");
     select(&mut h, &beams);
     structural(&mut h, "Frame");
     let said = &h.state().status;
-    assert!(said.error && said.text.contains("walls, floors or roofs"), "{}", said.text);
+    assert!(said.error && said.text.contains("floors or roofs"), "{}", said.text);
 }
 
 #[test]
@@ -264,6 +262,9 @@ fn floor_framing_screenshots() {
         select(&mut h, &[floor]);
         press(&mut h, "Structure");
         press(&mut h, "Frame");
+        if egui::Popup::is_any_open(&h.ctx) {
+            press(&mut h, bimcraft_core::framing::DEFAULT_TYPE);
+        }
         type_into(&mut h, DIRECTION, "90");
         key(&mut h, Key::Enter);
         save(&mut h, "structure");

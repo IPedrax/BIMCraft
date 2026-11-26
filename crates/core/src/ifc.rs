@@ -1897,7 +1897,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let values = wall_quantities(m, id, wl);
                 w.quantities(ent, "Qto_WallBaseQuantities", &values, id);
                 // Framed, its members are its parts; it keeps its own body, the whole wall, as an assembly's does.
-                if wl.framing.is_some()
+                if m.wall_framing(wl).is_some()
                     && let Ok(Some(f)) = crate::framing::wall(m, id)
                 {
                     framed.push((id, w.members(m, id, &f, at, base)));

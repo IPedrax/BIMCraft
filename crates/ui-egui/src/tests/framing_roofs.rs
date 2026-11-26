@@ -1,4 +1,4 @@
-//! Roof framing in the window: Structure > Frame and Remove Framing on the selected roofs with the walls and floors, a roof's
+//! Roof framing in the window: Structure > Frame on the selected roofs with the floors (a wall among them opens its type), a roof's
 //! Framing in Properties, a framing type's roof fields and the fields floors and roofs share in Type Properties, and Roofs >
 //! Framing and Framing Lines in Visibility/Graphics.
 
@@ -23,6 +23,10 @@ fn with_type() -> String {
 fn structural(h: &mut Harness<BimApp>, label: &str) {
     press(h, "Structure");
     press(h, label);
+    // A new project has two framing types, so Frame drops them down: the default one, as Frame alone would take.
+    if label == "Frame" && egui::Popup::is_any_open(&h.ctx) {
+        press(h, bimcraft_core::framing::DEFAULT_TYPE);
+    }
 }
 
 fn select(h: &mut Harness<BimApp>, ids: &[Id]) {
@@ -35,48 +39,25 @@ fn framing_type(h: &Harness<BimApp>, name: &str) -> Value {
 }
 
 #[test]
-fn frame_and_remove_framing_act_on_the_selected_roofs_with_the_walls_and_floors_each_as_one_step() {
+fn frame_frames_the_selected_roofs_in_a_step() {
     let mut h = app(ROOF);
-    let (wall, roof) = (ids(&h, "wall")[0], ids(&h, "roof")[0]);
-    select(&mut h, &[wall, roof]);
+    let roof = ids(&h, "roof")[0];
+    select(&mut h, &[roof]);
     let steps = h.state().session.history().len();
     structural(&mut h, "Frame");
-    assert_eq!((field(&h, wall, "framing"), field(&h, roof, "framing")), (json!("2x4 @ 406"), json!("2x4 @ 406")));
+    assert_eq!(field(&h, roof, "framing"), json!("2x4 @ 406"));
     assert_eq!(h.state().session.history().len(), steps + 1, "one undo step");
     let said = &h.state().status;
-    assert!(!said.error && said.text.contains("1 walls and 1 roofs framed as 2x4 @ 406"), "{}", said.text);
-    // A roof alone says so.
+    assert!(!said.error && said.text.contains("1 roofs framed as 2x4 @ 406"), "{}", said.text);
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.run();
     assert_eq!(field(&h, roof, "framing"), Value::Null);
-    select(&mut h, &[roof]);
-    structural(&mut h, "Frame");
-    let said = &h.state().status;
-    assert!(!said.error && said.text.contains("1 roofs framed as 2x4 @ 406"), "{}", said.text);
-    // Remove Framing takes it off the walls and roofs selected, in a step.
-    select(&mut h, &[wall, roof]);
-    structural(&mut h, "Frame");
-    let steps = h.state().session.history().len();
-    structural(&mut h, "Remove Framing");
-    assert_eq!((field(&h, wall, "framing"), field(&h, roof, "framing")), (Value::Null, Value::Null));
-    assert_eq!(h.state().session.history().len(), steps + 1);
     // With nothing to frame selected, it says what to select.
     let beams = ids(&h, "beam");
     select(&mut h, &beams);
     structural(&mut h, "Frame");
     let said = &h.state().status;
-    assert!(said.error && said.text.contains("walls, floors or roofs"), "{}", said.text);
-    structural(&mut h, "Remove Framing");
-    let said = &h.state().status;
-    assert!(said.error && said.text.contains("walls, floors or roofs"), "{}", said.text);
-    // Find runs the same on a roof.
-    select(&mut h, &[roof]);
-    let listed: Vec<String> = h.state().find_matches("fram").into_iter().map(|(l, ..)| l).collect();
-    assert!(listed.contains(&"Frame".to_string()) && listed.contains(&"Remove Framing".to_string()), "{listed:?}");
-    assert!(h.state_mut().execute_shortcut_action("Frame"));
-    assert_eq!(field(&h, roof, "framing"), json!("2x4 @ 406"));
-    assert!(h.state_mut().execute_shortcut_action("Remove Framing"));
-    assert_eq!(field(&h, roof, "framing"), Value::Null);
+    assert!(said.error && said.text.contains("floors or roofs"), "{}", said.text);
 }
 
 #[test]
@@ -90,9 +71,10 @@ fn frame_counts_walls_floors_and_roofs_together() {
     select(&mut h, &[floor, roof]);
     structural(&mut h, "Frame");
     assert!(h.state().status.text.contains("1 floors and 1 roofs framed as"), "{}", h.state().status.text);
+    // A wall among them opens its type instead: a wall's framing is its type's.
     select(&mut h, &[wall, floor, roof]);
     structural(&mut h, "Frame");
-    assert!(h.state().status.text.contains("1 walls, 1 floors and 1 roofs framed as"), "{}", h.state().status.text);
+    assert!(h.state().type_dialog.is_some());
 }
 
 #[test]
@@ -224,8 +206,6 @@ fn roof_framing_speaks_portuguese_and_spanish_and_leaves_no_english() {
             "Floors and Roofs",
             "Ridge Board",
             "Rim Joists and Eave Boards",
-            "Select the walls, floors or roofs to frame first.",
-            "Select the walls, floors or roofs to remove framing from first.",
             "{} roofs framed as {}: {} members.",
             "{} walls and {} roofs framed as {}: {} members.",
             "{} floors and {} roofs framed as {}: {} members.",
@@ -258,6 +238,9 @@ fn roof_framing_screenshots() {
         select(&mut h, &[roof]);
         press(&mut h, "Structure");
         press(&mut h, "Frame");
+        if egui::Popup::is_any_open(&h.ctx) {
+            press(&mut h, bimcraft_core::framing::DEFAULT_TYPE);
+        }
         save(&mut h, "structure");
         h.get_by_label("Edit Framing Type").scroll_to_me();
         save(&mut h, "properties");

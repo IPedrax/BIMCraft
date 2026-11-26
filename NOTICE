@@ -337,7 +337,8 @@ Starter material pictures (crates/core/assets/materials)
 
 The pictures of the starter materials Grass, Gravel, Wood, Paving and Water come
 from OpenGameArt.org. Each was shrunk to 128 pixels on its longest side and
-saved again as a JPEG.
+saved again as a JPEG. Those of Pine, OSB, MDF and Marble were generated for
+BIMCraft and are its own.
 
 "Paving - Grey and slightly greenish bricks- Seamless Texture with normalmap"
 by Keith333, https://opengameart.org/content/paving-grey-and-slightly-greenish-bricks-seamless-texture-with-normalmap
