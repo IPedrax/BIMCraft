@@ -1037,7 +1037,9 @@ pub struct BimApp {
     /// Insert > Point Cloud was pressed: its file dialog opens this frame.
     cloud_dialog: bool,
     /// Bringing scan files in: the box, while it's open.
-    cloud_box: Option<clouds::CloudBox>,
+    pub(crate) cloud_box: Option<clouds::CloudBox>,
+    /// Scan files being read on a thread of their own, for Insert > Point Cloud to place.
+    pub(crate) cloud_reading: Option<clouds::CloudReading>,
     /// Insert > Import CAD (false) or Link CAD (true) was pressed: its file dialog opens this frame.
     cad_dialog: Option<bool>,
     /// Bringing a CAD drawing in: the box, while it's open.
@@ -2084,6 +2086,7 @@ impl BimApp {
             link_dialog: false,
             cloud_dialog: false,
             cloud_box: None,
+            cloud_reading: None,
             cad_dialog: None,
             cad_box: None,
             link_box: None,
@@ -2564,6 +2567,7 @@ impl BimApp {
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
         self.poll_opening(&ctx);
+        self.poll_cloud_reading(&ctx);
         self.poll_swap(&ctx);
         self.poll_export(&ctx);
         self.poll_plugins(&ctx);
@@ -4236,7 +4240,11 @@ impl BimApp {
 
     /// Whether nothing is being made for what the window shows: no plan or 3D scene on a worker, nothing waited for.
     pub(crate) fn settled(&self) -> bool {
-        !self.canvas.drawing.busy() && self.orbit.waiting.is_none() && !self.orbit.busy() && !self.opening_busy()
+        !self.canvas.drawing.busy()
+            && self.orbit.waiting.is_none()
+            && !self.orbit.busy()
+            && !self.opening_busy()
+            && self.cloud_reading.is_none()
     }
 
     /// The first plan in a tab, as the Project Browser opens it.
@@ -7913,6 +7921,7 @@ impl BimApp {
         self.installing_box(ctx);
         self.importing_box(ctx);
         self.opening_box(ctx);
+        self.cloud_reading_box(ctx);
         self.report_window(ctx);
         self.export_window(ctx);
         self.publisher_window(ctx);
