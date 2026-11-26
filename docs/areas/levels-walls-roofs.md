@@ -44,7 +44,11 @@ wall's ends takes the height (`arms`, `end_geometry`, `cap_with`), so slanted wa
 every height. Its solid is `walls/slant.rs`: pieces lofted between its outlines at their bottoms and tops, cut along it as an
 upright wall's prisms are (an arc's chords, its openings' jambs) and up it at its openings and its joins' heights; each corner's
 bottom and top follow what its base and top are attached to at the point it has leant to, so a curved slanted wall attached top
-and bottom is a cone between a floor and a roof. The 3D view and sections draw those meshes (a section in poché, its layers not drawn yet); in 3D a curved one's faces are one
+and bottom is a cone between a floor and a roof. The 3D view and sections draw those meshes, a compound wall's in its layers leaning with its faces: in 3D each
+piece is cut by each layer's leaning solid (`slant::layer_slab`: between its two boundaries as they lean and widen at each height,
+run on past the wall's ends, so mitred and moving ends keep every layer; an upright wall lofted beside a slanted one too), and a
+section clips its cut between where the line crosses each boundary at its foot and its top (`render::leaning_layers`; a curved
+wall's cones in bands of height). In 3D a curved one's faces are one
 smooth surface across its pieces (`view3d::shared_faces`), shaded across them with no edge where one piece meets the next, as an
 upright curved wall's are. A plan cuts the wall where it
 has leant to at its cut plane and sees its foot below in projection (and the top of one that stops under the plane), but where the

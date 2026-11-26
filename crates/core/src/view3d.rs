@@ -2330,35 +2330,43 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
                 })
                 .collect()
         }
-        // A wall's piece a door's or a window's voids cut: each layer the part of it between two of the wall's boundaries
-        // in plan, as a prism's are. Should cutting fail, the piece in one.
+        // A wall's piece a door's or a window's voids cut, or a lofted wall's (slanted, or joined to a slanted one at an end):
+        // each layer the part of it between two of the wall's boundaries, as a prism's are; a lofted wall's leaning with its
+        // faces as it rises and run on past its ends, which move as it does ([`walls::slant::layer_slab`]). Should cutting
+        // fail, the piece in one.
         Solid::Mesh { owner, color, tex, tris, caps, round, shared, cut, vis }
             if matches!(m.elements.get(owner), Some(Element::Wall(_))) =>
         {
-            let lines = walls::layer_lines(m, owner);
+            let lofted = walls::slant::lofted(m, owner, None);
+            let lines = if lofted { Vec::new() } else { walls::layer_lines(m, owner) };
             let (lo, hi) = tri_box(&tris);
             let mut meter = crate::csg::Meter::default();
             let mut out = Vec::new();
             for (k, l) in layers.iter().enumerate().filter(|(_, l)| l.thickness > 1e-9) {
-                let (Some(a), Some(b)) = (lines.get(k), lines.get(k + 1)) else { continue };
-                let ring: Vec<P2> = a.iter().chain(b.iter().rev()).copied().collect();
-                if ring.len() < 3 || geom::area(&ring).abs() < 1e-6 {
-                    continue;
-                }
-                let mut slab = Vec::new();
-                Solid::Prism {
-                    owner,
-                    color,
-                    tex,
-                    ring,
-                    bottom: Plane::flat(lo[2] - 1.0),
-                    top: Plane::flat(hi[2] + 1.0),
-                    curve: None,
-                    part: 0,
-                    vis: 0,
-                }
-                .tris(&mut slab);
-                let slab: Vec<[P3; 3]> = slab.into_iter().map(|t| t.p).collect();
+                let slab: Vec<[P3; 3]> = if lofted {
+                    let Some(slab) = walls::slant::layer_slab(m, owner, k, [lo, hi]) else { continue };
+                    slab
+                } else {
+                    let (Some(a), Some(b)) = (lines.get(k), lines.get(k + 1)) else { continue };
+                    let ring: Vec<P2> = a.iter().chain(b.iter().rev()).copied().collect();
+                    if ring.len() < 3 || geom::area(&ring).abs() < 1e-6 {
+                        continue;
+                    }
+                    let mut slab = Vec::new();
+                    Solid::Prism {
+                        owner,
+                        color,
+                        tex,
+                        ring,
+                        bottom: Plane::flat(lo[2] - 1.0),
+                        top: Plane::flat(hi[2] + 1.0),
+                        curve: None,
+                        part: 0,
+                        vis: 0,
+                    }
+                    .tris(&mut slab);
+                    slab.into_iter().map(|t| t.p).collect()
+                };
                 let inside = crate::csg::subtract(&tris, &slab, &mut meter).and_then(|outside| {
                     if outside.is_empty() { Ok(tris.clone()) } else { crate::csg::subtract(&tris, &outside, &mut meter) }
                 });

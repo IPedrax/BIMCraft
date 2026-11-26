@@ -2704,11 +2704,16 @@ fn section_base_cancellable(
             return None;
         }
         let layers = m.type_layers("wall", &w.type_name);
-        // A slanted wall's layers lean across the section: it shows in poché, its layers not yet drawn.
-        if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse || w.slant != 0.0 {
+        if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse {
             continue;
         }
         d.owner = Some(wall);
+        // A slanted wall's layers lean across the section with it.
+        if w.slant != 0.0 && w.slant.is_finite() {
+            let cut = cuts.get(&wall).map_or(&[][..], Vec::as_slice);
+            leaning_layers(&mut d, m, (wall, w), layers, (v.start, u), cut);
+            continue;
+        }
         let geometry = walls::layer_geometry(m, wall, None);
         let intervals = if geometry.joined() {
             // At a butt the core and its neighbouring finish can end at different stations.
@@ -4693,6 +4698,116 @@ fn lines_outside_columns(line: &[P2], columns: &[&[P2]]) -> Vec<Vec<P2>> {
 /// A layer where it's cut, along `ring`: where it's `room` px wide or more, its material's cut
 /// pattern over the paper, its courses along unit `u`; else, unless it's its element's structure
 /// (which stays poché), lighter.
+/// A slanted compound wall's layers where a section's line (from `start`, running `u`) cuts it, `cut` its pieces there in the
+/// section's `[along, up]`: each layer the part of them between where the line crosses the layer's two boundaries, which lean
+/// across the section with it; a thin line up each boundary between two, within the cut. A straight wall's boundaries are
+/// planes, crossed as whole lines from its foot to its top, so a cut of its leaning top alone is layered too; a curved one's are
+/// cones, crossed along its length in bands of height, each joined straight. Where the line runs along a straight one's, or
+/// crosses a curved one's a different number of times at a band's bottom and top, that part stays in poché.
+fn leaning_layers(
+    d: &mut Drawing,
+    m: &Model,
+    (wall, w): (Id, &crate::model::Wall),
+    layers: &[Layer],
+    (start, u): (P2, P2),
+    cut: &[Vec<P2>],
+) {
+    let (foot, head) = (m.base_z(w), m.top_z(w));
+    if !(head - foot).is_finite() || head - foot <= 1e-6 {
+        return;
+    }
+    let axis = walls::Axis::of(w);
+    let wide = 1.0 / w.slant.clamp(-walls::MAX_SLANT, walls::MAX_SLANT).to_radians().cos();
+    // How far along the line it crosses each boundary at height `z`.
+    let crossings = |z: f64| -> Vec<Vec<f64>> {
+        if axis.arc().is_none() {
+            let (a, b) = (axis.start, axis.end);
+            return walls::boundaries(m, w)
+                .into_iter()
+                .map(|off| {
+                    let off = off * wide + walls::lean(m, w, z);
+                    let (p, q) = (axis.at(0.0, off), axis.at(0.0, off) + (b - a).unit());
+                    geom::line_intersection(start, start + u, p, q).map(|x| (x - start).dot(u)).into_iter().collect()
+                })
+                .collect();
+        }
+        walls::layer_geometry_at(m, wall, None, Some(z))
+            .lines
+            .iter()
+            .map(|line| {
+                let mut xs: Vec<f64> = line
+                    .windows(2)
+                    .filter_map(|seg| {
+                        let &[p, q] = seg else { return None };
+                        let x = geom::line_intersection(start, start + u, p, q).filter(|x| geom::dist_to_segment(*x, p, q) < 1e-6)?;
+                        Some((x - start).dot(u))
+                    })
+                    .collect();
+                xs.sort_by(f64::total_cmp);
+                xs.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+                xs
+            })
+            .collect()
+    };
+    // A straight wall's in one band, its top and foot run on to take in all it is cut; a curved one's in twelve, each halved
+    // (up to four times) where the line crosses its boundaries unlike at its bottom and top, as it does by the wall's end.
+    let (bands, splits) = if axis.arc().is_none() { (1, 0) } else { (12, 4) };
+    let height = |i: usize| if i >= bands { head } else { foot + (head - foot) * i as f64 / bands as f64 };
+    let mut todo: Vec<(f64, f64, u32)> = (0..bands).rev().map(|i| (height(i), height(i + 1), 0)).collect();
+    // What lies on the side of the line from `p0` to `p1` that `toward` does.
+    let side = |(p0, p1): (P2, P2), toward: P2| {
+        let s = (p1 - p0).cross(toward - p0).signum();
+        move |q: P2| s * (p1 - p0).cross(q - p0)
+    };
+    let mid = |(p0, p1): (P2, P2)| (p0 + p1) * 0.5;
+    while let Some((z0, z1, split)) = todo.pop() {
+        let (low, high) = (crossings(z0), crossings(z1));
+        let n = low.first().map_or(0, Vec::len);
+        if n == 0 || low.iter().chain(&high).any(|xs| xs.len() != n) {
+            if split < splits {
+                let half = (z0 + z1) / 2.0;
+                todo.extend([(half, z1, split + 1), (z0, half, split + 1)]);
+            }
+            continue;
+        }
+        // Each boundary, once for each time the line crosses it: from the band's bottom to its top.
+        let bounds: Vec<Vec<(P2, P2)>> =
+            low.iter().zip(&high).map(|(a, b)| a.iter().zip(b).map(|(x0, x1)| (P2(*x0, z0), P2(*x1, z1))).collect()).collect();
+        // The band of the cut: all of it in one band, else from its bottom to its top (the lowest and highest running on).
+        let within = |r: &Vec<P2>| -> Vec<P2> {
+            let r = if z0 > foot { geom::clip(r, |q| q.1 - z0) } else { r.clone() };
+            if z1 < head { geom::clip(&r, |q| z1 - q.1) } else { r }
+        };
+        let pieces: Vec<Vec<P2>> = cut.iter().map(within).filter(|r| r.len() >= 3).collect();
+        for (k, layer) in layers.iter().enumerate() {
+            let (Some(a), Some(b)) = (bounds.get(k), bounds.get(k + 1)) else { continue };
+            for (&outer, &inner) in a.iter().zip(b) {
+                let (within_outer, within_inner) = (side(outer, mid(inner)), side(inner, mid(outer)));
+                // As thick as it is, in every band alike.
+                let room = layer.thickness * d.view.scale;
+                for r in &pieces {
+                    let part = geom::clip(&geom::clip(r, within_outer), within_inner);
+                    if part.len() >= 3 && geom::area(&part).abs() > 1e-6 {
+                        cut_layer(d, m, layer, &part, P2(1.0, 0.0), room);
+                    }
+                }
+            }
+        }
+        for line in bounds.iter().skip(1).take(bounds.len().saturating_sub(2)) {
+            for &(p0, p1) in line {
+                let way = (p1 - p0).unit();
+                for r in &pieces {
+                    for (t0, t1) in view3d::crossings(r, p0, way) {
+                        d.part(Part::Pattern);
+                        d.line(&[p0 + way * t0, p0 + way * t1], Pen::PROJECTION, INK, false);
+                        d.part(Part::Cut);
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn cut_layer(d: &mut Drawing, m: &Model, layer: &Layer, ring: &[P2], u: P2, room: f64) {
     let over = pattern_style(d, true);
     // The paper's pixels: the layer as wide on it, and the pattern's lines as far apart, however near the view is.

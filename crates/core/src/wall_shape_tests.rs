@@ -577,3 +577,165 @@ fn a_window_family_cuts_a_slanted_wall_with_its_own_void_leaning_with_it() {
         assert!(inside(&w, on(x, z)), "wall at {x}, {z}");
     }
 }
+
+/// The volume a closed mesh holds, by the divergence theorem.
+fn volume(tris: &[[[f64; 3]; 3]]) -> f64 {
+    tris.iter()
+        .map(|[a, b, c]| {
+            (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6.0
+        })
+        .sum()
+}
+
+/// A layer's place among its type's, and a piece of it: its triangles.
+type LayerPiece = (Option<usize>, Vec<[[f64; 3]; 3]>);
+
+/// Wall `id`'s solids in 3D split into its layers, as the view shades them.
+fn layer_pieces(s: &Session, id: Id) -> Vec<LayerPiece> {
+    solids(&s.model)
+        .into_iter()
+        .filter(|x| x.owner() == id)
+        .flat_map(|x| crate::view3d::layered_with(&s.model, x))
+        .map(|(x, k)| {
+            let mut tris = Vec::new();
+            x.tris(&mut tris);
+            (k, tris.into_iter().map(|t| t.p).collect())
+        })
+        .collect()
+}
+
+/// Each layer of each wall, in 3D, lies between its two boundaries as they lean at every height, and the layers together fill
+/// the wall. Its volume in each layer, by layer.
+fn layers_lean_with_their_walls(s: &Session, what: &str) -> Vec<(Id, Vec<f64>)> {
+    let mut out = Vec::new();
+    for id in walls(s) {
+        let Some(w) = s.model.wall(id) else { continue };
+        let b = crate::walls::boundaries(&s.model, w);
+        let axis = crate::walls::Axis::of(w);
+        let wide = 1.0 / w.slant.to_radians().cos();
+        let whole = volume(&triangles_of(s, id));
+        let mut by_layer = vec![0.0; b.len() - 1];
+        for (k, tris) in layer_pieces(s, id) {
+            let k = k.unwrap_or_else(|| panic!("{what}: wall {id} has a piece in no layer"));
+            for p in tris.iter().flatten() {
+                let off = axis.project(P2(p[0], p[1])).1;
+                let lean = crate::walls::lean(&s.model, w, p[2]);
+                let (outer, inner) = (b[k] * wide + lean, b[k + 1] * wide + lean);
+                assert!(
+                    off <= outer + 1.5 && off >= inner - 1.5,
+                    "{what}: wall {id}'s layer {k} reaches {off:.1} mm across at {:.0} mm up, outside {inner:.1}..{outer:.1}",
+                    p[2]
+                );
+            }
+            by_layer[k] += volume(&tris);
+        }
+        let sum: f64 = by_layer.iter().sum();
+        assert!((sum - whole).abs() < whole * 1e-3, "{what}: wall {id}'s layers hold {sum}, the wall {whole}");
+        for (k, v) in by_layer.iter().enumerate() {
+            assert!(*v > 0.0, "{what}: wall {id}'s layer {k} is missing");
+        }
+        out.push((id, by_layer));
+    }
+    out
+}
+
+#[test]
+fn a_slanted_compound_walls_layers_lean_with_it_in_3d() {
+    for slant in [30.0, -20.0, 10.0] {
+        let s =
+            session(&format!(r#"wall {{"points": [[0, 0], [5000, 0]], "height": 3000, "slant": {slant}, "type": "Exterior - 300mm"}}"#));
+        let id = walls(&s)[0];
+        let layers = s.model.type_layers("wall", "Exterior - 300mm").to_vec();
+        assert!(layers.len() > 1);
+        let (_, by_layer) = layers_lean_with_their_walls(&s, &format!("leaning {slant}°")).remove(0);
+        // Each a parallelogram across the wall: as much as an upright layer of its thickness along the slope.
+        let wide = 1.0 / f64::to_radians(slant).cos();
+        for (k, l) in layers.iter().enumerate() {
+            let expected = 5000.0 * 3000.0 * l.thickness * wide;
+            assert!((by_layer[k] - expected).abs() < expected * 1e-3, "{slant}°: wall {id}'s layer {k}: {} for {expected}", by_layer[k]);
+        }
+    }
+}
+
+#[test]
+fn slanted_compound_walls_keep_their_layers_in_corners_at_any_angle() {
+    for degrees in [60.0, 90.0, 120.0, 150.0] {
+        for (sa, sb) in [(15.0, 15.0), (15.0, 0.0), (0.0, 15.0), (-15.0, 15.0), (20.0, -10.0)] {
+            let r = f64::to_radians(degrees);
+            let s = session(&format!(
+                r#"wall {{"points": [[6000, 0], [0, 0]], "height": 3000, "slant": {sa}, "type": "Exterior - 300mm"}}
+                   wall {{"points": [[0, 0], [{}, {}]], "height": 3000, "slant": {sb}, "type": "Exterior - 300mm"}}"#,
+                6000.0 * r.cos(),
+                6000.0 * r.sin()
+            ));
+            layers_lean_with_their_walls(&s, &format!("an L of {degrees}°, leaning {sa}° and {sb}°"));
+        }
+    }
+    // A T: an upright wall ending on a slanted one, and the slanted one ending on an upright one.
+    for (sa, sb) in [(15.0, 0.0), (0.0, 15.0), (-20.0, 10.0)] {
+        let s = session(&format!(
+            r#"wall {{"points": [[-6000, 0], [6000, 0]], "height": 3000, "slant": {sa}, "type": "Exterior - 300mm"}}
+               wall {{"points": [[0, 0], [0, 6000]], "height": 3000, "slant": {sb}, "type": "Exterior - 300mm"}}"#
+        ));
+        layers_lean_with_their_walls(&s, &format!("a T, leaning {sa}° and {sb}°"));
+    }
+}
+
+#[test]
+fn a_curved_slanted_compound_walls_layers_lean_with_it_in_3d() {
+    let s = session(r#"wall {"points": [[-3000, 0], [3000, 0]], "arc": 120, "height": 3000, "slant": 15, "type": "Exterior - 300mm"}"#);
+    layers_lean_with_their_walls(&s, "curved, leaning 15°");
+}
+
+#[test]
+fn a_section_draws_a_slanted_compound_walls_layers_leaning_with_it() {
+    // East along y = 0, leaning 20° north; the section runs north across it, so its layers lean along the section.
+    let mut s = session(r#"wall {"points": [[0, 0], [5000, 0]], "height": 3000, "slant": 20, "type": "Exterior - 300mm"}"#);
+    let wall = walls(&s)[0];
+    s.execute("section", &serde_json::json!({"start": [2500, -1500], "end": [2500, 3000]})).unwrap_or_else(|e| panic!("{e}"));
+    let id = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Section(_))).map(|(id, _)| *id).unwrap_or_else(|| panic!());
+    let view = crate::render::section_fit(&s.model, id, 2000, 1500);
+    let d = crate::render::section(&s.model, id, view);
+    let thin = d.width(crate::pen::Pen(4));
+    let (base, top) = (view.px(P2(0.0, 0.0)), view.px(P2(0.0, 3000.0)));
+    let tall = (base.1 - top.1).abs();
+    // A thin line (the projection pen) up each boundary between two layers, from its foot to its top, leaning 20° as the wall does.
+    let seams = d
+        .prims
+        .iter()
+        .zip(&d.owners)
+        .filter(|(p, o)| {
+            **o == Some(wall)
+                && matches!(p, Prim::Line { pts, width, .. } if *width <= thin && pts.len() == 2 && {
+                    let (dx, dy) = (f64::from(pts[1].0 - pts[0].0), f64::from(pts[1].1 - pts[0].1));
+                    (dy.abs() - f64::from(tall)).abs() < 2.0 && (dx.abs() / dy.abs() - 20f64.to_radians().tan()).abs() < 0.01
+                })
+        })
+        .count();
+    let layers = s.model.type_layers("wall", "Exterior - 300mm").iter().filter(|l| l.thickness > 0.0).count();
+    assert_eq!(seams, layers - 1, "leaning seams between its {layers} layers");
+}
+
+/// Whether a section from `start` to `end` across the one wall `script` makes cuts it and draws its layers: their patterns
+/// and the seams between them in thin lines, not poché.
+fn section_layers(script: &str, start: [f64; 2], end: [f64; 2]) -> (bool, bool) {
+    let mut s = session(script);
+    let wall = walls(&s)[0];
+    s.execute("section", &serde_json::json!({"start": start, "end": end})).unwrap_or_else(|e| panic!("{e}"));
+    let id = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Section(_))).map(|(id, _)| *id).unwrap_or_else(|| panic!());
+    let view = crate::render::section_fit(&s.model, id, 2000, 1500);
+    let d = crate::render::section(&s.model, id, view);
+    let thin = d.width(crate::pen::Pen(4));
+    let mine = || d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(wall)).map(|(p, _)| p);
+    (mine().any(|p| matches!(p, Prim::Fill { .. })), mine().any(|p| matches!(p, Prim::Line { width, .. } if *width <= thin)))
+}
+
+#[test]
+fn a_section_draws_a_slanted_walls_layers_where_it_cuts_only_its_top_or_a_curved_one_aslant() {
+    // Leaning 20° north, its top is 1092 mm north of its foot; the section crosses its west end's top, west of its foot.
+    let straight = r#"wall {"points": [[0, 0], [5000, 0]], "height": 3000, "slant": 20, "type": "Exterior - 300mm"}"#;
+    assert_eq!(section_layers(straight, [-500.0, -1000.0], [500.0, 3000.0]), (true, true), "its leaning top");
+    // A curved one, a cone, cut on a slant to its radius: its layers cross the line in curves.
+    let curved = r#"wall {"points": [[9000, 0], [15000, 0]], "arc": 120, "height": 3000, "slant": 15, "type": "Exterior - 300mm"}"#;
+    assert_eq!(section_layers(curved, [5000.0, 8000.0], [12000.0, -3000.0]), (true, true), "curved, aslant");
+}
