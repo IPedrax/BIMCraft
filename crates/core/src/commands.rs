@@ -979,6 +979,36 @@ other_files(
         menu: None,
         files: Files::Conditional,
     },
+    edit_files(
+        "takeoff",
+        ui_msg!("Material Takeoff"),
+        &[],
+        "{id?, name?, category?, categories?: [wall, floor, roof, ceiling], by?: material|layer|type, waste?: percent, level?, path?} \
+         a material takeoff: the layers of the walls, floors, roofs and ceilings of `categories` (none: all four) in rows, each \
+         material's net area (`area_m2`), volume (`volume_m3`) and mass (`mass_kg`, by its density or, for a sheet, its mass per m²) \
+         and the measure it is bought in with `waste` percent added (`total`, `unit`). `by` groups them: `material` sums the whole \
+         project by material, `layer` by material, thickness and function, `type` by each construction type's layers. `level` counts \
+         one level. The area is the element's net surface area from the model (openings and shafts taken out, a slope measured along \
+         it), never its plan area; nothing is deducted twice. A layer with no material, a material with no density and an area that \
+         can't be worked out are warnings, and their rows hold no quantity rather than a zero. A framed wall, floor or roof adds its \
+         studs, joists or rafters as the framing type lays them out: each member's section by its cut length by its plies is timber's \
+         volume and mass, and its row has no area. Without `id` or an existing `name` it \
+         makes the view, which goes on a sheet with `place` and prints as a schedule; the rows are worked out from the model each time \
+         it is drawn, so an edit changes them. `path` writes the rows as a .csv, or an .xlsx workbook for a path ending .xlsx. Returns \
+         id, name, categories, by, waste, columns, rows (level, category, type, material, thickness, function, area_m2, volume_m3, \
+         mass_kg, waste, total, unit, note, ids), totals and warnings",
+        takeoff,
+        Files::Conditional,
+    ),
+    other_files(
+        "refresh_takeoff",
+        ui_msg!("Refresh Takeoff"),
+        "{id?, name?, path?} a material takeoff's rows worked out again from the model, as they stand now: the numbers a takeoff \
+         gives, without changing the project (it is always worked out from the model as it is). `path` writes them as a .csv or an \
+         .xlsx workbook. Returns the same as `takeoff`",
+        refresh_takeoff,
+        Files::Conditional,
+    ),
     edit(
         "reinforcement_preset",
         ui_msg!("Reinforcement Presets"),
@@ -6552,6 +6582,151 @@ fn schedule(s: &mut Session, p: &Value) -> R {
     if let Some(totals) = t.totals {
         out["totals"] = json!(totals);
     }
+    Ok(out)
+}
+
+/// A takeoff's reply: what a `takeoff` or `refresh_takeoff` call returns.
+fn takeoff_reply(m: &Model, id: Option<Id>, sc: &Schedule, ev: &crate::takeoff::Eval) -> Value {
+    let spec = sc.takeoff.clone().unwrap_or_default();
+    let categories: Vec<String> = if spec.categories.is_empty() {
+        crate::takeoff::CATEGORIES.iter().map(|c| (*c).to_string()).collect()
+    } else {
+        spec.categories.clone()
+    };
+    let table = ev.table();
+    let columns: Vec<String> = table.columns.iter().map(|col| schedule::heading(m.units, col)).collect();
+    json!({
+        "id": id,
+        "name": sc.name,
+        "category": sc.category(),
+        "categories": categories,
+        "by": spec.by.name(),
+        "waste": spec.waste,
+        "columns": columns,
+        "rows": ev.rows.iter().map(crate::takeoff::Row::json).collect::<Vec<Value>>(),
+        "totals": ev.total(),
+        "warnings": ev.warnings,
+    })
+}
+
+/// The takeoff `id`, or the one named `name`, and its spec.
+fn found_takeoff(c: &str, m: &Model, p: &Value) -> Result<Option<(Id, Schedule)>, String> {
+    let found = match p.get("id").filter(|v| !absent(Some(v))) {
+        Some(v) => Some(element_id(c, m, v)?),
+        None => string(c, p, "name")?.as_deref().and_then(|n| schedule::named(m, n)),
+    };
+    let Some(id) = found else { return Ok(None) };
+    match m.elements.get(id) {
+        Some(Element::Schedule(sc)) if sc.takeoff.is_some() => Ok(Some((id, sc.clone()))),
+        Some(Element::Schedule(_)) => Err(bad(c, format!("element {id} is a schedule, not a material takeoff"))),
+        Some(e) => Err(bad(c, format!("element {id} is a {}, not a material takeoff", e.category()))),
+        None => Err(bad(c, format!("there's no element {id}"))),
+    }
+}
+
+fn takeoff(s: &mut Session, p: &Value) -> R {
+    let c = "takeoff";
+    only(c, p, &["id", "name", "category", "categories", "by", "waste", "level", "path"])?;
+    let m = &s.model;
+    let found = found_takeoff(c, m, p)?;
+    let mut spec = found.as_ref().map(|(_, sc)| sc.takeoff.clone().unwrap_or_default()).unwrap_or_default();
+    // What it counts: `category` names one, `categories` a list; none, all four, and on an existing takeoff what it has.
+    let mut named: Option<Vec<String>> = None;
+    if let Some(v) = p.get("categories").filter(|v| !absent(Some(v))) {
+        let list = v
+            .as_array()
+            .filter(|a| a.len() <= crate::takeoff::CATEGORIES.len())
+            .ok_or_else(|| bad(c, format!("`categories` is a list of up to {} names", crate::takeoff::CATEGORIES.len())))?;
+        let mut out = Vec::new();
+        for v in list {
+            let k = v.as_str().map(category).filter(|k| crate::takeoff::CATEGORIES.contains(&k.as_str()));
+            out.push(k.ok_or_else(|| bad(c, format!("`categories` takes {}, got {v}", crate::takeoff::CATEGORIES.join(", "))))?);
+        }
+        named = Some(out);
+    }
+    if let Some(k) = string(c, p, "category")? {
+        let k = category(&k);
+        if !crate::takeoff::CATEGORIES.contains(&k.as_str()) {
+            return Err(bad(c, format!("`category` takes {}, got `{k}`", crate::takeoff::CATEGORIES.join(", "))));
+        }
+        if let Some(list) = &named
+            && list.len() != 1
+        {
+            return Err(bad(c, "give `category` or `categories`, not both"));
+        }
+        named = Some(vec![k]);
+    }
+    if let Some(list) = named {
+        spec.categories = list;
+    }
+    if let Some(by) = string(c, p, "by")? {
+        spec.by = crate::takeoff::By::from_name(&by).ok_or_else(|| bad(c, format!("`by` is material, layer or type, not `{by}`")))?;
+    }
+    if let Some(waste) = num(c, p, "waste")? {
+        if !(0.0..=crate::takeoff::MAX_WASTE).contains(&waste) {
+            return Err(bad(c, format!("`waste` is a percent from 0 to {}, not {waste}", crate::takeoff::MAX_WASTE)));
+        }
+        spec.waste = waste;
+    }
+    if !absent(p.get("level")) {
+        spec.level = Some(level_param(c, m, p, "level")?);
+    }
+    let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+    let mut sc = match &found {
+        Some((_, sc)) => sc.clone(),
+        None => Schedule {
+            name: name.clone().unwrap_or_else(|| m.language.word("Material Takeoff").to_string()),
+            of: "takeoff".into(),
+            ..Schedule::default()
+        },
+    };
+    if let Some(name) = name {
+        sc.name = name;
+    }
+    if sc.name.trim().is_empty() {
+        return Err(bad(c, "a takeoff needs a `name`"));
+    }
+    sc.takeoff = Some(spec.clone());
+    let id = match found {
+        Some((id, _)) => {
+            s.model_mut().elements.insert(id, Element::Schedule(sc.clone()));
+            id
+        }
+        None => s.model_mut().insert(Element::Schedule(sc.clone())),
+    };
+    let m = &s.model;
+    schedule::check(m, &sc).map_err(|e| bad(c, e))?;
+    let ev = crate::takeoff::eval(m, &spec).map_err(|e| bad(c, e))?;
+    let path = string(c, p, "path")?;
+    if let Some(path) = &path {
+        bars::write_table(c, path, &ev.table(), &sc.name)?;
+    }
+    let mut out = takeoff_reply(m, Some(id), &sc, &ev);
+    out["path"] = path.map_or(Value::Null, Value::String);
+    Ok(out)
+}
+
+fn refresh_takeoff(s: &mut Session, p: &Value) -> R {
+    let c = "refresh_takeoff";
+    only(c, p, &["id", "name", "path"])?;
+    let name = string(c, p, "name")?;
+    if p.get("id").is_none() && name.is_none() {
+        return Err(bad(c, "`id` or `name` is required"));
+    }
+    let m = &s.model;
+    let Some((id, sc)) = found_takeoff(c, m, p)? else {
+        return Err(bad(c, "there's no such material takeoff; `takeoff` makes one"));
+    };
+    let Some(spec) = &sc.takeoff else {
+        return Err(bad(c, format!("element {id} isn't a material takeoff")));
+    };
+    let ev = crate::takeoff::eval(m, spec).map_err(|e| bad(c, e))?;
+    let path = string(c, p, "path")?;
+    if let Some(path) = &path {
+        bars::write_table(c, path, &ev.table(), &sc.name)?;
+    }
+    let mut out = takeoff_reply(m, Some(id), &sc, &ev);
+    out["path"] = path.map_or(Value::Null, Value::String);
     Ok(out)
 }
 
@@ -17396,6 +17571,8 @@ fn material(s: &mut Session, p: &Value) -> R {
             "name",
             "color",
             "transparency",
+            "density",
+            "mass_per_m2",
             "cut",
             "cut_color",
             "cut_background",
@@ -17475,6 +17652,17 @@ fn material(s: &mut Session, p: &Value) -> R {
             .filter(|t| *t <= 100)
             .and_then(|t| u8::try_from(t).ok())
             .ok_or_else(|| bad(c, format!("`transparency` is a whole percent, 0 to 100, not {v}")))?;
+    }
+    // What a material takeoff weighs it by, kg/m³ and, for a sheet, kg/m²: null or 0, not known.
+    for (key, slot, max) in
+        [("density", &mut mat.density, crate::takeoff::MAX_DENSITY), ("mass_per_m2", &mut mat.mass_per_m2, crate::takeoff::MAX_MASS_PER_M2)]
+    {
+        if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
+            *slot = v
+                .as_f64()
+                .filter(|x| x.is_finite() && (0.0..=max).contains(x))
+                .ok_or_else(|| bad(c, format!("`{key}` is a number from 0 to {max}, not {v}")))?;
+        }
     }
     // A pattern drawn in code by its name, or one of the project's fill patterns.
     for (key, slot, fill) in [("cut", &mut mat.cut, &mut mat.cut_pattern), ("surface", &mut mat.surface, &mut mat.surface_pattern)] {

@@ -2,7 +2,7 @@
 
 What the project's structure comes to: concrete, formwork and steel (`quantities.rs`, `commands/quantities.rs`; tests in
 `quantities_tests.rs`), the steel list and the cut plan (`steel.rs`, `commands/bars.rs`; tests in `steel_tests.rs`; the desktop's dialog is
-`ui-egui/src/steel.rs`). Cost is planned next and will be written here.
+`ui-egui/src/steel.rs`), and what its walls, floors, roofs and ceilings are made of (`takeoff.rs`). Cost is planned next and will be written here.
 
 ## Areas of walls, floors, ceilings and roofs
 
@@ -34,6 +34,39 @@ from.
 - a roof's `Plan Area` is now net of its openings and the shafts through it;
 - a wall, ceiling or roof now has a net `Volume`, and the multi-category schedule shows it;
 - `Openings Area` is new for all four, and in a multi-category schedule.
+
+## Material takeoff
+
+A material takeoff counts not elements but the **layers of their types**: how much OSB, mineral wool, timber and membrane a
+building needs (`takeoff.rs`, the `takeoff` and `refresh_takeoff` commands; tests in `takeoff_tests.rs`). It is a schedule
+(`Schedule { of: "takeoff", takeoff: Some(Takeoff { categories, by, waste, level }) }`), so it goes on a sheet with `place`,
+prints with it, and exports as .csv or .xlsx as any schedule does.
+
+| Rule | What it does |
+|---|---|
+| Area | `Model::areas(e).net`: a wall's one face, a floor's, ceiling's or roof's surface by its slope. Never `plan`, and never less the openings again: the net area already has them out (TZ-031) |
+| Layers | each layer of the element's type: its `volume = area × thickness`, and a sheet keeps its area. A type with the same layer twice counts it twice, as two skins of OSB do |
+| Grouping | `by: material` sums the project by material; `by: layer` by material, thickness and function; `by: type` by each construction type's layers |
+| Mass | a material's `density` (kg/m³) weighs a layer by its volume; a sheet's `mass_per_m2` (kg/m²) weighs it by its area. A material with neither has no mass (null), and the reply says so |
+| Waste | `waste` percent is added to every row's `total`: the measure it is bought in, m² for a sheet and m³ for anything else |
+| Rounding | m² to 0.01, m³ to 0.001, kg to 1 |
+
+An area that can't be worked out (a wall of no type or no thickness, a roof whose faces can't be found), a type with no
+layers, and a layer with no material do not become a zero: the row holds no quantity and says why, and the command returns
+the warnings (`area undefined`, `no layers`, `layer_without_material`, `no density`). The rows are worked out from the model
+each time the view is drawn and each time `refresh_takeoff` is called, so an edit changes them and nothing goes stale.
+
+In the window it is **View > Schedules > Material Takeoff…** (its categories, grouping, waste, level and name) or
+**Structure > Quantities (QT) > Materials > Material Takeoff…**; OK makes the view and opens its table, which the Project
+Browser lists under Schedules/Quantities (all) like any schedule's.
+
+Densities come with the starter library (brick, concrete, timber, mineral wool, gypsum board, membrane) and a project of an
+older format gets them by its materials' names on opening, in its own language. A material with no density of its name adds
+none; `material {name, density}` and `material {name, mass_per_m2}` set it by hand. A framed wall, floor or roof adds its
+studs, joists or rafters as the framing type lays them out (`framing::of`): their volume is each member's section by its cut
+length by its plies, and a framing member is linear, so its own row has a volume and a mass but no area. The takeoff's rules
+are ours: a two-skin wall is 2 × its net face in one material, and the reciprocal of a roof's cosine is in its net area
+already, not applied again.
 
 ## Concrete, formwork and steel
 

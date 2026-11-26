@@ -244,6 +244,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// `framing` (its rafters worked out as a floor's joists are) and a framing type's `ridge`, held with them.
 /// And a ramp may be drawn along a line (`path`), sketched (`sketch`, its run lines styled `ramp run`) or `flipped`; a build that
 /// reads up to 20 would leave those out and lay it as one straight run. A file of 20 needs no step: it holds none.
+/// 21 also: a material's `density` (kg/m³) and `mass_per_m2` (kg/m², for a sheet), which a material takeoff weighs it by, and a
+/// schedule's `takeoff` spec (a schedule of `takeoff`, counting layers rather than elements). A file of 20 holds neither, and
+/// its materials are weighed by the densities their names say; a build that reads up to 20 would leave a takeoff out as a field
+/// it doesn't know, not "saved by a newer BIMCraft".
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -701,6 +705,13 @@ pub struct Material {
     /// How much of what lies behind its surfaces shows through them in the 3D view, percent: 0 (opaque) to 100.
     #[serde(default, skip_serializing_if = "is_clear")]
     pub transparency: u8,
+    /// Its density, kg/m³, which a material takeoff weighs it by; 0, not known (and no mass).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub density: f64,
+    /// For a sheet (a membrane, a housewrap), its mass per square metre, kg/m², which a takeoff weighs it by;
+    /// 0, not a sheet given so, and its `density` weighs it by its volume.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub mass_per_m2: f64,
     /// Its values of the parameters every material has and of the project parameters for materials, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub parameters: BTreeMap<String, serde_json::Value>,
@@ -739,6 +750,8 @@ impl Default for Material {
             surface_image: None,
             texture: None,
             transparency: 0,
+            density: 0.0,
+            mass_per_m2: 0.0,
             parameters: BTreeMap::new(),
         }
     }
@@ -1890,6 +1903,10 @@ pub struct Schedule {
     pub sort: Vec<crate::schedule::Sort>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub grouped: bool,
+    /// A material takeoff's view: what it counts and how it groups it, where `of` is `takeoff`. Its rows are
+    /// worked out from the model each time it is drawn (`crate::takeoff`), so an edit changes them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub takeoff: Option<crate::takeoff::Takeoff>,
 }
 
 impl Schedule {
@@ -2892,7 +2909,14 @@ macro_rules! visit_refs {
             }
             Element::PanelSchedule(ps) => f(& $($m)? ps.panel),
             Element::RebarDetail(rd) => f(& $($m)? rd.host),
-            Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) | Element::ProjectInfo(_) => {}
+            Element::Schedule(sc) => {
+                if let Some(t) = & $($m)? sc.takeoff
+                    && let Some(g) = & $($m)? t.level
+                {
+                    f(g)
+                }
+            }
+            Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Link(_) | Element::ProjectInfo(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -4895,7 +4919,20 @@ impl Model {
             let texture = texture.map(Texture::new);
             // Glass is the one that lets the building behind it show.
             let transparency = if name == "Glass" { GLASS_TRANSPARENCY } else { 0 };
-            m.materials.insert(language.word(name).into(), Material { color, cut, surface, texture, transparency, ..Material::default() });
+            let mass = crate::takeoff::density_of(name);
+            m.materials.insert(
+                language.word(name).into(),
+                Material {
+                    color,
+                    cut,
+                    surface,
+                    texture,
+                    transparency,
+                    density: mass.density,
+                    mass_per_m2: mass.per_area,
+                    ..Material::default()
+                },
+            );
         }
         // Ground and finishes shown by a picture: an image fill on their surfaces in plan, the same picture their texture in 3D,
         // each a tile `size` mm across and up (the pictures' sources are in `assets/materials/README.md` and NOTICE).
@@ -4927,8 +4964,17 @@ impl Model {
             let fill = Texture { image: id, ..fill };
             // Water lets what lies under it show, half and half.
             let transparency = if name == "Water" { WATER_TRANSPARENCY } else { 0 };
-            let material =
-                Material { color, cut, surface_image: Some(fill.clone()), texture: Some(fill), transparency, ..Material::default() };
+            let mass = crate::takeoff::density_of(name);
+            let material = Material {
+                color,
+                cut,
+                surface_image: Some(fill.clone()),
+                texture: Some(fill),
+                transparency,
+                density: mass.density,
+                mass_per_m2: mass.per_area,
+                ..Material::default()
+            };
             m.materials.insert(language.word(name).into(), material);
         }
         m.families = crate::family::library(language).into();
@@ -5745,6 +5791,14 @@ impl Model {
         // A material's patterns behind its foreground and its parameters need no step: a file without them has none. A file
         // may hold a value of a parameter it doesn't have, which is left out.
         crate::materials::tidy(self);
+        // A material's `density` and `mass_per_m2` (FORMAT 21) need no step either: a file without them is weighed by the
+        // density its name says it has, as the starter library weighs one.
+        for (name, material) in self.materials.iter_mut() {
+            if material.density == 0.0 && material.mass_per_m2 == 0.0 {
+                let mass = crate::takeoff::density_of(name);
+                (material.density, material.mass_per_m2) = (mass.density, mass.per_area);
+            }
+        }
         // A file from before #502 keeps a utility's or a country's changed method among the project's changes: into its layer.
         if crate::codes::WHOLE.iter().any(|(d, k)| self.codes.choice(*d).changes.contains_key(*k)) {
             self.codes.methods_into_layers();

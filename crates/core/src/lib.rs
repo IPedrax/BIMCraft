@@ -307,6 +307,7 @@ pub mod storm;
 mod stream_tests;
 pub mod styles;
 pub mod symbol_set;
+pub mod takeoff;
 pub mod text;
 pub mod texture;
 mod timber;
@@ -385,6 +386,8 @@ mod structure_tests;
 pub mod survey;
 #[cfg(test)]
 mod survey_tests;
+#[cfg(test)]
+mod takeoff_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
