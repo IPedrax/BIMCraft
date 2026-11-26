@@ -126,6 +126,8 @@ pub struct Settings {
     /// What the caches of scans' indexes may take, MB, and how many of their points the 3D view draws: none for Auto.
     pub cloud_memory_mb: Option<u32>,
     pub cloud_points_3d: Option<u32>,
+    /// The folder scans' indexes are kept in, and looked for in: none for beside each project.
+    pub cloud_index_dir: Option<String>,
     /// Grid snapping applies to every view, using the active view's enabled lattice.
     pub grid_snapping: bool,
     /// Select Elements by Face, in a family document's plans and elevations: a face selects what it is of.
@@ -198,7 +200,7 @@ impl Settings {
             "cut_fills_3d": self.cut_fills_3d,
             "window": self.window.to_json(),
             "high_contrast": self.high_contrast,
-            "point_clouds": {"memory_mb": self.cloud_memory_mb, "points_3d": self.cloud_points_3d},
+            "point_clouds": {"memory_mb": self.cloud_memory_mb, "points_3d": self.cloud_points_3d, "index_dir": self.cloud_index_dir},
             "grid_snapping": self.grid_snapping,
             "guide_style": self.guide_style.code(),
             "compressed_save": self.compressed_save,
@@ -259,6 +261,11 @@ impl Settings {
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
             cloud_memory_mb: auto_or(&v["point_clouds"], "memory_mb", MEMORY_MB, base.cloud_memory_mb),
             cloud_points_3d: auto_or(&v["point_clouds"], "points_3d", POINTS_3D, base.cloud_points_3d),
+            cloud_index_dir: match &v["point_clouds"]["index_dir"] {
+                serde_json::Value::Null => None,
+                serde_json::Value::String(d) if !d.trim().is_empty() && d.len() <= 4096 => Some(d.clone()),
+                _ => base.cloud_index_dir.clone(),
+            },
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
             guide_style: v["guide_style"].as_str().and_then(GuideStyle::from_code).unwrap_or(base.guide_style),
             compressed_save: v["compressed_save"].as_bool().unwrap_or(base.compressed_save),
@@ -427,6 +434,7 @@ impl BimApp {
         self.scan_contrast = kept.high_contrast;
         (self.scan_memory_mb, self.scan_points) = (kept.cloud_memory_mb, kept.cloud_points_3d);
         self.use_scan_memory();
+        self.session.index_dir = kept.cloud_index_dir.as_ref().map(std::path::PathBuf::from);
         self.grid_snapping = kept.grid_snapping;
         self.guide_style = kept.guide_style;
         self.compressed_save = kept.compressed_save;
@@ -497,6 +505,7 @@ impl BimApp {
             high_contrast: self.scan_contrast,
             cloud_memory_mb: self.scan_memory_mb,
             cloud_points_3d: self.scan_points,
+            cloud_index_dir: self.session.index_dir.as_ref().map(|d| d.to_string_lossy().into_owned()),
             grid_snapping: self.grid_snapping,
             guide_style: self.guide_style,
             compressed_save: self.compressed_save,
@@ -844,6 +853,20 @@ impl BimApp {
                 "How many points of indexed scans the 3D view draws once it stands still. Auto: 10 million on the graphics card, 3 million on the processor"
             ),
         );
+        ui.horizontal(|ui| {
+            let l = ui.label(t("Point cloud index folder"));
+            let at = self.session.index_dir.as_ref().map_or_else(|| t("Beside each project").to_string(), |d| d.display().to_string());
+            ui.label(at).labelled_by(l.id).on_hover_text(t(
+                "Where a scan's index (every point of it) is kept, and where a project copied without its indexes looks for them",
+            ));
+            if ui.button(t("Choose…")).clicked() {
+                let dialog = rfd::AsyncFileDialog::new();
+                self.ask_folder(ui.ctx(), dialog, |app, dir| app.session.index_dir = Some(dir));
+            }
+            if self.session.index_dir.is_some() && ui.button(t("Beside Each Project")).clicked() {
+                self.session.index_dir = None;
+            }
+        });
         later(ui, graphics_later);
     }
 

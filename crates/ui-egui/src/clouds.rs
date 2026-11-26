@@ -160,6 +160,33 @@ impl BimApp {
         });
     }
 
+    /// Delete Index… on a scan in the Project Browser: asked first, since its file goes for good.
+    pub(crate) fn index_delete_box(&mut self, ctx: &Context) {
+        let Some(cloud) = self.index_delete.clone() else { return };
+        let (mut yes, mut no) = (false, false);
+        let r = Modal::new(UiId::new("point-cloud-index-delete"), t("Delete Index")).width(420.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.add_space(6.0);
+                ui.label(tf(
+                    "Delete the index of {}? Its file is deleted for good; the scan keeps the points the project holds, and Rebuild Index can't bring it back.",
+                    &[&cloud],
+                ));
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    no = ui.button(t("Cancel")).clicked();
+                    yes = ui.button(t("Delete")).clicked();
+                });
+            });
+        });
+        if yes {
+            self.index_delete = None;
+            self.run("point_cloud_index", json!({"cloud": cloud, "action": "delete"}));
+        } else if no || r.should_close() {
+            self.index_delete = None;
+        }
+    }
+
     /// Runs `point_cloud` for the box's files: placed on the plan on screen's level, and selected. A refusal keeps the box
     /// open with the reason in it.
     fn bring_in_cloud(&mut self) {
@@ -171,6 +198,10 @@ impl BimApp {
             "origin": b.origin,
             "index": b.index,
         });
+        // The user's folder of indexes: the read ahead runs on a session of its own, which doesn't have it.
+        if let Some(dir) = &self.session.index_dir {
+            p["index_dir"] = json!(dir.to_string_lossy());
+        }
         if b.origin == "shared" && b.acquire {
             p["acquire"] = json!(true);
         }

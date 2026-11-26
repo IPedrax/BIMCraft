@@ -1044,6 +1044,8 @@ pub struct BimApp {
     pub(crate) cloud_box: Option<clouds::CloudBox>,
     /// Scan files being read on a thread of their own, for Insert > Point Cloud to place.
     pub(crate) cloud_reading: Option<clouds::CloudReading>,
+    /// The scan whose index Delete Index… asks to delete, while it asks.
+    pub(crate) index_delete: Option<String>,
     /// Insert > Import CAD (false) or Link CAD (true) was pressed: its file dialog opens this frame.
     cad_dialog: Option<bool>,
     /// Bringing a CAD drawing in: the box, while it's open.
@@ -2093,6 +2095,7 @@ impl BimApp {
             cloud_dialog: false,
             cloud_box: None,
             cloud_reading: None,
+            index_delete: None,
             cad_dialog: None,
             cad_box: None,
             link_box: None,
@@ -7929,6 +7932,7 @@ impl BimApp {
         self.importing_box(ctx);
         self.opening_box(ctx);
         self.cloud_reading_box(ctx);
+        self.index_delete_box(ctx);
         self.report_window(ctx);
         self.export_window(ctx);
         self.publisher_window(ctx);

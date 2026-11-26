@@ -608,6 +608,17 @@ fn a_scan_whose_index_is_missing_says_so_in_the_browser_and_find_index_reads_it_
     let cloud = h.state().session.model.clouds.get("survey").unwrap();
     assert!(cloud.indexed().is_some(), "{}", h.state().status.text);
     assert!(h.query_by_label("survey (index missing)").is_none() && h.query_by_label("Point Clouds").is_some());
+    // Open, the browser says what its file takes; Delete Index… asks, then deletes the file and lets the index go.
+    let label = format!("survey ({})", bimcraft_core::memory::bytes(std::fs::metadata(&moved).unwrap().len()));
+    h.get_by_label(&label).click_secondary();
+    h.run();
+    press(&mut h, "Delete Index…");
+    assert!(h.query_by_label("Delete Index").is_some(), "it asks first");
+    assert!(moved.exists());
+    press(&mut h, "Delete");
+    let cloud = h.state().session.model.clouds.get("survey").unwrap();
+    assert!(cloud.index().is_none() && !moved.exists(), "{}", h.state().status.text);
+    assert!(h.query_by_label("survey").is_some());
 }
 
 #[test]
@@ -624,14 +635,18 @@ fn point_cloud_memory_and_points_drawn_in_3d_are_kept_in_settings_json() {
     // Auto turned off takes a number, kept in the settings file.
     h.state_mut().scan_memory_mb = Some(2048);
     h.state_mut().scan_points = Some(5_000_000);
+    assert!(h.query_by_label("Beside each project").is_some(), "indexes beside each project at first");
+    h.state_mut().session.index_dir = Some(dir.path().join("indexes"));
     h.run();
     press(&mut h, "Close");
     let kept: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-    assert_eq!(kept["point_clouds"], json!({"memory_mb": 2048, "points_3d": 5_000_000}));
+    let folder = dir.path().join("indexes").to_string_lossy().into_owned();
+    assert_eq!(kept["point_clouds"], json!({"memory_mb": 2048, "points_3d": 5_000_000, "index_dir": folder}));
     // Another window starts with them, the memory given to the scans' caches.
     let mut again = app("");
     again.state_mut().use_settings(file.clone());
     assert_eq!((again.state().scan_memory_mb, again.state().scan_points), (Some(2048), Some(5_000_000)));
+    assert_eq!(again.state().session.index_dir, Some(dir.path().join("indexes")), "the session looks in the folder of indexes");
     assert_eq!(bimcraft_core::cloud::lod::memory(), 2048 << 20);
     // Null is Auto; what isn't a number in range keeps what it had.
     for (text, memory, points) in [

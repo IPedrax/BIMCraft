@@ -123,6 +123,8 @@ enum Act {
     Underlay(Id),
     /// Find Index…: the file of a scan's index, picked in the system's dialog.
     FindIndex(String),
+    /// Delete Index…: asked first.
+    DeleteIndex(String),
 }
 
 /// An entry of the tree, or a group of them.
@@ -429,6 +431,7 @@ impl BimApp {
             }
             Some(Act::SelectInstances(params, scope)) => self.select_instances(params, scope),
             Some(Act::FindIndex(cloud)) => self.find_cloud_index(ui.ctx(), cloud),
+            Some(Act::DeleteIndex(cloud)) => self.index_delete = Some(cloud),
             _ => {}
         }
     }
@@ -751,18 +754,26 @@ impl BimApp {
                 _ => None,
             })
             .collect();
+        // A Co-Work guest's copy never opens the host's files: its scans draw the top the project holds.
+        let guest = self.guest();
         let kids: Vec<Node> = m
             .clouds
             .iter()
             .filter_map(|(name, scan)| {
-                let missing = scan.index().is_some() && scan.indexed().is_none();
-                let label = if missing { tf("{} (index missing)", &[name]) } else { name.clone() };
+                let label = match (scan.index().is_some(), scan.indexed()) {
+                    (true, None) if guest => tf("{} (index on host)", &[name]),
+                    (true, None) => tf("{} (index missing)", &[name]),
+                    (true, Some(ix)) => format!("{name} ({})", bimcraft_core::memory::bytes(ix.source().size())),
+                    (false, _) => name.clone(),
+                };
                 let id = placed.iter().find(|(_, c)| c == name).map(|(id, _)| *id)?;
                 let leaf = Node::leaf(&label, Act::Select(id), self.selection == [id]);
-                Some(if scan.index().is_some() {
+                Some(if scan.index().is_some() && !guest {
                     leaf.with_menu(vec![
                         (msg!("Find Index…"), Act::FindIndex(name.clone())),
                         (msg!("Reload Index"), Act::Do("point_cloud_index", serde_json::json!({"cloud": name}))),
+                        (msg!("Rebuild Index"), Act::Do("point_cloud_index", serde_json::json!({"cloud": name, "action": "rebuild"}))),
+                        (msg!("Delete Index…"), Act::DeleteIndex(name.clone())),
                     ])
                 } else {
                     leaf
