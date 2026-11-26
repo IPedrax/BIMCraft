@@ -247,6 +247,7 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
             name: side.name().into(),
             start,
             end,
+            near: None,
             depth: None,
             crop: None,
             reference: None,

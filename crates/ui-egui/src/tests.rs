@@ -2089,6 +2089,27 @@ fn clearing_a_sections_far_clip_offset_lets_it_see_all_there_is() {
 }
 
 #[test]
+fn a_sections_near_clip_offset_is_in_properties_and_sets_its_band() {
+    let mut h = app(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"));
+    let sections = ids(&h, "section");
+    h.state_mut().selection = sections.clone();
+    h.run();
+    let value = |h: &Harness<BimApp>, label: &str| h.get_by_role_and_label(Role::TextInput, label).value().unwrap_or_default();
+    // At 0 the band starts at the view's line, which Properties says in mm.
+    assert_eq!(value(&h, "Near Clip Offset"), "0 mm");
+    type_into(&mut h, "Near Clip Offset", "500");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, sections[0], "near"), json!(500.0));
+    // Cleared, it goes back to the line, as a near clip of 0 is no clip at all.
+    h.get_by_label("Near Clip Offset").focus();
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    key(&mut h, Key::Backspace);
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, sections[0], "near"), json!(0.0), "0 is its line, which a file leaves out");
+}
+
+#[test]
 fn the_palette_keeps_its_fields_and_apply_inside_it_whatever_their_labels() {
     use egui_kittest::kittest::{By, NodeT};
     let mut h = app(&format!("{BOX}\nfloor {{}}"));

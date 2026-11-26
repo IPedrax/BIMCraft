@@ -1185,9 +1185,10 @@ that reads up to 17 refuses the file, saying it is from a newer BIMCraft, rather
 ## A section's and an elevation's extent in plan
 
 Selected alone with Modify, a section or an elevation shows its extent on the plan as Revit does (`canvas.rs`'s
-`view_extent_overlay`, from `elevation.rs`): the line the view starts at, long dashes and dots in the accent colour, and, when
-its far clip is on (`depth`, Properties' Far Clip Offset), the line it sees as far as (`elevation::far`) with the two sides
-between them, dashed. `elevation::grips` says what can be held: a round grip at each end of the line only while the view is
+`view_extent_overlay`, from `elevation.rs`): the line the view starts at, long dashes and dots in the accent colour, the line
+its near clip starts the band at (`near`, Properties' Near Clip Offset; `elevation::near`, only past the line) and, when its
+far clip is on (`depth`, Properties' Far Clip Offset), the line it sees as far as (`elevation::far`) with the two sides between
+them, dashed. `elevation::grips` says what can be held: a round grip at each end of the line only while the view is
 cropped (uncropped the line moves and doesn't stretch, since the view then shows everything along it), and a pair of arrows in
 the middle of the far clip line.
 
@@ -1195,6 +1196,23 @@ Each part moves through `move` with the part as its `end` (`elevation::Part`, wo
 desktop also draws its preview from): `start` and `end` go along the line and no shorter than `SHORTEST` (what is noted in
 the view keeps its spot over the model, as after `crop`); `far` goes to and from the line and sets `depth`; `line` moves the
 line the way it looks, which is how a drag from an elevation's line off its mark goes. A section dragged by its line moves whole.
+
+## A section's and an elevation's depth band
+
+A section or an elevation sees a band parallel to its line: from `near` mm past the line, the way it looks, to `depth` mm past
+it (`Section::near`, `Section::depth`; one struct holds both kinds of view). Without `near` the band starts at the line, and
+without `depth` it has no far end, so a view of an old file (FORMAT 21 and before) draws as it always did. `near` is 0 or more,
+`depth` is above 0, and both are lengths in mm from the line, never absolute heights; with both, `near` must be short of
+`depth`. `elevation` and `section` take them, `modify {near, depth}` changes either (`null` puts `near` back to 0 and drops the
+far clip), and `elements` gives `near` (0 when none) and `depth` (null when none).
+
+The band limits the picture itself: the screen drawing, `render`, a viewport on a sheet and the PDF, SVG or PNG made from it,
+and point clouds, which lose the points before `near` and beyond `depth`. Plans and the 3D view never read it. A far clip
+already worked this way; the near clip is the same plane on the other side, so `section_camera` builds it as
+`Clip { near: -near, far: depth - near }` (`Clip`'s depth runs toward the camera). `crop` limits a view along its line and up,
+not in depth, and `crop`, `scale` and `place` change neither clip. A `near` above 0 also cuts away the plane of the cut
+itself, on the line: that is the price of the band, so ordinary sections and elevations leave it at 0. The wall-elevations
+plugin of ТЗ-029.2 uses the band to see one wall and a little behind it.
 
 An elevation's mark is apart from its line (`Section::mark`; none while it has never been moved apart, and the mark is then at
 the line's middle). A drag of an elevation's mark runs `move` with `end: mark`: the mark alone goes anywhere. When it crosses

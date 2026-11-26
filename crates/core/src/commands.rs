@@ -1621,16 +1621,18 @@ other_files(
         "section",
         ui_msg!("Section"),
         &["CR"],
-        "{start: [x,y], end: [x,y], depth?, name?} a section view along the line, looking to its left (drawn west to east, it \
-         looks north): it cuts the model at the line and sees `depth` mm past it, or everything",
+        "{start: [x,y], end: [x,y], near?, depth?, name?} a section view along the line, looking to its left (drawn west to east, \
+         it looks north): it cuts the model at the line and sees from `near` mm past it (0, its line, without one) to `depth` mm \
+         past it, or everything without a far clip",
         section,
     ),
     edit(
         "elevation",
         ui_msg!("Elevation"),
         &[],
-        "{on?: id, reference?: [[x,y],[x,y]], facing?: north|south|east|west, at?: [x,y], start?, end?, depth?, name?} an \
-         elevation view. With `on` (a wall, a line, a floor's, roof's or ceiling's edge, a grid or any element with a straight \
+        "{on?: id, reference?: [[x,y],[x,y]], facing?: north|south|east|west, at?: [x,y], start?, end?, near?, depth?, name?} an \
+         elevation view. It sees from `near` mm past its line (0, its line, without one) to `depth` mm past it, or everything \
+         without a far clip. With `on` (a wall, a line, a floor's, roof's or ceiling's edge, a grid or any element with a straight \
          edge, the project's or a link's by the id its view gives it) and `at`, it looks square at that element's straight edge \
          nearest `at` (a wall's centre line) from `at`'s side of it: its mark stands at `at`, or 1.5 m out from the edge when \
          `at` is on it (within a metre). `reference` gives the line itself instead of `on`. That line is kept in the \
@@ -4802,6 +4804,8 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("length".into(), json!(hundredth(axis.length() * 1e4) / 1e4));
             extra.insert("height".into(), json!(hundredth(m.top_z(w) - m.base_z(w))));
             extra.insert("thickness".into(), json!(m.thickness(w)));
+            // Whether its type is a curtain wall's, worked out for agents and plugins: read, never saved, never modified.
+            extra.insert("curtain_wall".into(), json!(m.types.wall.get(&w.type_name).is_some_and(|t| t.curtain.is_some())));
             if let Some(r) = axis.radius() {
                 extra.insert("radius".into(), json!(hundredth(r)));
             }
@@ -4991,6 +4995,8 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("length".into(), json!(v.start.dist(v.end)));
             // `+ 0.0`: no `-0`.
             extra.insert("looking".into(), json!([l.0 + 0.0, l.1 + 0.0]));
+            // Its near clip, which a file leaves out at 0: said as 0. Its far clip is its own field, null when none.
+            extra.insert("near".into(), json!(v.near.unwrap_or(0.0)));
         }
         Element::DetailView(v) => {
             extra.insert("kind".into(), json!("detail"));
@@ -16254,7 +16260,9 @@ pub fn roof_footprint(m: &Model, level: impl Key, overhang: f64) -> Result<(Vec<
 
 fn section(s: &mut Session, p: &Value) -> R {
     let c = "section";
-    let (start, end, depth) = (point_req(c, p, "start")?, point_req(c, p, "end")?, num(c, p, "depth")?);
+    let (start, end, near, depth) = (point_req(c, p, "start")?, point_req(c, p, "end")?, num(c, p, "near")?, num(c, p, "depth")?);
+    // 0 is its line, which a file leaves out: kept as none. A negative or NaN near is left for the model to refuse.
+    let near = near.filter(|n| *n != 0.0);
     let name = match string(c, p, "name")? {
         Some(n) => n,
         None => s.model.free_view_name(s.model.language.word("Section"), true),
@@ -16263,6 +16271,7 @@ fn section(s: &mut Session, p: &Value) -> R {
         name: name.clone(),
         start,
         end,
+        near,
         depth,
         crop: None,
         reference: None,
@@ -16276,7 +16285,9 @@ fn section(s: &mut Session, p: &Value) -> R {
 fn elevation(s: &mut Session, p: &Value) -> R {
     let c = "elevation";
     let m = &s.model;
-    let (depth, name, at) = (num(c, p, "depth")?, string(c, p, "name")?, point_opt(c, p, "at")?);
+    let (near, depth, name, at) = (num(c, p, "near")?, num(c, p, "depth")?, string(c, p, "name")?, point_opt(c, p, "at")?);
+    // 0 is its line, which a file leaves out: kept as none. A negative or NaN near is left for the model to refuse.
+    let near = near.filter(|n| *n != 0.0);
     let facing = match string(c, p, "facing")? {
         Some(f) => Some(Facing::parse(&f).ok_or_else(|| bad(c, format!("`facing` is north, south, east or west, not `{f}`")))?),
         None => None,
@@ -16328,6 +16339,7 @@ fn elevation(s: &mut Session, p: &Value) -> R {
             name: name.clone(),
             start: micron(start),
             end: micron(end),
+            near,
             depth,
             crop: None,
             reference: Some([line.0, line.1]),
@@ -16372,6 +16384,7 @@ fn elevation(s: &mut Session, p: &Value) -> R {
                     name: name.clone(),
                     start,
                     end,
+                    near,
                     depth,
                     crop: None,
                     reference: None,
@@ -20562,6 +20575,11 @@ fn modify(s: &mut Session, p: &Value) -> R {
             }
         }
         let mut e2 = serde_json::from_value::<Element>(v).map_err(|e| bad(c, format!("element {id}: {e}")))?;
+        // A near clip of 0 is the view's line, which a file leaves out: kept as none. A negative or NaN one is left for
+        // the model to refuse.
+        if let Element::Section(section) | Element::Elevation(section) = &mut e2 {
+            section.near = section.near.filter(|n| *n != 0.0);
+        }
         // A note's new text keeps its runs on what didn't change, unless it is given runs of its own.
         if let (Element::Text(old), Element::Text(n)) = (e, &mut e2)
             && old.text != n.text

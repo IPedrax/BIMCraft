@@ -6923,10 +6923,10 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 #[test]
 fn a_file_of_the_family_editors_unreleased_formats_past_this_one_up_to_32_is_refused_as_newer() {
     // The Family Editor took the format from 17 to 32 a step at a time before it was released, and none of that was. 0.12's
-    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's; 21 is
-    // the next release's, and what is past it, up to 32, is refused as any newer file is.
+    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's; 21 and
+    // 22 are the unreleased line's, 22 this build's, and what is past it, up to 32, is refused as any newer file is.
     use crate::model::{FORMAT, Model};
-    assert_eq!(FORMAT, 21);
+    assert_eq!(FORMAT, 22);
     let mut s = Session::new();
     house(&mut s);
     let v = serde_json::to_value(&*s.model).unwrap();

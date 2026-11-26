@@ -475,6 +475,39 @@ ABI гостя; в хосте, ядре и интерфейсе `unsafe` нет.
 помещений); её модуль не хранится в репозитории, тест `crates/plugin/tests/sample.rs` запускает
 собранный. Без сборки тесты пропускаются с командой сборки; в CI пропуск считается падением.
 
+### Пример: развёртка стены с полосой глубины
+
+Плагин «Развёртки по стенам» (ТЗ-029.2) ставит развёртку в 2 м от стены и хочет видеть только эту стену и небольшой запас
+за ней. Ядро не даёт обрезать модель по глубине иначе как `near`/`depth` у вида, а `elements` отдаёт у каждой стены
+`curtain_wall`, чтобы плагин мог пропустить витраж (`include_curtain: false`):
+
+```rust
+use bimcraft_plugin_sdk::{Value, execute};
+use serde_json::json;
+
+fn wall_elevations(_: &Value) -> Result<Value, String> {
+    let walls = execute("elements", &json!({"category": "wall", "limit": 40}))?;
+    let mut made = Vec::new();
+    for wall in walls["elements"].as_array().into_iter().flatten() {
+        if wall["curtain_wall"] == json!(true) {
+            continue;
+        }
+        let view = execute("elevation", &json!({
+            "on": wall["id"],
+            "at": [0, 0],          // a point beside the wall, on its side
+            "near": 0,             // from the view's line: the default
+            "depth": 2150,         // and 150 mm behind the wall
+            "name": format!("{} - elevation", wall["type"].as_str().unwrap_or("Wall"))
+        }))?;
+        made.push(view["id"].clone());
+    }
+    Ok(json!({"views": made}))
+}
+```
+
+`near` необязателен: его отсутствие и `null` — это 0, линия вида. `depth` — дальняя граница полосы, `null` или отсутствие —
+без неё. `crop` режет вид вдоль линии и по высоте и полосу не меняет.
+
 ## Замеры
 
 На машине разработки (Linux x86-64, release):
