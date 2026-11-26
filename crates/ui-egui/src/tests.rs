@@ -3434,8 +3434,8 @@ fn project_units_offer_the_decimals_their_units_allow_and_the_project_keeps_the_
     assert_eq!(h.state().session.model.units.name(), "ft-in");
     press(&mut h, "Manage");
     press(&mut h, "Project Units");
-    press(&mut h, "4'-0 5/8\"");
-    press(&mut h, "1/16\"");
+    press(&mut h, "4'-1\"");
+    press(&mut h, "1\"");
     assert!(h.query_by_label("1/8\"").is_some(), "fractions of an inch");
     press(&mut h, "Escape");
 }
