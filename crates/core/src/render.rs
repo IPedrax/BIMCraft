@@ -2751,7 +2751,7 @@ fn section_base_cancellable(
                 .collect()
         };
         // A framed wall's members are cut in the framing type's material, where it names one.
-        let framed = w.framing.as_ref().filter(|_| !look.unframed()).and_then(|_| crate::framing::structure(m, w)).map(|(k, _)| k);
+        let framed = m.wall_framing(w).filter(|_| !look.unframed()).and_then(|_| crate::framing::structure(m, w)).map(|(k, _)| k);
         let timber = framed.and(crate::framing::material(m, w));
         for (k, (layer, spans)) in layers.iter().zip(intervals).enumerate() {
             let own;
@@ -4116,7 +4116,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         // show one hatch, running on through their corners.
         let along = P2(1.0, 0.0);
         // A framed wall's structure layer is its members: those the cut plane passes through, and nothing between them.
-        let framing = w.framing.as_ref().filter(|_| !look.unframed()).and_then(|_| crate::framing::wall(m, id).ok().flatten());
+        let framing = m.wall_framing(w).filter(|_| !look.unframed()).and_then(|_| crate::framing::wall(m, id).ok().flatten());
         let framed = framing.as_ref().and_then(|_| crate::framing::structure(m, w)).map(|(k, _)| k);
         for (k, layer) in layers.iter().enumerate() {
             let rings = walls::profile::clip(w, range.cut - m.own_base(w), &geometry.band(k));

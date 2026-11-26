@@ -1348,7 +1348,7 @@ fn framing_members(m: &Model) -> Vec<(Id, &Element, Value)> {
     let mut out = Vec::new();
     for (&id, e) in &m.elements {
         let (type_name, level) = match e {
-            Element::Wall(w) if w.framing.is_some() => (&w.type_name, w.level),
+            Element::Wall(w) if m.wall_framing(w).is_some() => (&w.type_name, w.level),
             Element::Floor(f) if f.framing.is_some() => (&f.type_name, f.level),
             Element::Roof(r) if r.framing.is_some() => (&r.type_name, r.level),
             _ => continue,

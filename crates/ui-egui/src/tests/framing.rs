@@ -1,10 +1,11 @@
-//! Wood framing in the window: Structure > Frame and Remove Framing on the selected walls, a wall's Framing in Properties, a
-//! framing type's Type Properties, the Project Browser's framing types, and the schedule of their members.
+//! Wood framing in the window: Structure > Frame opens the selected wall's type, whose Framing frames every wall of it (with a
+//! layer marked Framed), a framing type's Type Properties from beside it, the Project Browser's framing types, and the schedule
+//! of their members.
 
 use super::*;
 
-/// A 2x4 wall type, one 89 mm structure layer of timber, and a box of walls of it.
-const STUDS: &str = "type {\"category\": \"wall\", \"name\": \"2x4\", \"layers\": [{\"function\": \"structure\", \"material\": \"Timber\", \"thickness\": 89}]}\n\
+/// A 2x4 wall type, one 89 mm structure layer of timber marked framed, and a box of walls of it.
+const STUDS: &str = "type {\"category\": \"wall\", \"name\": \"2x4\", \"layers\": [{\"function\": \"structure\", \"material\": \"Timber\", \"thickness\": 89, \"framed\": true}]}\n\
      wall {\"points\": [[0,0],[8000,0],[8000,6000],[0,6000]], \"closed\": true, \"type\": \"2x4\"}";
 
 /// The box with the default framing type in the project.
@@ -12,7 +13,7 @@ fn with_type() -> String {
     format!("{STUDS}\ntype {{\"category\": \"framing\", \"name\": \"2x4 @ 406\"}}")
 }
 
-/// The framing type's Type Properties, from the button beside the wall's Framing in Properties.
+/// The framing type's Type Properties, from the button beside the wall type's Framing.
 fn edit_framing_type(h: &mut Harness<BimApp>) {
     h.get_by_label("Edit Framing Type").scroll_to_me();
     h.run();
@@ -23,10 +24,6 @@ fn edit_framing_type(h: &mut Harness<BimApp>) {
 fn structural(h: &mut Harness<BimApp>, label: &str) {
     press(h, "Structure");
     press(h, label);
-    // A new project has two framing types, so Frame drops them down: the default one, as Frame alone would take.
-    if label == "Frame" && egui::Popup::is_any_open(&h.ctx) {
-        press(h, bimcraft_core::framing::DEFAULT_TYPE);
-    }
 }
 
 fn select(h: &mut Harness<BimApp>, ids: &[Id]) {
@@ -34,92 +31,70 @@ fn select(h: &mut Harness<BimApp>, ids: &[Id]) {
     h.run();
 }
 
+/// The framing type wall `id` is framed with: its type's.
 fn framing(h: &Harness<BimApp>, id: Id) -> Value {
-    field(h, id, "framing")
+    let m = &h.state().session.model;
+    m.wall(id).and_then(|w| m.wall_framing(w)).map_or(Value::Null, |n| json!(n))
 }
 
 fn framing_type(h: &Harness<BimApp>, name: &str) -> Value {
     json!(h.state().session.model.types.framing.get(name))
 }
 
+/// The first wall selected, Structure > Frame: its type's Type Properties.
+fn wall_type(h: &mut Harness<BimApp>) {
+    let walls = ids(h, "wall");
+    select(h, &walls[..1]);
+    structural(h, "Frame");
+    assert!(h.state().type_dialog.is_some(), "Frame opens the wall's type: {}", h.state().status.text);
+}
+
 #[test]
-fn frame_and_remove_framing_act_on_the_selected_walls_each_as_one_step() {
+fn frame_opens_the_selected_walls_type_whose_framing_frames_every_wall_of_it_in_a_step() {
     let mut h = app(STUDS);
     let walls = ids(&h, "wall");
-    select(&mut h, &walls[..2]);
     let steps = h.state().session.history().len();
-    structural(&mut h, "Frame");
-    assert_eq!(
-        (framing(&h, walls[0]), framing(&h, walls[1]), framing(&h, walls[2])),
-        (json!("2x4 @ 406"), json!("2x4 @ 406"), Value::Null)
-    );
-    assert!(h.state().session.model.types.framing.contains_key("2x4 @ 406"), "one of the project's starter framing types");
+    wall_type(&mut h);
+    choose(&mut h, "Framing", "2x4 @ 406");
+    press(&mut h, "OK");
+    for w in &walls {
+        assert_eq!(framing(&h, *w), json!("2x4 @ 406"), "every wall of the type");
+    }
     assert_eq!(h.state().session.history().len(), steps + 1, "one undo step");
-    let said = &h.state().status;
-    assert!(!said.error && said.text.contains("2 walls"), "{}", said.text);
-    // Undone, the walls are as they were; the starter types stay.
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.run();
     assert_eq!(framing(&h, walls[0]), Value::Null);
-    assert_eq!(h.state().session.model.types.framing.len(), 2);
-    // A wall framed, the other selected with it: Remove Framing takes it off, in a step.
-    structural(&mut h, "Frame");
-    let steps = h.state().session.history().len();
-    structural(&mut h, "Remove Framing");
-    assert_eq!((framing(&h, walls[0]), framing(&h, walls[1])), (Value::Null, Value::Null));
-    assert_eq!(h.state().session.history().len(), steps + 1);
-    assert!(h.state().session.model.types.framing.contains_key("2x4 @ 406"), "the type stays in the project");
+    // None takes it off them all.
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    h.run();
+    wall_type(&mut h);
+    choose(&mut h, "Framing", "None");
+    press(&mut h, "OK");
+    assert_eq!(framing(&h, walls[1]), Value::Null);
 }
 
 #[test]
-fn frame_wants_walls_selected_and_says_why_the_project_refuses_one() {
+fn frame_wants_a_wall_selected_and_has_no_remove_framing() {
     let mut h = app(STUDS);
     let steps = h.state().session.history().len();
-    for label in ["Frame", "Remove Framing"] {
-        structural(&mut h, label);
-        let said = &h.state().status;
-        assert!(said.error && said.text.contains("Select"), "{label}: {}", said.text);
-    }
-    assert_eq!(h.state().session.history().len(), steps, "nothing changed");
-    // Walls among other things: the walls are framed, the rest left as they are.
-    let mut h = app(&format!("{STUDS}\nstructural_column {{\"at\": [3000, 3000]}}"));
-    let (walls, column) = (ids(&h, "wall"), ids(&h, "structuralcolumn")[0]);
-    select(&mut h, &[walls[0], column]);
-    structural(&mut h, "Frame");
-    assert_eq!(framing(&h, walls[0]), json!("2x4 @ 406"));
-    // A wall of a type with no structure layer: the project says why, and nothing changes.
-    let mut h = app(BOX);
-    let wall = ids(&h, "wall")[0];
-    select(&mut h, &[wall]);
     structural(&mut h, "Frame");
     let said = &h.state().status;
-    assert!(said.error && said.text.contains("structure layer"), "{}", said.text);
-    assert_eq!(framing(&h, wall), Value::Null);
-    assert_eq!(h.state().session.model.types.framing.len(), 2, "the starter types, and no other");
+    assert!(said.error && said.text.contains("Select"), "{}", said.text);
+    assert!(h.state().type_dialog.is_none());
+    assert!(h.query_by_label("Remove Framing").is_none());
+    assert_eq!(h.state().session.history().len(), steps, "nothing changed");
 }
 
 #[test]
-fn with_several_framing_types_frame_drops_them_down() {
-    let mut h = app(&format!("{}\ntype {{\"category\": \"framing\", \"name\": \"Partition\", \"spacing\": 609.6}}", with_type()));
-    let walls = ids(&h, "wall");
-    select(&mut h, &walls[1..3]);
-    press(&mut h, "Structure");
-    press(&mut h, "Frame");
-    assert_eq!(framing(&h, walls[1]), Value::Null, "the button drops the types down");
-    press(&mut h, "Partition");
-    assert_eq!((framing(&h, walls[1]), framing(&h, walls[2])), (json!("Partition"), json!("Partition")));
-}
-
-#[test]
-fn a_walls_framing_is_picked_in_properties_and_its_type_edited_from_there() {
+fn a_wall_types_framing_is_picked_in_its_type_properties_and_its_framing_type_edited_from_there() {
     let mut h = app(&with_type());
-    click(&mut h, P2(4000.0, 0.0));
-    let wall = h.state().selection[0];
-    assert_eq!(h.get_by_role_and_label(Role::ComboBox, "Framing").value().as_deref(), Some("None"));
+    let walls = ids(&h, "wall");
+    wall_type(&mut h);
     choose(&mut h, "Framing", "2x4 @ 406");
-    assert_eq!(framing(&h, wall), json!("2x4 @ 406"));
-    // Edit Framing Type: its Type Properties, a copy made and edited, and OK puts the wall on it.
+    // Edit Framing Type: the wall type as picked first, then the framing type's dialog; a copy made and edited, and OK frames the
+    // wall type with it.
     edit_framing_type(&mut h);
+    assert_eq!(framing(&h, walls[0]), json!("2x4 @ 406"), "the pick applied before the framing type opens");
     assert!(h.state().type_dialog.is_some());
     press(&mut h, "Duplicate…");
     type_into(&mut h, "New type", "Partition");
@@ -130,21 +105,19 @@ fn a_walls_framing_is_picked_in_properties_and_its_type_edited_from_there() {
     type_into(&mut h, "Stock Lengths", "2400, 3600");
     press(&mut h, "OK");
     assert!(h.state().type_dialog.is_none());
-    assert_eq!(framing(&h, wall), json!("Partition"));
+    assert_eq!(framing(&h, walls[0]), json!("Partition"), "{}", h.state().status.text);
     let made = framing_type(&h, "Partition");
     assert_eq!((&made["spacing"], &made["top_plates"], &made["corner"]), (&json!(609.6), &json!(1), &json!("two_stud")));
     assert_eq!(made["stock"], json!([2400.0, 3600.0]));
     assert_eq!(made["headers"], framing_type(&h, "2x4 @ 406")["headers"], "the copy has the headers of the type it copies");
     assert_eq!(framing_type(&h, "2x4 @ 406")["spacing"], json!(406.4), "the type it copies is as it was");
-    // None takes the framing off.
-    choose(&mut h, "Framing", "None");
-    assert_eq!(framing(&h, wall), Value::Null);
 }
 
 #[test]
 fn a_framing_types_properties_say_what_they_cannot_take_and_change_nothing() {
     let mut h = app(&with_type());
-    click(&mut h, P2(4000.0, 0.0));
+    let wall = ids(&h, "wall")[0];
+    wall_type(&mut h);
     choose(&mut h, "Framing", "2x4 @ 406");
     edit_framing_type(&mut h);
     let was = framing_type(&h, "2x4 @ 406");
@@ -161,13 +134,12 @@ fn a_framing_types_properties_say_what_they_cannot_take_and_change_nothing() {
     let d = h.state().type_dialog.as_ref().expect("still open");
     assert!(d.error.as_deref().is_some_and(|e| e.contains("kings")), "{:?}", d.error);
     assert_eq!(framing_type(&h, "2x4 @ 406"), was);
-    // Rename follows the wall.
+    // Rename follows the wall type.
     type_into(&mut h, "Kings", "1");
     press(&mut h, "Rename…");
     type_into(&mut h, "New name", "Bearing");
     press(&mut h, "Rename");
     press(&mut h, "Cancel");
-    let wall = h.state().selection[0];
     assert_eq!(framing(&h, wall), json!("Bearing"));
 }
 
@@ -218,24 +190,18 @@ fn the_tools_palette_has_frame_in_bimcrafts_own_profile() {
     h.get_by_label("Frame").scroll_to_me();
     h.run();
     press(&mut h, "Frame");
-    // Of the project's two framing types, the default.
-    if egui::Popup::is_any_open(&h.ctx) {
-        press(&mut h, "2x4 @ 406");
-    }
-    assert_eq!(framing(&h, walls[0]), json!("2x4 @ 406"), "{} {:?}", h.state().status.text, h.state().selection);
+    assert!(h.state().type_dialog.is_some(), "{}", h.state().status.text);
 }
 
 #[test]
-fn find_has_frame_and_remove_framing() {
+fn find_has_frame_which_opens_the_walls_type() {
     let mut h = app(STUDS);
     let listed: Vec<String> = h.state().find_matches("fram").into_iter().map(|(l, ..)| l).collect();
-    assert!(listed.contains(&"Frame".to_string()) && listed.contains(&"Remove Framing".to_string()), "{listed:?}");
+    assert!(listed.contains(&"Frame".to_string()) && !listed.contains(&"Remove Framing".to_string()), "{listed:?}");
     let walls = ids(&h, "wall");
     select(&mut h, &walls[..1]);
     assert!(h.state_mut().execute_shortcut_action("Frame"));
-    assert_eq!(framing(&h, walls[0]), json!("2x4 @ 406"));
-    assert!(h.state_mut().execute_shortcut_action("Remove Framing"));
-    assert_eq!(framing(&h, walls[0]), Value::Null);
+    assert!(h.state().type_dialog.is_some());
 }
 
 #[test]
@@ -248,18 +214,19 @@ fn framing_speaks_portuguese_and_spanish_and_leaves_no_english() {
             .filter(|s| crate::lang::translated_in(l, s).is_some_and(|x| x != s))
             .collect()
     };
-    for (l, tab, frame, remove, framing) in [
-        (Lang::Spanish, "Estructura", "Entramar", "Quitar entramado", "Entramado"),
-        (Lang::Portuguese, "Estrutura", "Estruturar", "Remover estrutura de madeira", "Estrutura de madeira"),
-    ] {
+    for (l, tab, frame, framing) in
+        [(Lang::Spanish, "Estructura", "Entramar", "Entramado"), (Lang::Portuguese, "Estrutura", "Estruturar", "Estrutura de madeira")]
+    {
         let mut h = app(&with_type());
         h.state_mut().lang = l;
         h.run();
         press(&mut h, tab);
-        assert!(h.query_by_label(frame).is_some() && h.query_by_label(remove).is_some(), "{l:?}");
+        assert!(h.query_by_label(frame).is_some(), "{l:?}");
         let mut missed = english(&h, l);
-        // A framed wall's Properties, and its framing type's Type Properties.
-        click(&mut h, P2(4000.0, 0.0));
+        // A wall type's Type Properties, its Framing picked, and its framing type's Type Properties.
+        let walls = ids(&h, "wall");
+        select(&mut h, &walls[..1]);
+        press(&mut h, frame);
         choose(&mut h, framing, "2x4 @ 406");
         missed.extend(english(&h, l));
         let edit = crate::lang::translated_in(l, "Edit Framing Type").unwrap_or("Edit Framing Type");
@@ -292,14 +259,10 @@ fn framing_screenshots() {
         let walls = ids(&h, "wall");
         select(&mut h, &walls);
         press(&mut h, "Structure");
-        press(&mut h, "Frame");
         save(&mut h, "structure");
-        if egui::Popup::is_any_open(&h.ctx) {
-            press(&mut h, "2x4 @ 406");
-        }
-        click(&mut h, P2(4000.0, 0.0));
-        press(&mut h, "Structure");
-        h.get_by_label("Edit Framing Type").scroll_to_me();
+        select(&mut h, &walls[..1]);
+        press(&mut h, "Frame");
+        choose(&mut h, "Framing", "2x4 @ 406");
         save(&mut h, "properties");
         edit_framing_type(&mut h);
         save(&mut h, "typeprops");
@@ -319,18 +282,4 @@ fn framing_screenshots() {
         click_at(&mut h, structure.center());
         save(&mut h, "tools");
     }
-}
-
-#[test]
-fn frame_says_which_openings_it_couldnt_frame_as_the_type_says() {
-    // The default 1200 x 1500 window at 900 in a wall 2440 tall: its head reaches the top plates.
-    let mut h = app(&format!(
-        "{STUDS}\nwall {{\"points\": [[0,8000],[6000,8000]], \"type\": \"2x4\", \"height\": 2440}}\nwindow {{\"at\": [3000, 8000]}}"
-    ));
-    let walls = ids(&h, "wall");
-    let last = *walls.last().unwrap();
-    select(&mut h, &[last]);
-    structural(&mut h, "Frame");
-    let said = &h.state().status;
-    assert!(said.error && said.text.contains("Warnings (1):") && said.text.contains("top plates"), "{}", said.text);
 }

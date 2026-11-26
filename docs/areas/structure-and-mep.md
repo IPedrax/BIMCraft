@@ -258,17 +258,18 @@ piece 6.
 
 ### Wood framing
 
-`framing.rs` frames walls in wood, as a light-frame house is built, `framing/floor.rs` floors ([below](#floors)) and `framing/roof.rs` roofs ([below](#roofs)): a wall holds `framing`, the name of a framing type (a
-library reference, held by its GUID in a file, renamed and removed as other type references are), and its plates, studs,
+`framing.rs` frames walls in wood, as a light-frame house is built, `framing/floor.rs` floors ([below](#floors)) and `framing/roof.rs` roofs ([below](#roofs)): a wall's framing is its type's, a type parameter (`WallType::framing`, the name of a framing type: a
+library reference, held by its GUID in a file, renamed and removed as other type references are; `Model::wall_framing`), so every
+wall of the type is framed; its plates, studs,
 kings, jacks, headers, sills, cripples and blocking are worked out from the wall whenever they are asked for (`framing::wall`)
 and never stored, as a railing's balusters are. Moving a window, changing a height, attaching the top to a roof or editing the
 framing type changes them with nothing to regenerate, and a file holds no member to go stale.
 
 A framing type is `Types::framing[name]`, a `FramingType` (all mm; every field has its default, so `type {category: framing,
 name}` alone is 2x4 framing 16 inches on centre for a bearing wall): `spacing` 406.4 (the grid's stud centres apart);
-`layout` `start`, `end` or `centre` (where the grid is measured from); `thickness` 38 (a stud's or a plate's); `target_depth`
-89 (how deep a stud is meant to be: the members are as deep as the structure layer, and Properties warns under Framing, "Layer
-deeper than target" or "shallower", when a framed wall's layer differs by more than half a millimetre, `framing::off_target`); `material`, a
+`layout` `start`, `end` or `centre` (where the grid is measured from); `thickness` 38 (a stud's or a plate's); `depth` 89 (how
+deep a stud is across the wall: a wall type framed with it has its layer marked `framed` kept this thick, `framing::sync_wall_types`,
+which `type` and `frame` run, so changing the depth deepens every wall type framed with it); `material`, a
 material of the library, none for the structure layer's; `bottom_plates` 1 and `top_plates` 2; `kings` 1 and `jacks` 1 each side
 of an opening; `window_rough` [25, 13] and `door_rough` [50, 41], what a rough opening adds to the opening's width (half each
 side) and to its height (on top); `headers`, `{up_to?, depth, plies, flat?}` in order, the first whose `up_to` holds the rough
@@ -280,21 +281,26 @@ share but `under_partitions`; and the roofs' own, `ridge` ([below](#roofs)), non
 it (up to 3000), 0 to 4 plates of each kind, 0 to 3 kings and jacks, rough allowances 0 to 500, 1 to 8 headers of 1 to 3 plies
 and 1 to 1000 deep, 8 rows of blocking and 16 stock lengths at most, each longer than the last, a lap of 0 to 2000, bridging
 of 0 or 300 to 100000, 1 to 3 trimmers, and a material the library has.
-A new project has two framing types, both of the starter material Pine: `2x4 @ 406` (`FramingType::american`, the defaults) and
+A new project has three framing types, all of the starter material Pine: `2x4 @ 406` (`FramingType::american`, the defaults),
+`2x6 @ 406` (`FramingType::exterior`, 140 deep, for an exterior wall's cavity insulation) and
 `KVH 60x160 @ 625` (`FramingType::european`: German timber frame, Holzrahmenbau, KVH studs 60 mm thick at the 625 mm grid Baunetz
 Wissen gives as the usual one, so a 1250 mm board spans two bays; one sill and one top plate; headers of two 60 mm plies 200 deep up
-to a 1250 mm rough opening and 240 above; Rettenmeier's KVH stock lengths, 5 m and 13 m), and two wall types to frame with them,
-`Timber Frame - 114mm` and `Timber Frame - 185mm` (gypsum board 12.5 each side of a pine structure layer of 89 or 160, marked framed).
-An older project without them is given one when `frame` names it (`framing::preset`), and `frame` with no type in a project with
-none makes `2x4 @ 406`; the Framing drop-down in Properties lists the two, picking one runs `frame`.
+to a 1250 mm rough opening and 240 above; Rettenmeier's KVH stock lengths, 5 m and 13 m), and three wall types framed with them:
+`Timber Frame - 114mm` (2x4) and `Timber Frame - 185mm` (KVH), gypsum board 12.5 each side of a pine structure layer of 89 or 160
+marked framed, and `Timber Frame Exterior - 215mm` (2x6), outside in rigid insulation 50, OSB sheathing 12, pine studs 140 marked
+framed and gypsum board 13. An older project without them is given one when `frame` or `type` names it (`framing::preset`), and
+`frame` with no type in a project with none makes `2x4 @ 406`.
 
-The members stand in the wall type's structure layer: the one marked `framed` (Layer's `framed`, the Framing column of a type's
-layers in Edit Type, one structure layer a type at most, which `Model::check` holds), else the thickest where it has several (the
-first of those); a floor's and a roof's alike (`framing::framed_layer`). As deep across the wall as that layer is thick, so a 2x4 wall is one with an 89 mm structure layer and a 2x6 one with a 140, never a second number
-that could disagree. `framing::check`, which `Model::check` asks of each framed wall, refuses a framing type that doesn't exist,
-a wall that isn't straight, a wall type with no structure layer, a wall longer than 1024 spacings (`MAX_STATIONS`) and a header
-whose plies are wider together than the layer; each error says what to change, and `frame`, `modify` or `type` rolls back.
-Nothing an opening or a join does is refused: moving a window must never be, so what doesn't fit is left unframed.
+The members stand in the wall type's structure layer marked `framed` (Layer's `framed`, the Framed column of a type's layers in
+Edit Type, one structure layer a type at most): a framed wall type must have one (`framing::check_wall_type`, which `Model::check`
+asks, refuses a framed type without one, a framing type that doesn't exist and a curtain wall type); `frame` and `type` with a
+framing type mark the thickest structure layer where none is marked (`framing::mark_framed`), while the window asks for the mark
+(below). A floor's and a roof's stand in the one marked, else the thickest (`framing::framed_layer`). The members are as deep
+across the wall as that layer is thick, which is the framing type's `depth`, never a second number that could disagree. A
+framing type's header plies wider together than its depth are refused (`check_type`). A wall of a framed type that can't be
+framed (curved, longer than 1024 spacings, `MAX_STATIONS`) isn't: `framing` says why and `frame` warns of it, and nothing is
+refused. Nothing an opening or a join does is refused either: moving a window must never be, so what doesn't fit is left
+unframed.
 
 The rules, in the wall's own frame (`s` along its location line from its start, `across` to its left, `z` up):
 
@@ -358,8 +364,9 @@ spliced one's pieces by their place), blocking by
 row and the stud it starts at; moving a window keeps the far studs' keys. Its `section` is one ply as sawn (38 x 89; each ply of a
 header 38 x 184), its `length` the cut length (up an upright's longest edge, along a lying one's slope).
 
-`frame {ids | id, type?}` frames walls (Structure > Framing) with `type` or the project's default framing type; `unframe {ids |
-id}` takes it off, leaving the type in the project; `modify {id, framing: name | null}` does either for one wall; `framing {id}`
+`frame {ids | id, type?}` frames the walls' types (every wall of each), floors and roofs with `type` or the project's default
+framing type; `unframe {ids | id}` takes it off, leaving the type in the project; `type {category: wall, name, framing: name |
+null}` does either for one wall type, `modify {id, framing}` for a floor or a roof; `framing {id}`
 reads a framed wall's members and its cut list (role, section, plies, length to the mm, stock length, count) and builds nothing;
 `type {category: framing, name, ...}` makes or edits a framing type from the fields given over its own.
 
@@ -388,18 +395,21 @@ cripples, `PLATE` for plates and sills, `MEMBER` for headers and blocking, its r
 its GlobalId made from the wall's GUID and its key (so it lasts while the member does), in the framing's material, and aggregated
 to its wall (`IfcRelAggregates`, with any bars that reinforce it), in no storey of its own; the wall keeps its own body. IFC2x3
 writes them without a predefined type. An IFC import brings the wall back unframed: the members, being its parts, are left out.
-A file with a framed wall or a framing type is FORMAT 21 (an older build would drop `framing` without a word).
+A file with a framed wall type or a framing type is FORMAT 21 (an older build would drop `framing` without a word).
 
-In the window, the Structure tab's Framing panel has Frame and Remove Framing for the walls of the selection, each one undo step
-(the status box says when no wall is selected; Frame drops the project's framing types down when it has several); Find (Ctrl+K)
-has both. A wall's Properties have Framing under Structural, None or one of the project's types (`modify`), with a button beside
-it to its Type Properties, where every field but the headers is typed or picked (spacing, thickness, plates, blocking heights and
+In the window, the Structure tab's Framing panel has Frame (Find, Ctrl+K, has it too): with a wall selected it opens the wall's
+type in Type Properties, where Framing (under Construction, over the layers) is None or one of the project's framing types; with
+no layer ticked Framed it can't be picked and says so in red, and the framed layer's thickness is shown, not typed, as deep as
+the framing type. OK frames every wall of the type in one step. With floors or roofs selected and no wall, Frame frames them as
+before; with nothing to frame, the status box says what to select. There's no Remove Framing: Framing None does it. Beside
+Framing a button opens the framing type's own Type Properties (the wall type as picked applied first; OK frames the wall type
+with the framing type shown, a copy made there included), where every field is typed or picked (spacing, thickness, plates, blocking heights and
 stock lengths as lengths parted by commas, layout, corner and tee, rough allowances, kings, jacks, sill plates and material) and
 Duplicate and Rename work as for any type. The headers are a table under Wall Openings (Up To, blank for any width; Header Depth;
 Plies; Flat), with Add Header and Delete. Beside the list stands the type's picture (`framing_diagram.rs`): a framed wall in
 elevation with a window and a door, each kind of member drawn where it stands; a click on one (or on an opening) lights the rows
-that build it in the list and scrolls to them (`typeprops::Table::light`). A wall whose type has no structure layer shows No
-Framing in place of the drop-down, why on hover. The Project Browser lists framing types
+that build it in the list and scrolls to them (`typeprops::Table::light`). A floor's and a roof's Properties keep Framing under
+Structural. The Project Browser lists framing types
 under Families, a click opens one's Type Properties and its right-click menu deletes one nothing uses.
 
 #### Members edited one by one
@@ -536,9 +546,9 @@ type `JOIST` and each block as an `IfcMember` `MEMBER`, aggregated to the slab (
 own, with GlobalIds from the floor's GUID and the key; IFC2x3 writes the beams without a predefined type; an IFC import of the
 file brings the floor back unframed, its beams, being the slab's parts, left out. `ci/ifc-coverage.txt` has a framed floor.
 
-In the window, Frame and Remove Framing act on the selection's walls, floors and roofs together, as one undo step, the status
-bar saying how many of each and the first warning (Warnings (n): …). A floor's Properties have Framing under Structural, as a
-wall's, and, once it is framed, Joist Direction (°), its `framing_angle`: blank is automatic (square to the longest edge), and
+In the window, Frame acts on the selection's floors and roofs together (a wall among them opens its type instead, above), as one
+undo step, the status bar saying how many of each and the first warning (Warnings (n): …). A floor's Properties have Framing
+under Structural, and, once it is framed, Joist Direction (°), its `framing_angle`: blank is automatic (square to the longest edge), and
 clearing it returns to that. A framing type's Type Properties group its fields: Construction (Spacing, Thickness, Layout, which
 walls, floors and roofs share), Walls, Wall Openings, Wall Joins, Floors and Roofs (Lap at Supports, Bridging Spacing, Trimmer
 and Header Plies, Rim Joists and Eave Boards), Floors (Joists Under Partitions), Roofs (Ridge Board), Materials and Finishes,
@@ -665,8 +675,8 @@ GlobalIds from the roof's GUID and the key; IFC2x3 writes them without a predefi
 roof back unframed, its shape from its own body: the members, being its parts, are neither added to its shape nor brought in.
 `ci/ifc-coverage.txt` has a framed gable roof with a skylight.
 
-In the window, Frame and Remove Framing act on the selection's roofs with its walls and floors, as one undo step, the status bar
-saying how many of each and the first warning; a roof's Properties have Framing under Structural, as a wall's (no direction: its
+In the window, Frame acts on the selection's roofs with its floors, as one undo step, the status bar saying how many of each and
+the first warning; a roof's Properties have Framing under Structural, as a floor's (no direction: its
 rafters run up its slopes), with the button to its Type Properties, where Floors and Roofs holds what both read (Lap at Supports,
 Bridging Spacing, Trimmer and Header Plies, Rim Joists and Eave Boards) and Roofs the Ridge Board.
 

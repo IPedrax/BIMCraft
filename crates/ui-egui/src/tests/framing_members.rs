@@ -11,7 +11,8 @@ frame {"ids": [100002]}"#;
 fn framed() -> (Harness<'static, BimApp>, Id) {
     let mut h = app(FRAMED);
     let id = 100002;
-    assert!(h.state().session.model.wall(id).is_some_and(|w| w.framing.is_some()), "{}", h.state().status.text);
+    let m = &h.state().session.model;
+    assert!(m.wall(id).is_some_and(|w| m.wall_framing(w).is_some()), "{}", h.state().status.text);
     h.state_mut().selection = vec![id];
     h.run();
     (h, id)
@@ -102,9 +103,11 @@ wall {"points": [[0, 0], [4000, 0]], "type": "Two cores"}"#,
     let boxes = |h: &Harness<BimApp>| {
         h.query_all(By::new().role(Role::CheckBox).label("Framed")).map(|n| n.accesskit_node().id()).collect::<Vec<_>>()
     };
-    let (outer, inner) = (boxes(&h)[0], boxes(&h)[1]);
+    // Each looked up again before it's clicked: ticking one takes away the warning over the list, and the boxes move.
+    let outer = boxes(&h)[0];
     h.get_by(|n| n.id() == outer).click();
     h.run();
+    let inner = boxes(&h)[1];
     h.get_by(|n| n.id() == inner).click();
     h.run();
     press(&mut h, "OK");
@@ -113,22 +116,43 @@ wall {"points": [[0, 0], [4000, 0]], "type": "Two cores"}"#,
 }
 
 #[test]
-fn the_framing_drop_down_offers_the_starter_types_and_says_when_a_wall_has_nothing_to_frame() {
-    let mut h = app(r#"wall {"points": [[0, 0], [4000, 0]], "type": "Timber Frame - 185mm"}
-wall {"points": [[0, 3000], [4000, 3000]]}"#);
+fn frame_opens_the_wall_types_properties_whose_framing_needs_a_layer_marked_framed() {
+    // A generic wall's type has no layer marked Framed: its Framing says so and can't be picked.
+    let mut h = app(r#"wall {"points": [[0, 0], [4000, 0]]}"#);
     h.state_mut().selection = vec![100002];
     h.run();
-    choose(&mut h, "Framing", bimcraft_core::framing::EUROPEAN_TYPE);
-    let w = h.state().session.model.wall(100002).cloned().unwrap();
-    assert_eq!(w.framing.as_deref(), Some(bimcraft_core::framing::EUROPEAN_TYPE));
-    // A generic wall has no structure layer: a hint, not a drop-down that refuses.
-    h.state_mut().selection = vec![100003];
-    h.run();
-    assert!(h.query_by_label("No Framing").is_some(), "a short label, its reason on hover");
+    press(&mut h, "Structure");
+    press(&mut h, "Frame");
+    assert!(h.state().type_dialog.is_some(), "Frame opens the wall's type");
+    assert!(h.query_by_label_contains("No layer is marked Framed").is_some());
+    assert!(h.get_by_role_and_label(Role::ComboBox, "Framing").accesskit_node().is_disabled(), "nothing to pick until a layer is marked");
+    assert!(h.query_by_label("Remove Framing").is_none(), "no Remove Framing on the ribbon");
 }
 
-/// The framing type's Type Properties, from the button beside the selected wall's Framing.
+#[test]
+fn framing_a_wall_type_frames_every_wall_of_it_and_its_framed_layer_takes_the_framing_depth() {
+    // KVH's 160 mm layer framed as 2x6s, 140 deep: the layer and the type follow.
+    let mut h = app(r#"wall {"points": [[0, 0], [4000, 0]], "type": "Timber Frame - 185mm"}
+wall {"points": [[0, 3000], [4000, 3000]], "type": "Timber Frame - 185mm"}"#);
+    h.state_mut().selection = vec![100002];
+    h.run();
+    press(&mut h, "Structure");
+    press(&mut h, "Frame");
+    choose(&mut h, "Framing", bimcraft_core::framing::EXTERIOR_TYPE);
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    let t = &m.types.wall["Timber Frame - 185mm"];
+    assert_eq!(t.framing.as_deref(), Some(bimcraft_core::framing::EXTERIOR_TYPE), "{}", h.state().status.text);
+    assert_eq!((t.layers[1].thickness, t.thickness), (140.0, 165.0), "the framed layer as deep as 2x6s");
+    for id in [100002, 100003] {
+        assert!(bimcraft_core::framing::wall(m, id).ok().flatten().is_some(), "wall {id} framed with its type");
+    }
+}
+
+/// The framing type's Type Properties: Structure > Frame opens the selected wall's type, and the button beside its Framing.
 fn framing_type_dialog(h: &mut Harness<BimApp>) {
+    press(h, "Structure");
+    press(h, "Frame");
     h.get_by_label("Edit Framing Type").scroll_to_me();
     h.run();
     press(h, "Edit Framing Type");
@@ -174,22 +198,8 @@ fn a_framing_types_picture_names_rows_the_list_has_and_its_headers_are_edited_th
         h.run();
     };
     set(&mut h, "Header Depth", "235");
-    set(&mut h, "Target Depth", "140");
+    set(&mut h, "Depth", "140");
     press(&mut h, "OK");
     let t = &h.state().session.model.types.framing[bimcraft_core::framing::DEFAULT_TYPE];
-    assert_eq!((t.headers[0].depth, t.target_depth), (235.0, 140.0), "{}", h.state().status.text);
-}
-
-#[test]
-fn properties_warns_under_framing_when_the_structure_layer_is_deeper_than_the_target() {
-    // KVH's 160 mm layer framed as 2x4s, whose target is 89.
-    let mut h = app(r#"wall {"points": [[0, 0], [4000, 0]], "type": "Timber Frame - 185mm"}
-frame {"ids": [100002], "type": "2x4 @ 406"}"#);
-    h.state_mut().selection = vec![100002];
-    h.run();
-    assert!(h.query_by_label("⚠ Layer deeper than target").is_some());
-    // Framed as KVH 60x160: as deep as it means, no warning.
-    h.state_mut().run("frame", serde_json::json!({"ids": [100002], "type": bimcraft_core::framing::EUROPEAN_TYPE}));
-    h.run();
-    assert!(h.query_by_label("⚠ Layer deeper than target").is_none());
+    assert_eq!((t.headers[0].depth, t.depth), (235.0, 140.0), "{}", h.state().status.text);
 }

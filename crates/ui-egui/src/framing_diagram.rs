@@ -45,9 +45,7 @@ impl Part {
     /// The labels of the settings rows it is built by, as the list shows them (English; the caller translates).
     pub(crate) fn rows(self) -> &'static [&'static str] {
         match self {
-            Part::Stud => {
-                &[msg!("Spacing"), msg!("Thickness"), msg!("Target Depth"), msg!("Layout"), msg!("Material"), msg!("Stock Lengths")]
-            }
+            Part::Stud => &[msg!("Spacing"), msg!("Thickness"), msg!("Depth"), msg!("Layout"), msg!("Material"), msg!("Stock Lengths")],
             Part::TopPlate => &[msg!("Top Plates"), msg!("Thickness")],
             Part::BottomPlate => &[msg!("Bottom Plates"), msg!("Thickness")],
             Part::King => &[msg!("Kings"), msg!("Thickness")],

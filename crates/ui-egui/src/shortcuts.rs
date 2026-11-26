@@ -498,7 +498,6 @@ const IMMEDIATE_COMMANDS: &[&str] = &[
     "floor_by_face",
     "roof_by_face",
     "update_by_face",
-    "unframe",
     "join_polyline",
     "explode",
     "stair_storeys",
@@ -900,7 +899,6 @@ pub const ACTIONS: &[&str] = &[
     "Isolated Footing",
     "Wall Footing",
     "Frame",
-    "Remove Framing",
     "Grid",
     "Level",
     "Aligned Dimension",
@@ -3021,8 +3019,7 @@ impl BimApp {
             "Patch Panel" => self.set_tool(Tool::Fixture("patchpanel")),
             "Isolated Footing" => self.set_tool(Tool::Stand("footing")),
             "Wall Footing" => self.set_tool(Tool::Run("stripfooting", None)),
-            "Frame" => self.frame_selection(None),
-            "Remove Framing" => self.unframe_selection(),
+            "Frame" => self.frame_selection(),
             _ => return false,
         }
         true

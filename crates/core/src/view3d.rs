@@ -1188,7 +1188,7 @@ fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
 /// it ([`crate::family::visibility::framing`]). A wall that isn't framed, or can't be, is its body.
 fn framed(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
     use crate::family::visibility::{FRAMED, MEMBER};
-    let Some(w) = m.wall(id).filter(|w| w.framing.is_some()) else { return body };
+    let Some(w) = m.wall(id).filter(|w| m.wall_framing(w).is_some()) else { return body };
     let (Ok(Some(f)), Some((_, [lo, hi]))) = (crate::framing::wall(m, id), crate::framing::structure(m, w)) else { return body };
     let axis = Axis::of(w);
     let off = |q: P2| axis.project(q).1;
@@ -2515,11 +2515,11 @@ pub const BYTES_PER_TRIANGLE: u64 = 600;
 
 /// About how many triangles an element of each kind makes: a component (a family's copy) 114 and a run 96 on the tower, a
 /// wall 161 (a framed one its members' too), the rest a dozen.
-fn triangles_of(e: &Element) -> u64 {
+fn triangles_of(m: &Model, e: &Element) -> u64 {
     match e {
         Element::Component(_) => 120,
         // A framed wall's members are boxes of 12 triangles each, about 30 of them on a 4 m wall with a window.
-        Element::Wall(w) if w.framing.is_some() => 160 + 30 * 12,
+        Element::Wall(w) if m.wall_framing(w).is_some() => 160 + 30 * 12,
         Element::Wall(_) => 160,
         e if e.run().is_some() => 100,
         Element::Rebar(_) => 100,
@@ -2535,7 +2535,8 @@ fn detail(e: &Element) -> bool {
 /// What a 3D view of `m` should hold to stay within `budget` bytes, looking at height `focus` (mm): none when the whole model
 /// fits, which is then what it holds, exactly as before.
 pub fn stream(m: &Model, budget: u64, focus: f64) -> Option<Streamed> {
-    let estimate = |ids: &mut dyn Iterator<Item = &Element>| ids.map(triangles_of).sum::<u64>().saturating_mul(BYTES_PER_TRIANGLE);
+    let estimate =
+        |ids: &mut dyn Iterator<Item = &Element>| ids.map(|e| triangles_of(m, e)).sum::<u64>().saturating_mul(BYTES_PER_TRIANGLE);
     if estimate(&mut m.elements.values()) <= budget {
         return None;
     }
@@ -2548,9 +2549,9 @@ pub fn stream(m: &Model, budget: u64, focus: f64) -> Option<Streamed> {
     for (&id, e) in &m.elements {
         if detail(e) {
             let z = m.level_of(e).map_or(0.0, |l| m.elevation(l));
-            by_storey.entry(storey(z)).or_default().push((id, triangles_of(e)));
+            by_storey.entry(storey(z)).or_default().push((id, triangles_of(m, e)));
         } else {
-            fabric += triangles_of(e);
+            fabric += triangles_of(m, e);
             among.insert(id);
         }
     }

@@ -20,7 +20,7 @@ pub(crate) type P3 = [f64; 3];
 /// The framed wall Tab steps through the members of: the one under the cursor, if it's the one selected, or any with Modify.
 pub(crate) fn tab_wall(m: &Model, selection: &[Id], under: Option<Id>, free: bool) -> Option<Id> {
     let id = under?;
-    m.wall(id)?.framing.as_ref()?;
+    m.wall_framing(m.wall(id)?)?;
     (selection == [id] || free).then_some(id)
 }
 

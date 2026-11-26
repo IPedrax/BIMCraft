@@ -1558,9 +1558,6 @@ impl crate::model::Element {
                 if let Some(c) = &mut w.curtain {
                     c.names_mut(f);
                 }
-                if let Some(framing) = &mut w.framing {
-                    f(&Kind::Type("framing".into()), framing);
-                }
             }
             Element::Floor(x) => {
                 f(&Kind::Type(category), &mut x.type_name);
@@ -1708,6 +1705,10 @@ impl Model {
         }
         for l in t.wall.values_mut().filter_map(|x| x.curtain.as_mut()) {
             l.names_mut(f);
+        }
+        // A wall type's framing type.
+        for framing in t.wall.values_mut().filter_map(|x| x.framing.as_mut()) {
+            f(&Kind::Type("framing".into()), framing);
         }
         let mullions = t.mullion.values_mut().chain(t.corner_mullion.values_mut()).map(|x| &mut x.material);
         for material in t.curtain_panel.values_mut().map(|x| &mut x.material).chain(mullions) {

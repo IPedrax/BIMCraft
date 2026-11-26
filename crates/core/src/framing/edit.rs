@@ -182,7 +182,7 @@ pub(crate) fn command(s: &mut Session, p: &Value) -> Result<Value, String> {
     let ids = crate::commands::ids_param(c, m, p)?;
     let [id] = ids[..] else { return Err(bad(c, "`id`, one framed wall, is required")) };
     let w = m.wall(id).ok_or_else(|| bad(c, format!("{id} isn't a wall: only a wall's framing members are edited one by one")))?;
-    if w.framing.is_none() {
+    if m.wall_framing(w).is_none() {
         return Err(bad(c, format!("wall {id} isn't framed: `frame` it first")));
     }
     let mut keys: Vec<String> = match (p.get("key"), p.get("keys")) {

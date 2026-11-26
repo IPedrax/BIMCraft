@@ -350,17 +350,19 @@ fn a_wall_with_no_structure_layer_or_an_arc_wall_is_refused_framing_saying_why()
     let generic = first(&run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]]})));
     let e = s.execute("frame", &json!({"id": generic})).unwrap_err();
     assert!(e.contains("structure layer"), "{e}");
-    assert!(s.model.wall(generic).is_some_and(|w| w.framing.is_none()));
+    assert!(s.model.wall(generic).is_some_and(|w| s.model.wall_framing(w).is_none()));
     stud_wall_type(&mut s);
+    // A curved wall of a framed type isn't framed, and `frame` and `framing` say why; its straight neighbours are.
     let arc = first(&run(&mut s, "wall", json!({"points": [[0, 5000], [4000, 5000]], "arc": 90, "type": "2x4"})));
-    let e = s.execute("frame", &json!({"id": arc})).unwrap_err();
-    assert!(e.contains("straight"), "{e}");
-    // And a framed wall can't become one: the edit is refused.
     let w = wall(&mut s, [0.0, 9000.0], [4000.0, 9000.0]);
-    run(&mut s, "frame", json!({"id": w}));
-    assert!(s.execute("modify", &json!({"id": w, "arc": 45})).is_err());
-    assert!(s.execute("modify", &json!({"id": w, "type": "Generic - 200mm"})).is_err());
-    assert!(s.execute("modify", &json!({"id": w, "framing": "Nope"})).is_err());
+    let r = run(&mut s, "frame", json!({"id": arc}));
+    assert!(r["warnings"].as_array().is_some_and(|ws| ws.iter().any(|x| x.as_str().is_some_and(|x| x.contains("straight")))), "{r}");
+    assert!(s.execute("framing", &json!({"id": arc})).unwrap_err().contains("straight"));
+    assert!(!members(&mut s, w).is_empty());
+    // Curved, the framed wall is framed no more, and nothing is refused.
+    run(&mut s, "modify", json!({"id": w, "arc": 45}));
+    assert!(s.execute("framing", &json!({"id": w})).is_err());
+    assert!(s.execute("modify", &json!({"id": w, "framing": "Nope"})).is_err(), "a wall's framing is its type's");
     assert!(s.execute("frame", &json!({"id": w, "type": "Nope"})).is_err());
     let door = first(&run(&mut s, "door", json!({"wall": w, "offset": 2000})));
     assert!(s.execute("frame", &json!({"ids": [w, door]})).unwrap_err().contains("isn't a wall"));
@@ -373,14 +375,17 @@ fn a_wall_with_no_structure_layer_or_an_arc_wall_is_refused_framing_saying_why()
 fn framing_undoes_and_redoes_and_modify_framing_null_unframes() {
     let mut s = Session::new();
     let w = cabin(&mut s);
-    let framed = |s: &Session| s.model.wall(w).and_then(|x| x.framing.clone());
+    let framed = |s: &Session| s.model.wall(w).and_then(|x| s.model.wall_framing(x).cloned());
     run(&mut s, "undo", json!({}));
     assert_eq!(framed(&s), None);
     run(&mut s, "redo", json!({}));
     assert_eq!(framed(&s).as_deref(), Some("Cabin"));
-    run(&mut s, "modify", json!({"id": w, "framing": null}));
+    // Its framing is its type's: `type` {framing: null} takes it off, a name puts it back.
+    run(&mut s, "type", json!({"category": "wall", "name": "2x4", "framing": null}));
     assert_eq!(framed(&s), None);
-    run(&mut s, "modify", json!({"id": w, "framing": "Cabin"}));
+    run(&mut s, "type", json!({"category": "wall", "name": "2x4", "framing": "Cabin"}));
+    assert_eq!(framed(&s).as_deref(), Some("Cabin"));
+    assert!(s.execute("modify", &json!({"id": w, "framing": null})).is_err(), "not the wall's own");
     run(&mut s, "unframe", json!({"ids": [w]}));
     assert_eq!(framed(&s), None);
     assert!(s.execute("framing", &json!({"id": w})).unwrap_err().contains("isn't framed"));
@@ -393,11 +398,10 @@ fn a_framed_wall_is_saved_by_its_types_guid_and_reopens_framed_and_a_file_of_for
     let text = s.model.to_json().unwrap();
     let file: Value = serde_json::from_str(&text).unwrap();
     let guid = s.model.library.guid(&Kind::Type("framing".into()), "Cabin").unwrap();
-    let held = file["elements"].as_object().unwrap().values().find(|e| e["guid"] == json!(s.model.guid(w).to_string())).unwrap();
-    assert_eq!(held["framing"], json!(guid.to_string()), "a file holds the type's GUID");
+    assert_eq!(file["types"]["wall"]["2x4"]["framing"], json!(guid.to_string()), "a file holds the framing type's GUID in the wall type");
     let (m, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
-    assert_eq!(m.wall(w).and_then(|x| x.framing.clone()).as_deref(), Some("Cabin"));
+    assert_eq!(m.wall(w).and_then(|x| m.wall_framing(x).cloned()).as_deref(), Some("Cabin"));
     assert_eq!(m.types.framing, s.model.types.framing);
     assert_eq!(crate::framing::wall(&m, w), crate::framing::wall(&s.model, w));
     // A project of 20, framed nowhere, reads as it was.
@@ -438,7 +442,7 @@ fn a_framing_type_renames_on_its_walls_is_kept_while_used_and_comes_in_with_a_wa
     let mut s = Session::new();
     let w = cabin(&mut s);
     run(&mut s, "rename_type", json!({"category": "framing", "type": "Cabin", "name": "Cabin 16"}));
-    assert_eq!(s.model.wall(w).and_then(|x| x.framing.clone()).as_deref(), Some("Cabin 16"));
+    assert_eq!(s.model.wall(w).and_then(|x| s.model.wall_framing(x).cloned()).as_deref(), Some("Cabin 16"));
     let e = s.execute("delete_type", &json!({"category": "framing", "type": "Cabin 16"})).unwrap_err();
     assert!(e.contains("used 1 time"), "{e}");
     // Insert from File brings the wall with its framing type, its GUID kept.
@@ -448,7 +452,7 @@ fn a_framing_type_renames_on_its_walls_is_kept_while_used_and_comes_in_with_a_wa
     let r = run(&mut to, "insert", json!({"path": path.to_str().unwrap(), "ids": [w]}));
     let here = r["ids"][w.to_string()].as_u64().expect("the wall came");
     let _ = std::fs::remove_file(&path);
-    assert_eq!(to.model.wall(here).and_then(|x| x.framing.clone()).as_deref(), Some("Cabin 16"));
+    assert_eq!(to.model.wall(here).and_then(|x| to.model.wall_framing(x).cloned()).as_deref(), Some("Cabin 16"));
     let kind = Kind::Type("framing".into());
     assert_eq!(to.model.library.guid(&kind, "Cabin 16"), s.model.library.guid(&kind, "Cabin 16"));
     assert_eq!(members(&mut to, here).len(), members(&mut s, w).len());
@@ -759,9 +763,11 @@ fn a_wall_butting_into_a_clad_wall_is_framed_to_its_structure_not_its_finish() {
     );
     let outer: Vec<u64> = r["ids"].as_array().unwrap().iter().filter_map(Value::as_u64).collect();
     let p = first(&run(&mut s, "wall", json!({"points": [[2500, 3000], [2500, 0]], "type": "2x4", "height": 2440})));
-    run(&mut s, "type", json!({"category": "framing", "name": "c", "layout": "centre", "blocking": [1200]}));
+    // The clad walls' 2x6s 140 deep, the partition's 2x4s 89: each type framed with its own depth.
+    run(&mut s, "type", json!({"category": "framing", "name": "c", "layout": "centre", "blocking": [1200], "depth": 140}));
+    run(&mut s, "type", json!({"category": "framing", "name": "c4", "layout": "centre", "blocking": [1200]}));
     run(&mut s, "frame", json!({"ids": outer, "type": "c"}));
-    run(&mut s, "frame", json!({"id": p, "type": "c"}));
+    run(&mut s, "frame", json!({"id": p, "type": "c4"}));
     // The host's structure is 13 to 153 mm in from its exterior face, on the location line: the partition's plates and end
     // studs go from 153 to 2847 along it.
     let ms = members(&mut s, p);
@@ -837,7 +843,9 @@ fn a_three_stud_corners_extra_stud_backs_the_inside_corner_of_a_deeper_wall() {
     );
     let r = run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0], [4000, 3000]], "type": "2x6", "height": 2440}));
     let ids: Vec<u64> = r["ids"].as_array().unwrap().iter().filter_map(Value::as_u64).collect();
-    run(&mut s, "frame", json!({"ids": ids}));
+    // 2x6s: a framing type 140 deep, which the 140 mm layer stays.
+    run(&mut s, "type", json!({"category": "framing", "name": "2x6 @ 406", "depth": 140}));
+    run(&mut s, "frame", json!({"ids": ids, "type": "2x6 @ 406"}));
     no_overlaps(&mut s, &ids);
     // The inside corner of the two structure layers is at (3930, 70): the extra stud's face is on it.
     let all: Vec<(String, [f64; 6])> = ids.iter().flat_map(|id| boxes(&run(&mut s, "framing", json!({"id": id})))).collect();

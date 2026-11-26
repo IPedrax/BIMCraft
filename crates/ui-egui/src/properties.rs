@@ -165,7 +165,6 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
             ("Constraints", "slant", msg!("Angle From Vertical (°)"), Number),
-            ("Structural", "framing", msg!("Framing"), Framing),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "thickness", "Thickness", LengthShown),
             ("Dimensions", "area_m2", "Area", AreaShown),
@@ -1156,6 +1155,10 @@ pub(crate) struct TypeDialog {
     pub(crate) room: Option<RoomRows>,
     /// A framing type's own: its spacing, plates, openings, joins, material and stock.
     pub(crate) framing: Option<FramingRows>,
+    /// A wall type's framing type, as picked and as it was ("" for none): every wall of the type is framed with it.
+    pub(crate) wall_framing: Option<(String, String)>,
+    /// A framing type's dialog opened from a wall type's Framing: that wall type, which OK frames with the type shown.
+    pub(crate) framing_for: Option<String>,
     /// The type's values of the project's type parameters, as typed.
     project: Vec<TypeValue>,
     /// A stair type's rules and how its stairs show in plan.
@@ -1286,7 +1289,7 @@ const FRAMING_FIELDS: [(&str, &str, Option<usize>, &str, Typed); 17] = [
     // A wall's studs, a floor's joists and a roof's rafters alike.
     ("Construction", "spacing", None, msg!("Spacing"), Typed::Length),
     ("Construction", "thickness", None, msg!("Thickness"), Typed::Length),
-    ("Construction", "target_depth", None, msg!("Target Depth"), Typed::Length),
+    ("Construction", "depth", None, msg!("Depth"), Typed::Length),
     ("Walls", "bottom_plates", None, msg!("Bottom Plates"), Typed::Count),
     ("Walls", "top_plates", None, msg!("Top Plates"), Typed::Count),
     ("Walls", "blocking", None, msg!("Blocking Heights"), Typed::Lengths),
@@ -1577,6 +1580,11 @@ impl TypeDialog {
             shape,
             room: (category == "room").then(|| RoomRows::new(m, &name_of)),
             framing: (category == "framing").then(|| FramingRows::new(m, &name_of)),
+            framing_for: None,
+            wall_framing: (category == "wall" && curtain.is_none()).then(|| {
+                let now = m.types.wall.get(&name_of).and_then(|t| t.framing.clone()).unwrap_or_default();
+                (now.clone(), now)
+            }),
             project,
             stair,
             ramp,
@@ -1594,7 +1602,9 @@ impl TypeDialog {
 
     /// The dialog showing type `name` as the model has it now.
     fn show(&mut self, m: &Model, name: String) {
+        let framing_for = self.framing_for.take();
         *self = TypeDialog::new(m, self.category, name, std::mem::take(&mut self.elements));
+        self.framing_for = framing_for;
     }
 
     /// The type shown as the model has it now, what Edit Pattern changed among it.
@@ -1651,6 +1661,15 @@ impl TypeDialog {
         let mut p = json!({"category": self.category, "name": name});
         if let Some(on) = self.auto_rotation {
             p["auto_rotation"] = json!(on);
+        }
+        // A wall type's framing: only with a layer marked framed for its members.
+        if let Some((now, was)) = &self.wall_framing
+            && (copy || now != was)
+        {
+            if !now.is_empty() && !self.layers.iter().any(|l| l.4 && l.0 == Function::Structure) {
+                return Err(t("Framing: mark a Structure layer Framed for the members to stand in").to_string());
+            }
+            p["framing"] = if now.is_empty() { Value::Null } else { json!(now) };
         }
         let layered = copy || self.layers != self.layers_were;
         if layered {
@@ -2857,6 +2876,7 @@ impl BimApp {
                                 change = Some((key, Ok(json!(k))));
                             }
                         }
+                        // A floor's or a roof's framing (a wall's is its type's, in Type Properties).
                         Framing => {
                             let none = t("None").to_string();
                             // The project's framing types, and the starter ones an older project lacks, which picking makes.
@@ -2867,35 +2887,10 @@ impl BimApp {
                                 .collect();
                             let framed = val.as_str().filter(|n| model.types.framing.contains_key(*n));
                             let now = framed.map_or(none.clone(), str::to_string);
-                            // A wall whose type has no structure layer has nothing to frame: say so, rather than refuse a pick.
-                            let bare = ids.iter().filter_map(|i| model.wall(*i)).find(|w| {
-                                !model
-                                    .type_layers("wall", &w.type_name)
-                                    .iter()
-                                    .any(|l| l.function == bimcraft_core::model::Function::Structure)
-                            });
-                            // A framed wall whose structure layer isn't as deep as its framing type means: a little warning under it.
-                            let off = ids.iter().filter_map(|i| model.wall(*i)).find_map(|w| bimcraft_core::framing::off_target(model, w));
-                            ui.vertical(|ui| {
                             ui.horizontal(|ui| {
                                 let tall = ui.spacing().interact_size.y;
                                 let wide = (ui.available_width() - tall - ui.spacing().item_spacing.x).max(40.0);
-                                let picked = ui
-                                    .allocate_ui(vec2(wide, tall), |ui| {
-                                        if let Some(w) = bare.filter(|_| framed.is_none()) {
-                                            let why = tf(
-                                                "Type {} has no Structure layer to frame: give it one in Edit Type, or pick a timber frame wall type",
-                                                &[&w.type_name],
-                                            );
-                                            ui.add(egui::Label::new(RichText::new(t("No Framing")).color(pal().muted)).truncate())
-                                                .labelled_by(name.id)
-                                                .on_hover_text(why);
-                                            None
-                                        } else {
-                                            combo(ui, (id, key), name.id, &now, &options)
-                                        }
-                                    })
-                                    .inner;
+                                let picked = ui.allocate_ui(vec2(wide, tall), |ui| combo(ui, (id, key), name.id, &now, &options)).inner;
                                 if let Some(n) = picked {
                                     if n != none && !model.types.framing.contains_key(&n) {
                                         frame_with = Some(n);
@@ -2909,16 +2904,6 @@ impl BimApp {
                                 if r.on_hover_text(edit).clicked() {
                                     edit_framing = framed.map(str::to_string);
                                 }
-                            });
-                            if let Some((depth, target)) = off {
-                                let (d, tg) = (model.units.length(depth), model.units.length(target));
-                                let (word, why) = if depth > target {
-                                    (t("⚠ Layer deeper than target"), tf("Its structure layer is {}, deeper than the framing type's target depth of {}: the studs are as deep as the layer", &[&d, &tg]))
-                                } else {
-                                    (t("⚠ Layer shallower than target"), tf("Its structure layer is {}, shallower than the framing type's target depth of {}: the studs are as deep as the layer", &[&d, &tg]))
-                                };
-                                ui.add(egui::Label::new(RichText::new(word).color(pal().error).small()).truncate()).on_hover_text(why);
-                            }
                             });
                         }
                         // Revit's greyed checkbox: Attach Top/Base and Detach Top/Base change it. Beside it, what it's attached to.
@@ -3940,6 +3925,8 @@ impl BimApp {
         let names: Vec<String> = model.type_names(d.category).into_iter().map(String::from).collect();
         let (mut ok, mut cancel, mut apply, mut asked) = (false, false, false, None);
         let mut edit_pattern = false;
+        // A wall type's framing type, opened from beside its Framing: that type's dialog in place of this one.
+        let mut edit_framing_type: Option<String> = None;
         // A framing type's dialog is wider: its picture stands beside the list.
         let side = if d.framing.is_some() { FRAMING_PICTURE + 16.0 } else { 0.0 };
         let r = Modal::new(UiId::new("type-properties"), t("Type Properties")).width(crate::typeprops::WIDTH + side).show(ctx, |ui| {
@@ -4047,11 +4034,59 @@ impl BimApp {
                         if let Some(framing) = &mut d.framing {
                             framing.rows(tb, g, &materials, model.units);
                         }
+                        // A wall type's framing: every wall of it framed with the type picked, in the layer marked Framed.
+                        if g == "Construction"
+                            && let Some((now, _)) = &mut d.wall_framing
+                        {
+                            let marked = d.layers.iter().any(|l| l.4 && l.0 == Function::Structure);
+                            tb.row(t("Framing"), |ui, l| {
+                                let none = t("None").to_string();
+                                let missing = bimcraft_core::framing::PRESETS.into_iter().filter(|n| !model.types.framing.contains_key(*n));
+                                let options: Vec<String> = std::iter::once(none.clone())
+                                    .chain(model.types.framing.keys().cloned())
+                                    .chain(missing.map(String::from))
+                                    .collect();
+                                let shown = if now.is_empty() { none.clone() } else { now.clone() };
+                                let tall = ui.spacing().interact_size.y;
+                                let wide = (ui.available_width() - tall - 4.0).max(40.0);
+                                ui.add_enabled_ui(marked || !now.is_empty(), |ui| {
+                                    let picked = ui.allocate_ui(vec2(wide, tall), |ui| combo(ui, (0, "wall-type-framing"), l, &shown, &options)).inner;
+                                    if let Some(n) = picked {
+                                        *now = if n == none { String::new() } else { n };
+                                    }
+                                })
+                                .response
+                                .on_disabled_hover_text(t("Tick Framed on a Structure layer below to frame this type"));
+                                let edit = t("Edit Framing Type");
+                                let known = model.types.framing.contains_key(now.as_str());
+                                let r = ui.add_enabled(known, Button::new("…").min_size(vec2(tall, tall)));
+                                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, known, edit));
+                                if r.on_hover_text(edit).clicked() {
+                                    edit_framing_type = Some(now.clone());
+                                }
+                            });
+                            if !marked {
+                                let say = if now.is_empty() {
+                                    t("No layer is marked Framed: tick Framed on a Structure layer to frame this type")
+                                } else {
+                                    t("Framed, but no layer is marked Framed: tick Framed on a Structure layer, or set Framing to None")
+                                };
+                                tb.full(|ui| {
+                                    ui.add(egui::Label::new(RichText::new(say).color(pal().error).small()).wrap());
+                                });
+                            }
+                        }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
                             let variable = matches!(d.category, "floor" | "roof");
                             let framed = matches!(d.category, "wall" | "floor" | "roof");
-                            tb.full(|ui| layer_editor(ui, &mut d.layers, model.units, &materials, (out, inward), (variable, framed)));
+                            // A framed wall type's framed layer is as thick as its framing type's depth.
+                            let lock = d
+                                .wall_framing
+                                .as_ref()
+                                .and_then(|(now, _)| model.types.framing.get(now.as_str()).map(|f| f.depth).or_else(|| bimcraft_core::framing::preset(&model, now).map(|f| f.depth)))
+                                .map(|depth| model.units.length(depth));
+                            tb.full(|ui| layer_editor(ui, &mut d.layers, model.units, &materials, (out, inward), (variable, framed), lock.as_deref()));
                         }
                     }
                     if let Some(ramp) = &mut d.ramp {
@@ -4158,6 +4193,14 @@ impl BimApp {
                 d.show(&Arc::clone(&self.session.model), name);
             }
         }
+        // A framing type opened from a wall type's Framing: OK frames that wall type with the type shown (a copy made here too).
+        if ok
+            && d.category == "framing"
+            && let Some(wt) = d.framing_for.clone()
+            && self.session.model.types.wall.get(&wt).and_then(|t| t.framing.as_deref()) != Some(d.name.as_str())
+        {
+            self.run("type", json!({"category": "wall", "name": wt, "framing": d.name}));
+        }
         if ok {
             let m = &self.session.model;
             // The walls a framing type was opened from are framed by it; other elements are of their type.
@@ -4168,7 +4211,19 @@ impl BimApp {
                 self.run("modify", json!({"ids": d.elements, key: d.name}));
             }
         }
-        if !(ok || cancel || r.should_close()) {
+        // Edit Framing Type beside a wall type's Framing: the wall type as picked first, then the framing type's dialog for it.
+        let edit_framing_type = edit_framing_type.filter(|_| match d.params(&d.name, model.units, false) {
+            Ok(p) => self.run_type_commands(vec![("type", p)], &mut d.error),
+            Err(e) => {
+                d.error = Some(e);
+                false
+            }
+        });
+        if let Some(name) = edit_framing_type {
+            let mut framing = TypeDialog::new(&self.session.model, "framing", name, Vec::new());
+            framing.framing_for = Some(d.name.clone());
+            self.type_dialog = Some(framing);
+        } else if !(ok || cancel || r.should_close()) {
             self.type_dialog = Some(d);
         }
     }
@@ -4185,6 +4240,7 @@ fn layer_editor(
     materials: &[String],
     (out, inward): (&str, &str),
     (variable, framed): (bool, bool),
+    lock: Option<&str>,
 ) {
     ui.label(RichText::new(t("Layers")).strong());
     let mut action: Option<(usize, i8)> = None;
@@ -4226,7 +4282,18 @@ fn layer_editor(
                 }
             });
             c.response.labelled_by(material.id);
-            ui.add_sized([70.0, 20.0], TextEdit::singleline(typed).hint_text(units.name())).labelled_by(thickness.id);
+            // The layer a framing type's members stand in is as thick as its depth: shown, not typed.
+            match lock.filter(|_| *holds && *f == Function::Structure) {
+                Some(depth) => {
+                    *typed = depth.to_string();
+                    ui.add_enabled_ui(false, |ui| ui.add_sized([70.0, 20.0], TextEdit::singleline(typed)).labelled_by(thickness.id))
+                        .response
+                        .on_disabled_hover_text(t("As thick as the framing type's Depth"));
+                }
+                None => {
+                    ui.add_sized([70.0, 20.0], TextEdit::singleline(typed).hint_text(units.name())).labelled_by(thickness.id);
+                }
+            }
             if variable
                 && ui.checkbox(var, t("Variable")).on_hover_text(t("Takes up a shaped top's falls: one layer at most")).changed()
                 && *var
