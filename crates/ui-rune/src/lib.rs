@@ -16,10 +16,14 @@ pub mod finder;
 pub mod forms;
 pub mod grips;
 pub mod lang;
+pub mod orbit;
 pub mod paint;
+pub mod paper;
 pub mod profile;
 pub mod project;
 pub mod props;
+pub mod sched;
+pub mod section;
 pub mod select;
 pub mod settings;
 pub mod snapping;
@@ -30,6 +34,8 @@ pub mod tooling;
 pub mod tools;
 pub mod typeprops;
 pub mod ui;
+pub mod views;
+pub mod worker;
 
 use rune::AppSpec;
 
@@ -45,6 +51,10 @@ fn start() -> app::App {
     if let Some(path) = settings::default_path() {
         let asked = args.iter().any(|a| a == "--rev" || a == "--bimcraft");
         app.use_settings(path, asked);
+    }
+    // The measurement opens a window on a view other than the plan: BIMCRAFT_RUNE_VIEW=section, sheet, schedule, ceiling or 3d.
+    if let Ok(name) = std::env::var("BIMCRAFT_RUNE_VIEW") {
+        app.open_named(&name);
     }
     app
 }

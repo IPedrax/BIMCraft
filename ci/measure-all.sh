@@ -40,6 +40,11 @@ for round in 1 2; do
     # Rev's profile: a ribbon (a tab, its tools and the Modify group) across the top besides the top bar, the browser and Properties.
     try env RUNE_CPU_FIRST=only ci/measure-ui.sh "rune-cpu-rev-$round" "$out" -- "$rune" --rev
     try env ci/measure-ui.sh "rune-gpu-rev-$round" "$out" -- "$rune" --rev
+    # The views other than a plan, each opened as the window starts (BIMCRAFT_RUNE_VIEW), on the CPU renderer: the thread that makes the
+    # picture of a section, a sheet or the 3D view counts in the process's CPU time, so a wheel notch or a pan step is what it costs.
+    for view in section sheet schedule 3d; do
+        try env BIMCRAFT_RUNE_VIEW="$view" RUNE_CPU_FIRST=only ci/measure-ui.sh "rune-cpu-view-$view-$round" "$out" -- "$rune"
+    done
     try env PAN_BUTTON=2 ci/measure-ui.sh "egui-main-$round" "$out" -- "$egui_main" --sample
     bench "egui-main-bench-$round" "$egui_main"
     if [ -x "$egui_join" ]; then

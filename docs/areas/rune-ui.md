@@ -29,6 +29,7 @@ A window of the sample house that works end to end, small on purpose:
 | `forms.rs`, `finder.rs`, `typeprops.rs`, `settings.rs`, `app/dialogs.rs`, `ui/dialog.rs` and kin | the generic command form from every command's params doc (all 282), Find (Ctrl+K), Type Properties, `settings.json` shared with egui and the Settings dialog ([dialogs](rune-ui-dialogs.md)) | in the area doc |
 | `props/`, `app/properties.rs`, `ui/properties/` | the Properties palette: egui's rows table as data, groups that fold, units, a type selector, several elements at once, the plan's own view ([properties](rune-ui-properties.md)) | in the area doc |
 | `props/plain.rs`, `status.rs` | the first plain rows and editable fields from `element_json` and what a typed value becomes (Type Properties and the generic form still read them); the status line | 3, 3 |
+| `views.rs`, `worker.rs`, `section.rs`, `sched.rs`, `paper.rs`, `orbit.rs`, `export.rs` and their `app/` and `ui/` parts | the views beyond the plan: the Project Browser's every view, sections and elevations, schedules, sheets and the 3D view made on a thread of their own or as a grid, and PDF and PNG export through the core's `export` command ([views](rune-ui-views.md)) | in the area doc |
 | `lang.rs` | `t`, `tf`, `tc` over the catalogs egui reads (`translations/ui/*.po`), English fallback | 3 |
 | `software.rs` | `--software`: starts again with `RUNE_CPU_FIRST=only` (see "Choosing the CPU renderer") | 1 |
 | `tests/layout.rs` | no source file passes 1,200 lines | 1 |
@@ -374,8 +375,7 @@ Not in the slices: the Filter dialog (stage 4), grips, temporary dimensions, the
 lean on the tool state machines, which are still inside egui's `canvas.rs` (extraction 4 above), so they wait on that pull request.
 
 **The first merge of parallel work (2026-11-25).** Four sessions worked from the same tip on branches of their own, one area each, and CI ran only
-on finished pieces. The plan tools, the dialogs and the properties palette are merged here (the views branch, `IPedrax-Test/Rune-GUI-views`, was still
-in CI). The merge was three small conflicts: the module lists, the window's layers (the right-click menu is wrapped by `rune_kit::root` only while it
+on finished pieces. The plan tools, the dialogs and the properties palette were merged first, and the views after them (see below). The first merge was three small conflicts: the module lists, the window's layers (the right-click menu is wrapped by `rune_kit::root` only while it
 is open; a dialog's scrim and panel are absolute children of the root, so nothing wraps the plan), and the palette (the properties file replaced the
 dialogs session's own Edit Type button, and `App::edit_type` now opens the dialogs' Type Properties). What each area leaves out is in its own
 document: the tools lack Array, Scale, the Options Bar and the Fillet, Pick Lines, Pick Faces and Tangent End Arc shapes; the dialogs lack docking and
@@ -384,6 +384,8 @@ the window's maximized state; the palette lacks egui's extra panels (layer pictu
 phasing, camera, underlay), and its buttons for View Range, View Template, Visibility/Graphics and Background Grids say the dialog is not in this
 window yet (`App::seam`). A field commits on Enter only: the kit gives no focus loss. Assistant, Co-Work and the updater are not started: they need
 `ureq`, and the root rule on the network says which crates may.
+
+**The views merged (2026-11-26).** `IPedrax-Test/Rune-GUI-views` joined after its own check was green. It had four conflicts, all of the kind both sides were right about: `lib.rs` starts from the settings and then from `BIMCRAFT_RUNE_VIEW`; the top bar keeps Find and Settings and adds the PDF and PNG buttons; `ui/mod.rs` lists every module and its poll keeps the window-size save and the views' answer; `app.rs` keeps the dialogs' and settings' modules with the views' and `refresh` makes the palette and the temporary dimensions, then follows the view. The right-click menu now wraps the canvas of the view shown, not the plan only; it opens from the plan, and every path that opens another view or a dialog closes it first (`toggle_find`, `open_command`, `toggle_settings`, `open_type`), but `open_view` itself does not close it. Not checked: a tool left in hand when a section, sheet, schedule or 3D view is opened stays highlighted in the palette; the snap is cleared by `leave`, and these canvases do not read it, but no test says so.
 
 Before Rune becomes the default, one run on a machine with no graphics card must show it cheaper than egui on that machine with PR 628's
 join, on a big project (the tower sample), not only the sample house, and a person must have used it for a day of real work. Until

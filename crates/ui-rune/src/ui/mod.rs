@@ -10,19 +10,25 @@ use crate::app::App;
 use crate::profile::Profile;
 
 mod browser;
+mod canvas;
 mod dialog;
 mod draw_bar;
+mod export;
 mod find;
 mod menu;
 mod plan;
 mod properties;
 mod ribbon;
+mod schedule;
+mod section;
 mod settings;
+mod sheet;
 mod status_bar;
 mod tempdim;
 mod tools;
 mod topbar;
 mod types;
+mod view3d;
 
 /// The Properties panel's width, points.
 pub const PANEL_WIDTH: f32 = 300.0;
@@ -33,10 +39,10 @@ pub fn view(s: &App, _: &mut Cx<App>) -> El {
     let side = col().w(PANEL_WIDTH).h_full().child(properties::panel(s, &th)).child(browser::panel(s, &th));
     // The plan's right-click menu, when it is open, puts its elements in `layer`, which go over the whole window.
     let mut layer = Vec::new();
-    let plan = menu::with_menu(s, plan::plan(s), &mut layer);
+    let canvas = menu::with_menu(s, canvas::canvas(s, &th), &mut layer);
     let middle = match s.profile {
-        Profile::Bimcraft => row().grow(1.0).min_h(0.0).child(tools::palette(s, &th)).child(plan).child(side),
-        Profile::Rev => row().grow(1.0).min_h(0.0).child(plan).child(side),
+        Profile::Bimcraft => row().grow(1.0).min_h(0.0).child(tools::palette(s, &th)).child(canvas).child(side),
+        Profile::Rev => row().grow(1.0).min_h(0.0).child(canvas).child(side),
     };
     let top = match s.profile {
         Profile::Bimcraft => None,
@@ -74,7 +80,15 @@ pub fn poll(s: &mut App, clock: f64, tx: &mut Tx) -> bool {
     if let Some(due) = s.window_due() {
         tx.wake_after(Duration::from_secs_f64(due));
     }
-    drawn
+    // A view made on a thread of its own (a section): its picture comes in when it is made, and the window comes back for it. Whether it
+    // is busy is read before the answer is taken: an answer is queued before the thread says it is through, so a thread that is not
+    // busy has its answer in the queue for this very call, and one that is gets a frame to come back in.
+    let busy = s.views_busy();
+    let made = s.poll_views();
+    if busy {
+        tx.wake_after(Duration::from_millis(16));
+    }
+    drawn || made
 }
 
 /// Ctrl+K opens Find (or closes it) and Ctrl+, the settings. Delete deletes the selection; Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y do again

@@ -55,7 +55,8 @@ One line per module. A new module adds its line here, not to the root.
 - `ui/`: the elements, a function of `App`: `mod.rs` the window (laid out by profile) and its keys, `plan.rs` the canvas (the drawing kept as
   one element while it is the same, the pointer and wheel handlers, the primary button's click and box, the middle button's pan, the hover, selection and box layers), `topbar.rs` (Open and Save through
   the system's file dialogs, Undo, Redo, the zoom buttons), `tools.rs` the BIMCraft profile's palette, `ribbon.rs` Rev's, `properties.rs` (the palette: the panel's groups, each folded by its header;
-  `properties/editors.rs` a row's editor: text, a field, a check box, a list opened in place, a link; `properties/selector.rs` the Type Selector and Edit Type), `browser.rs` (the levels), `status_bar.rs`.
+  `properties/editors.rs` a row's editor: text, a field, a check box, a list opened in place, a link; `properties/selector.rs` the Type Selector and Edit Type), `browser.rs` (every view the model has, in groups,
+  one row each), `canvas.rs` (the canvas of the view shown: one for each kind of view, the plan canvas for plans), `status_bar.rs`.
 - `profile.rs`: the two profiles (BIMCraft's palette, Rev's ribbon), one table drawn two ways. `project.rs`: where a project comes from
   (`--sample`, `--highrise`, a file through the core's `open`) and what the arguments ask. `tools.rs`: the table of tools both profiles draw.
 - `select.rs`: what a click or a box does to the selection (`How`: replace, add, take away; `Rubber`, the box being dragged, a window
@@ -89,3 +90,21 @@ One line per module. A new module adds its line here, not to the root.
   handlers (`Prefs`, the Settings dialog, units through the core's `units` command, the window's size kept once still). `ui/settings.rs`: the Settings dialog. Detail: [dialogs](../../docs/areas/rune-ui-dialogs.md).
 - `typeprops.rs`: Type Properties, pure: `Model::types` read as JSON, a category's types and one type's fields (scalars typed, the rest as rows), and `changes`, the `type` command's parameters for just what differs. `app/types.rs`: the dialog's state and handlers
   (Edit Type on the selection, switching type, Apply through `Session::execute`). `ui/types.rs`: the dialog.
+- `views.rs`: which view the window shows (`ViewKind`: plan, ceiling plan, section or elevation, 3D view, sheet, schedule) and what the Project Browser lists
+  (`tree`, `Views`): whether the model has a view (`exists`, `keep`), the plan kinds' `draw` and `fit`, a view's `name` and `title`. No toolkit, so it is tested
+  without a window. `app/open.rs`: `App::open_view`, which shows another view and keeps the selection (the model's, not a view's). Detail:
+  [the views](../../docs/areas/rune-ui-views.md).
+- `worker.rs`: `Latest`, a thread that makes the newest of what it is asked (a newer request cancels the job being made and replaces the waiting ones; a panic is an
+  error), polled by the window each frame. `section.rs`: the section or elevation on screen (`Cut`: its camera, the picture and drawing the thread made, what a click or box
+  finds); `section/render.rs`: what the thread makes (egui's `section_worker.rs`, for one picture a pixel to a point). `app/section.rs`: the section canvas's handlers on `App`.
+  `ui/section.rs`: its canvas (the picture and the drawing as one moved layer). Detail: [the views](../../docs/areas/rune-ui-views.md#2-sections-and-elevations-sectionrs-sectionrenderrs-workerrs-appsectionrs-uisectionrs).
+- `sched.rs`: a schedule on screen (`Grid`, `make`): the core's table as text cells in the project's units and language, the elements each row lists, the totals; `app/schedule.rs`: the grid
+  made again after a command, `pick_row`, `row_lit`; `ui/schedule.rs`: its canvas, a `rune_kit::Table`. `paper.rs`: a sheet on screen (`Paper`: the camera framing the whole paper, the
+  picture its thread painted of the core's `sheet::draw`, picks and boxes through the sheet's drawing), `paper/render.rs`: what that thread makes; `app/paper.rs`: its canvas's handlers;
+  `ui/sheet.rs`: the canvas, a picture and the frames of what is lit. Detail: [the views](../../docs/areas/rune-ui-views.md).
+- `orbit.rs`: the 3D view on screen (`Orbit`: the core's `view3d::Camera` orbited, panned and zoomed as Revit's, the software picture its thread made of the model, what a click or box
+  finds in it); `orbit/render.rs`: what that thread makes (the `Scene`, kept and brought up to date by an edit, and its picture); `app/orbit.rs`: the canvas's handlers on `App`;
+  `ui/view3d.rs`: the canvas, one picture moved through the live offset and scale. The card path is not here: what it would need is in the area doc. Detail:
+  [the views](../../docs/areas/rune-ui-views.md).
+- `app/export.rs`: `App::export_view`, the view shown written through the core's `export` command (and `export_target`, `export_file_name`); `ui/export.rs`: the top bar's PDF and PNG
+  buttons, which ask the system's dialog for the file. The form for the command's other parameters is the dialogs' generic command form. Detail: [the views](../../docs/areas/rune-ui-views.md).

@@ -385,11 +385,14 @@ fn another_level_is_shown_framed_and_a_stale_one_is_refused() {
     assert!(app.levels.len() >= 2, "the sample house has two levels: {:?}", app.levels);
     let first = app.level;
     let other = app.levels.iter().map(|(id, _)| *id).find(|id| Some(*id) != first).expect("a second level");
-    app.selection = vec![1];
+    // A level is an element too, so it can stay selected.
+    let held = first.expect("a level");
+    app.selection = vec![held];
     let revision = app.revision;
     app.set_level(other);
     assert_eq!(app.level, Some(other));
-    assert!(app.selection.is_empty() && app.revision > revision && app.drawing.is_some());
+    assert!(app.revision > revision && app.drawing.is_some());
+    assert_eq!(app.selection, vec![held], "the selection is the model's, not a view's: another plan keeps it");
     assert_eq!(app.level_name, app.levels.iter().find(|(id, _)| *id == other).map(|(_, n)| n.clone()).unwrap_or_default());
     app.set_level(7);
     assert_eq!(app.level, Some(other), "an id that is no level changes nothing");

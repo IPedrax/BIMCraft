@@ -11,14 +11,25 @@ use rune::{Live, Pixels};
 use serde_json::{Value, json};
 
 use crate::camera::Camera;
+use crate::orbit::Orbit;
+use crate::paper::Paper;
 use crate::profile::Profile;
 use crate::project::{self, Start};
+use crate::sched::Grid;
+use crate::section::Cut;
 use crate::select::{self, How, Rubber};
 use crate::snapping::{Landing, Snapper};
 use crate::status;
 use crate::tooling::Tooling;
+use crate::views::{self, ViewKind, Views};
 
 pub mod dialogs;
+mod export;
+mod open;
+mod orbit;
+mod paper;
+mod schedule;
+mod section;
 pub mod settings;
 pub mod types;
 
@@ -93,6 +104,18 @@ pub struct App {
     pub cam: CameraMode,
     /// The plan as an image, in [`PlanMode::Pixels`]: replaced whenever the plan is drawn again, shown without the view re-running.
     pub pixels: Pixels,
+    /// The view on screen (`views`); `level` is the level a plan view stands on, or the last one shown while another kind of view is up.
+    pub view: ViewKind,
+    /// What the Project Browser lists, and the name of the view shown.
+    pub views: Views,
+    /// The section or elevation shown, with the thread that makes its picture (`section.rs`).
+    pub cut: Cut,
+    /// The 3D view shown, with the thread that makes its picture (`orbit.rs`).
+    pub orbit: Orbit,
+    /// The sheet shown, with the thread that paints it (`paper.rs`).
+    pub paper: Paper,
+    /// The schedule shown, as a grid (`sched.rs`).
+    pub grid: Grid,
     pub level: Option<Id>,
     pub level_name: String,
     pub camera: Camera,
@@ -167,6 +190,12 @@ impl App {
             mode: PlanMode::from_env(),
             cam: CameraMode::from_env(),
             pixels: Pixels::new(),
+            view: ViewKind::default(),
+            views: Views::default(),
+            cut: Cut::new(),
+            orbit: Orbit::new(),
+            paper: Paper::new(),
+            grid: Grid::default(),
             level: None,
             level_name: String::new(),
             camera: Camera { cx: 0.0, cy: 0.0, scale: 0.1, angle: 0.0 },
@@ -225,14 +254,18 @@ impl App {
         let model = &self.session.model;
         let levels = model.levels();
         let kept = self.level.filter(|l| levels.iter().any(|(id, _)| id == l));
-        let (level, name) = match kept.or_else(|| levels.first().map(|(id, _)| *id)) {
+        let first = kept.or_else(|| levels.first().map(|(id, _)| *id));
+        // The view on screen stays while the model has it; a plan view says its level.
+        let view = views::keep(model, self.view, first);
+        let (level, name) = match views::level_of(model, view).or(first) {
             Some(id) => (Some(id), levels.iter().find(|(l, _)| *l == id).map(|(_, l)| l.name.clone()).unwrap_or_default()),
             None => (None, String::new()),
         };
-        if level != self.level {
+        if level != self.level || view != self.view {
             (self.fitted, self.moved) = (false, false);
         }
-        (self.level, self.level_name) = (level, name);
+        (self.level, self.level_name, self.view) = (level, name, view);
+        self.views.rebuild(&self.session.model, view);
         self.levels = levels.iter().map(|(id, l)| (*id, l.name.clone())).collect();
         self.selection.retain(|id| self.session.model.elements.get(*id).is_some());
         self.hovered = self.hovered.filter(|id| self.session.model.elements.get(*id).is_some());
@@ -245,10 +278,11 @@ impl App {
         self.reland();
     }
 
-    /// Frames the level when it is first shown, or shown again at another size.
+    /// Frames the view when it is first shown, or shown again at another size.
     fn fit(&mut self) {
-        if let (false, Some(level)) = (self.fitted, self.level) {
-            let view = render::plan_fit(&self.session.model, level, self.size.0 as u32, self.size.1 as u32, false);
+        if !self.fitted
+            && let Some(view) = views::fit(&self.session.model, self.view, self.size.0 as u32, self.size.1 as u32)
+        {
             self.camera = Camera::from_view(view);
             self.fitted = true;
         }
@@ -260,7 +294,7 @@ impl App {
         self.live_offset.set([0.0, 0.0]);
         self.live_scale.set(1.0);
         self.live_since = None;
-        self.drawing = self.level.map(|level| render::draw(&self.session.model, level, self.camera.view(self.size.0, self.size.1)));
+        self.drawing = views::draw(&self.session.model, self.view, self.camera.view(self.size.0, self.size.1));
         self.revision += 1;
         if let (PlanMode::Pixels, Some(d)) = (self.mode, &self.drawing) {
             let view = self.camera.view(self.size.0, self.size.1);
@@ -273,6 +307,8 @@ impl App {
     fn refresh(&mut self) {
         self.refresh_panel();
         self.refresh_dims();
+        // What is selected is tinted in a section's picture, and a command may have changed what a view shows.
+        self.follow_view();
     }
 
     /// The canvas has laid out at `w` x `h` points.
@@ -458,6 +494,12 @@ impl App {
 
     /// Zoom to Fit: the level framed again.
     pub fn zoom_fit(&mut self) {
+        match self.view {
+            ViewKind::Section(_) => return self.section_fit(),
+            ViewKind::Sheet(_) => return self.paper_fit(),
+            ViewKind::View3D(_) => return self.orbit_fit(),
+            _ => {}
+        }
         self.remember();
         (self.fitted, self.moved) = (false, false);
         self.fit();
@@ -468,6 +510,12 @@ impl App {
     pub fn zoom_by(&mut self, factor: f64) {
         if !factor.is_finite() || factor <= 0.0 {
             return;
+        }
+        match self.view {
+            ViewKind::Section(_) => return self.section_zoom_by(factor),
+            ViewKind::Sheet(_) => return self.paper_zoom_by(factor),
+            ViewKind::View3D(_) => return self.orbit_zoom_by(factor),
+            _ => {}
         }
         self.remember();
         self.camera.zoom_about((self.size.0 / 2.0, self.size.1 / 2.0), self.size, factor);
@@ -612,19 +660,11 @@ impl App {
         }
     }
 
-    /// Shows another level's plan, framed.
+    /// Shows another level's plan, framed (`open_view`: the selection stays).
     pub fn set_level(&mut self, id: Id) {
-        if self.level == Some(id) || !self.levels.iter().any(|(l, _)| *l == id) {
-            return;
+        if self.levels.iter().any(|(l, _)| *l == id) {
+            self.open_view(ViewKind::Plan(id));
         }
-        (self.fitted, self.moved) = (false, false);
-        self.selection.clear();
-        (self.hovered, self.rubber, self.cycle) = (None, None, 0);
-        self.under.clear();
-        self.history.clear();
-        self.picked.clear();
-        self.level = Some(id);
-        self.settle();
     }
 
     /// Opens the ribbon's tab `i` of `tools::TOOLS`, if there is one.
@@ -684,7 +724,7 @@ impl App {
     pub fn status(&self) -> String {
         let hovered = self.hovered.and_then(|id| self.session.model.elements.get(id).map(|e| (e.category(), id)));
         status::line(&status::Facts {
-            level: &self.level_name,
+            level: &self.views.title,
             cursor: self.cursor_mm(),
             hovered,
             selected: self.selection.len(),
