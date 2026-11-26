@@ -470,6 +470,9 @@ impl BimApp {
                 let result = bridge::run(&mut self.session, &request, access);
                 // The core renames and drops the option with its set.
                 self.active_option = self.session.option.clone();
+                if let Request::Execute { command, params, .. } = &request {
+                    self.renovation_ran(command, params, &result);
+                }
                 result
             };
             let _ = reply.send(bridge::reply(result));

@@ -7639,13 +7639,10 @@ fn renovation(s: &mut Session, p: &Value) -> R {
             }
         }
         (None, Some(status)) => {
-            let made_in = match status {
+            (s.phase, s.demolish) = match status {
                 None => (None, None),
-                Some(phasing::Status::New) => (new_name.clone(), None),
-                Some(phasing::Status::Demolished) => (existing_name.clone(), new_name.clone()),
-                Some(_) => (existing_name.clone(), None),
+                Some(status) => phasing::drawn_in(&s.model, status, new.as_deref()).map_err(|e| bad(c, e))?,
             };
-            (s.phase, s.demolish) = made_in;
         }
         (_, None) => {}
     }

@@ -121,6 +121,17 @@ pub fn default_phases() -> Vec<String> {
     phases(Language::English)
 }
 
+/// The comparative: what stands, what comes down and what is built in one view, each status drawn as the phases' overrides
+/// say. A project starts with no filter for it; a renovation view makes one named [`COMPARATIVE`], in the project's language,
+/// the first time it shows it.
+pub const COMPARATIVE_FILTER: PhaseFilter = PhaseFilter {
+    new: Presentation::Overridden,
+    existing: Presentation::Overridden,
+    demolished: Presentation::Overridden,
+    temporary: Presentation::Overridden,
+};
+pub const COMPARATIVE: &str = msg!("Comparative");
+
 /// The phase filters a project starts with, in `language`.
 pub fn filters(language: Language) -> BTreeMap<String, PhaseFilter> {
     use Presentation::{ByCategory as B, NotDisplayed as N, Overridden as O};
@@ -228,6 +239,20 @@ pub fn renovation_phases(m: &Model, new: Option<&str>) -> Result<(usize, usize),
         ));
     }
     Ok((at - 1, at))
+}
+
+/// The phase what is drawn in `status` is made in and the one it is taken down in, a session's `phase` and `demolish`, with
+/// `new` the work's phase (the project's last unless it says) and the one before it what stands: existing is made in that
+/// one, to be demolished is made there and taken down in the work, new is made in the work. Refused as
+/// [`renovation_phases`] refuses.
+pub fn drawn_in(m: &Model, status: Status, new: Option<&str>) -> Result<(Option<String>, Option<String>), String> {
+    let (existing, at) = renovation_phases(m, new)?;
+    let name = |i: usize| m.phases.get(i).cloned();
+    Ok(match status {
+        Status::New => (name(at), None),
+        Status::Demolished => (name(existing), name(at)),
+        Status::Existing | Status::Temporary => (name(existing), None),
+    })
 }
 
 /// Gives element `id` the status `status` (new, existing or demolished) in the phase at `at`, the one before it being

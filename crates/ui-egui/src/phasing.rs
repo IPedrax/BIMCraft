@@ -65,7 +65,7 @@ fn status_name(s: Status) -> &'static str {
 /// The renovation filter's choices, the views a renovation is drawn in, in plain words: each its tip, whether it shows the
 /// project's first phase (else its last), and how its phase filter shows each status. A filter is found by what it does, not
 /// by its name, which a project may change or have in its own language.
-const RENOVATION: [(&str, &str, bool, PhaseFilter); 4] = {
+const RENOVATION: [(&str, &str, bool, PhaseFilter); 5] = {
     use Presentation::{ByCategory as B, NotDisplayed as N, Overridden as O};
     const ALL: PhaseFilter = PhaseFilter { new: B, existing: B, demolished: B, temporary: B };
     [
@@ -83,8 +83,27 @@ const RENOVATION: [(&str, &str, bool, PhaseFilter); 4] = {
             false,
             PhaseFilter { new: B, existing: O, demolished: N, temporary: B },
         ),
+        (
+            msg!("Comparative"),
+            msg!("What stands, what comes down and what is built, each drawn as the phases' overrides say"),
+            false,
+            phasing::COMPARATIVE_FILTER,
+        ),
     ]
 };
+
+/// [`RENOVATION`]'s choices as the Renovation palette's buttons say them.
+const SHOW: [&str; 5] = [msg!("Show All"), msg!("Show Existing"), msg!("Show Demolition"), msg!("Show New"), msg!("Show Comparative")];
+
+/// Why the Renovation palette has no statuses, in the interface's words: a project of one phase, or a view of the first.
+fn renovation_note(m: &Model) -> String {
+    if m.phases.len() < 2 {
+        t("The project has one phase: renovation needs one for what stands and a later one for the work. Add one in Manage > Phasing")
+            .to_string()
+    } else {
+        t("This view shows the first phase, which nothing stands before: show a later one to draw a renovation").to_string()
+    }
+}
 
 /// Which of [`RENOVATION`] a view with graphics `g` (as its template leaves them) shows, if it is one of them.
 fn renovation(m: &Model, g: &Graphics) -> Option<usize> {
@@ -114,14 +133,28 @@ fn presentation_name(p: Presentation) -> &'static str {
 impl BimApp {
     /// What a command makes is made in the active design option, and in the phase of the view on
     /// screen when that view has one of its own or a phase filter; else in the project's first
-    /// phase, which leaves no value.
+    /// phase, which leaves no value. A status chosen on the Renovation palette overrides the view's: what is drawn is
+    /// made, and taken down, in the phases of that status over the phase the view shows.
     pub(crate) fn made_in(&mut self) {
         let m = &self.session.model;
         let own = self.graphics_now();
         let g = own.resolved(m);
         let phase = (g.phase.is_some() || g.phase_filter.is_some()).then(|| g.phase.clone().or_else(|| m.phases.last().cloned())).flatten();
+        let drawn = self.drawn_as.and_then(|status| phasing::drawn_in(m, status, g.phase.as_deref()).ok());
         let option = self.active_option.clone().filter(|o| phasing::option_exists(m, o));
-        (self.session.phase, self.session.option) = (phase, option);
+        (self.session.phase, self.session.demolish) = drawn.unwrap_or((phase, None));
+        self.session.option = option;
+    }
+
+    /// After command `id` ran with `params`: a `renovation` that set the status drawn in (as an agent's may) is the
+    /// palette's too, so the next command keeps it.
+    pub(crate) fn renovation_ran(&mut self, id: &str, params: &Value, result: &Result<Value, String>) {
+        if id != "renovation" || result.is_err() || params.get("ids").is_some() || params.get("id").is_some() {
+            return;
+        }
+        if let Some(v) = params.get("status") {
+            self.drawn_as = Status::ALL.into_iter().find(|s| v.as_str() == Some(s.name()));
+        }
     }
 
     /// Demolish (DW): element `id` comes down in the phase of the view on screen, the project's last unless the view has
@@ -189,20 +222,128 @@ impl BimApp {
         let r = crate::footer::menu_button(ui, msg!("Renovation"), now.map_or("Custom", |i| RENOVATION[i].0), tip, set_by.as_deref());
         let mut picked = None;
         Popup::menu(&r).show(|ui| {
-            for (i, (word, tip, first, f)) in RENOVATION.iter().enumerate() {
-                let set = filter_for(&m, f);
-                let item = ui.add_enabled_ui(set.is_some(), |ui| ui.selectable_label(now == Some(i), t(word))).inner;
+            for (i, (word, tip, _, f)) in RENOVATION.iter().enumerate() {
+                let set = filter_for(&m, f).is_some() || *f == phasing::COMPARATIVE_FILTER;
+                let item = ui.add_enabled_ui(set, |ui| ui.selectable_label(now == Some(i), t(word))).inner;
                 let note = t("The project has no phase filter that shows this: make one in Manage > Phasing");
                 if item.on_hover_text(t(tip)).on_disabled_hover_text(note).clicked() {
-                    let phase = if *first { json!(m.phases.first()) } else { Value::Null };
-                    picked = set.map(|filter| json!({"view": view, "phase": phase, "phase_filter": filter}));
+                    picked = Some(i);
                 }
             }
         });
-        if let Some(p) = picked {
-            self.run("graphics", p);
+        if let Some(i) = picked {
+            self.show_renovation(view, i);
         }
         ui.separator();
+    }
+
+    /// View `view` shows [`RENOVATION`]'s choice `i`: its phase and phase filter in one `graphics` command, when the project
+    /// has a filter for it. The comparative, which a project starts without, makes its filter first, in the same undo step.
+    fn show_renovation(&mut self, view: Value, i: usize) {
+        let m = Arc::clone(&self.session.model);
+        let Some((_, _, first, f)) = RENOVATION.get(i) else { return };
+        let phase = if *first { json!(m.phases.first()) } else { Value::Null };
+        if let Some(filter) = filter_for(&m, f) {
+            self.run("graphics", json!({"view": view, "phase": phase, "phase_filter": filter}));
+            return;
+        }
+        if *f != phasing::COMPARATIVE_FILTER {
+            return;
+        }
+        let word = m.language.word(phasing::COMPARATIVE);
+        let name = std::iter::once(word.to_string())
+            .chain((2..).map(|n| format!("{word} {n}")))
+            .find(|n| !m.phase_filters.contains_key(n))
+            .unwrap_or_default();
+        let make =
+            json!({"name": name, "new": "overridden", "existing": "overridden", "demolished": "overridden", "temporary": "overridden"});
+        let commands = [("phase_filter", make), ("graphics", json!({"view": view, "phase": phase, "phase_filter": name}))];
+        if let Err(text) = self.exec_batch("Visibility/Graphics", &commands) {
+            self.status = crate::Status { text, error: true };
+        }
+    }
+
+    /// The Renovation palette: the status of the work what is drawn from now on is in (existing, to demolish, new, or as the
+    /// view says), that status given to the selection in one `renovation`, and which phase of the work the view shows. Each
+    /// status is read over the phase the view shows, the one before it being what stands; a project of one phase has none.
+    pub(crate) fn renovation_palette(&mut self, ui: &mut Ui) {
+        const STATUSES: [(Status, &str, &str, &str); 3] = [
+            (Status::Existing, msg!("Draw Existing"), msg!("Set Existing"), msg!("What stands before the work, and stays")),
+            (
+                Status::Demolished,
+                msg!("Draw To Demolish"),
+                msg!("Set To Demolish"),
+                msg!("What stands before the work, and comes down in it"),
+            ),
+            (Status::New, msg!("Draw New"), msg!("Set New"), msg!("What the work builds")),
+        ];
+        let m = Arc::clone(&self.session.model);
+        let g = self.graphics_now().resolved(&m).into_owned();
+        let phases = phasing::renovation_phases(&m, g.phase.as_deref());
+        let why = phases.is_err().then(|| renovation_note(&m));
+        let ok = phases.is_ok();
+        let mut give = None;
+        ScrollArea::vertical().id_salt("renovation").auto_shrink([false, false]).show(ui, |ui| {
+            egui::Frame::new().inner_margin(8.0).show(ui, |ui| {
+                if let Some(why) = &why {
+                    ui.label(RichText::new(why).color(pal().muted));
+                    ui.add_space(4.0);
+                }
+                ui.label(RichText::new(t("Draw in")).strong());
+                let tip = t("New elements are made in the phase of the view they are drawn in, as the tools always have");
+                if ui.add(Button::selectable(self.drawn_as.is_none(), t("Follow the View"))).on_hover_text(tip).clicked() {
+                    self.drawn_as = None;
+                }
+                for (status, draw, _, tip) in STATUSES {
+                    let r = ui.add_enabled(ok, Button::selectable(self.drawn_as == Some(status), t(draw)));
+                    if r.on_hover_text(t(tip)).clicked() {
+                        self.drawn_as = Some(status);
+                    }
+                }
+                if let Ok((existing, new)) = &phases {
+                    let (existing, new) =
+                        (m.phases.get(*existing).cloned().unwrap_or_default(), m.phases.get(*new).cloned().unwrap_or_default());
+                    let text = tf("What stands: {}; the work: {}", &[&existing, &new]);
+                    ui.label(RichText::new(text).small().color(pal().muted));
+                }
+                ui.separator();
+                let selection: Vec<Id> =
+                    self.selection.iter().copied().filter(|id| m.elements.get(*id).is_some_and(|e| e.params().is_some())).collect();
+                let at = phases.as_ref().map(|p| p.1).ok();
+                let now = at.and_then(|at| {
+                    let of: Vec<Option<Status>> =
+                        selection.iter().map(|id| m.elements.get(*id).and_then(|e| phasing::status(&m, e, at))).collect();
+                    let (first, rest) = of.split_first()?;
+                    Some(if rest.iter().all(|s| s == first) { first.map_or("None", status_name) } else { msg!("Mixed") })
+                });
+                let shown = now.map_or_else(|| t("Nothing selected").to_string(), |w| tf("Selection: {}", &[t(w)]));
+                ui.label(RichText::new(shown).strong());
+                for (status, _, set, tip) in STATUSES {
+                    let r = ui.add_enabled(ok && !selection.is_empty(), Button::new(t(set)));
+                    if r.on_hover_text(t(tip)).clicked() {
+                        give = Some((status, selection.clone()));
+                    }
+                }
+                ui.separator();
+                ui.label(RichText::new(t("The view shows")).strong());
+                if let Some(view) = self.graphic_view() {
+                    let shown = renovation(&m, &self.graphics_shown());
+                    let set_by = self.controlled_by(Group::Phase);
+                    for (i, (word, tip, _, f)) in RENOVATION.iter().enumerate() {
+                        let label = SHOW.get(i).copied().unwrap_or(word);
+                        let on = set_by.is_none() && (filter_for(&m, f).is_some() || *f == phasing::COMPARATIVE_FILTER);
+                        let r = ui.add_enabled(on, Button::selectable(shown == Some(i), t(label)));
+                        if r.on_hover_text(t(tip)).clicked() {
+                            self.show_renovation(view.clone(), i);
+                        }
+                    }
+                }
+            });
+        });
+        if let (Some((status, ids)), Ok((_, at))) = (give, phases) {
+            let phase = m.phases.get(at).cloned();
+            self.run("renovation", json!({"status": status.name(), "ids": ids, "phase": phase}));
+        }
     }
 
     /// The active design option, in the status bar: what new elements are made in. Nothing while the
