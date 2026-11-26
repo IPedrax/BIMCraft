@@ -116,6 +116,20 @@ category's, then each view filter's, then the element's own, the last prevailing
 Visibility/Graphics (or picked out by a filter that fills) keeps it whatever the button does. The button is lit for the category
 and can't tell, since what the scans come to is the whole `Look` for every frame of the bar; its tooltip says so instead.
 
+A view colours a scan's points by what its override's `scan` says (`graphics::ScanColour`, Revit's Color Mode): `normal`, their
+own colours; `elevation`, their height in the model through `graphics::RAMP` (blue, cyan, green, yellow, red) from `low` to `high`
+(mm; the scan's own foot and head where not given, so each scan runs the whole ramp); or `intensity`, through the same ramp from the
+weakest return (blue) to the strongest (red), as a surveyor's viewer shows it, each by its rank among the scan's intensities
+(`Cloud::intensity_levels`, histogram equalization: however the returns crowd, the colours spread over the whole ramp;
+`graphics::intensity_colour`). A scan keeps each point's intensity for that (`Cloud::intensity`, a byte over the file's range, in the project
+file as `intensity` beside the colours; an older file has none, and a scan whose file had none, or all alike, keeps its own
+colours). It resolves as any override does, the category's, then each view filter's, then the scan's own, and a projection `fill`
+(High Contrast's) still colours them one colour over it. The 3D view, the graphics card and sections colour through
+`view3d::Paint`, worked out once a scan for each picture; a plan through `render::scans`. The view control bar has Point Cloud
+Colours beside High Contrast (Normal takes the category's mode away); Visibility/Graphics has a Point Cloud Colours group on the
+Model Categories tab (the mode, and an elevation's Low and High, typed in the project's units) and the same for a scan picked on
+its Elements tab (`clouds::scan_colour_rows`).
+
 A plan snaps to a scan where its cut plane cuts it, to trace what was measured: of the points within `snap::CUT_BAND` of the cut,
 the nearest to the cursor seen from above (`Kind::Point`, "Point Cloud", switched by `Snaps::cloud` in Manage > Snaps). It comes
 after what the model has to snap to (ends, middles, centres, crossings), so a wall's end beats a point nearer the cursor, and
