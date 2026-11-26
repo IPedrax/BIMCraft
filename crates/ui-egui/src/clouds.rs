@@ -12,9 +12,11 @@ use std::time::{Duration, Instant};
 
 use bimcraft_core::cloud::ScanRead;
 use bimcraft_core::engine::Session;
+use bimcraft_core::graphics::{ScanBy, ScanColour};
 use bimcraft_core::progress::{CANCELLED, Progress};
+use bimcraft_core::units::Units;
 use bimcraft_i18n::msg;
-use egui::{Align, Button, Context, Grid, Id as UiId, Layout, ProgressBar, RichText, TextEdit};
+use egui::{Align, Button, Context, Grid, Id as UiId, Layout, ProgressBar, RichText, TextEdit, Ui};
 use serde_json::{Value, json};
 
 use crate::BimApp;
@@ -273,4 +275,66 @@ impl BimApp {
 /// How big files `paths` are together, bytes.
 fn files_size(paths: &[PathBuf]) -> u64 {
     paths.iter().filter_map(|f| std::fs::metadata(f).ok()).map(|m| m.len()).sum()
+}
+
+/// The colour modes a view may draw point clouds in, as Revit's Color Mode names them.
+pub(crate) const SCAN_MODES: [(ScanBy, &str); 3] =
+    [(ScanBy::Normal, msg!("Normal")), (ScanBy::Elevation, msg!("Elevation")), (ScanBy::Intensity, msg!("Intensity"))];
+
+/// The name of what `c` colours point clouds by.
+pub(crate) fn scan_mode_name(c: Option<ScanColour>) -> &'static str {
+    let by = c.map(|c| c.by).unwrap_or_default();
+    SCAN_MODES.iter().find(|(b, _)| *b == by).map_or("", |(_, n)| n)
+}
+
+/// Point clouds' Color Mode as rows of a grid: what `scan` colours them by and, by elevation, the heights the ramp runs between
+/// (blank: each scan's own foot and head), typed in `units`. What it's changed to, if it changed: none for their own colours.
+pub(crate) fn scan_colour_rows(
+    ui: &mut Ui,
+    salt: &str,
+    scan: Option<ScanColour>,
+    units: Units,
+    enabled: bool,
+) -> Option<Option<ScanColour>> {
+    let mut now = scan.unwrap_or_default();
+    let before = now;
+    ui.add_enabled_ui(enabled, |ui| {
+        let l = ui.label(t("Color Mode"));
+        let c = egui::ComboBox::from_id_salt((salt, "scan-mode")).selected_text(t(scan_mode_name(Some(now)))).show_ui(ui, |ui| {
+            for (by, name) in SCAN_MODES {
+                ui.selectable_value(&mut now.by, by, t(name));
+            }
+        });
+        c.response.labelled_by(l.id);
+    });
+    ui.end_row();
+    if now.by == ScanBy::Elevation {
+        for (label, value) in [(msg!("Low"), &mut now.low), (msg!("High"), &mut now.high)] {
+            let l = ui.label(t(label));
+            let id = ui.id().with((salt, label));
+            let mut text = ui.data_mut(|d| d.get_temp::<String>(id)).unwrap_or_else(|| value.map_or_else(String::new, |v| units.length(v)));
+            let r = ui
+                .add_enabled(enabled, TextEdit::singleline(&mut text).hint_text(t("the scan's own")).desired_width(140.0))
+                .labelled_by(l.id);
+            if r.changed() {
+                // Blank is each scan's own; what isn't a length yet is kept as typed.
+                if text.trim().is_empty() {
+                    *value = None;
+                } else if let Some(v) = units.parse(&text) {
+                    *value = Some(v);
+                }
+            }
+            if r.has_focus() {
+                ui.data_mut(|d| d.insert_temp(id, text));
+            } else {
+                ui.data_mut(|d| d.remove::<String>(id));
+            }
+            ui.end_row();
+        }
+    }
+    if now.by != ScanBy::Elevation {
+        (now.low, now.high) = (None, None);
+    }
+    let after = (now != ScanColour::default()).then_some(now);
+    (now != before || (scan.is_some() && after.is_none())).then_some(after).filter(|a| *a != scan)
 }

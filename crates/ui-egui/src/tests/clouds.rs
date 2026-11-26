@@ -475,3 +475,43 @@ fn a_big_scan_that_cant_come_in_says_why_in_its_box_once_read() {
     press(&mut h, "Cancel");
     assert!(h.query_by_label("OK").is_none());
 }
+
+/// What the view colours its point clouds by, as the category's override says.
+fn scan_mode(h: &Harness<BimApp>) -> Option<bimcraft_core::graphics::ScanColour> {
+    h.state().graphics_shown().categories.get("pointcloud").and_then(|o| o.scan)
+}
+
+#[test]
+fn the_view_control_bar_colours_a_views_point_clouds_by_height_or_intensity() {
+    use bimcraft_core::graphics::{ScanBy, ScanColour};
+    let h = app(BOX);
+    assert!(h.query_by_label("Point Cloud Colours").is_none(), "with no scan there is nothing to colour");
+    let mut h = app(&format!("point_cloud {}", json!({"path": face("modes", "face.xyz", 0.0)})));
+    press(&mut h, "Point Cloud Colours");
+    press(&mut h, "Elevation");
+    assert_eq!(scan_mode(&h), Some(ScanColour { by: ScanBy::Elevation, ..ScanColour::default() }));
+    press(&mut h, "Point Cloud Colours");
+    press(&mut h, "Intensity");
+    assert_eq!(scan_mode(&h).map(|c| c.by), Some(ScanBy::Intensity));
+    // Normal takes the mode away: the scans' own colours.
+    press(&mut h, "Point Cloud Colours");
+    press(&mut h, "Normal");
+    assert_eq!(scan_mode(&h), None);
+    // One step each.
+    h.state_mut().run("undo", json!({}));
+    h.run();
+    assert_eq!(scan_mode(&h).map(|c| c.by), Some(ScanBy::Intensity));
+}
+
+#[test]
+fn visibility_graphics_sets_the_point_clouds_colours_and_the_heights_their_ramp_runs_between() {
+    use bimcraft_core::graphics::{ScanBy, ScanColour};
+    let mut h = app(&format!("point_cloud {}", json!({"path": face("vg-modes", "face.xyz", 0.0)})));
+    shortcut(&mut h, "VG");
+    assert!(h.query_by_role_and_label(Role::ComboBox, "Color Mode").is_some(), "the Model Categories tab has the scans' colours");
+    choose(&mut h, "Color Mode", "Elevation");
+    type_into(&mut h, "Low", "500");
+    type_into(&mut h, "High", "1500");
+    press(&mut h, "OK");
+    assert_eq!(scan_mode(&h), Some(ScanColour { by: ScanBy::Elevation, low: Some(500.0), high: Some(1500.0) }));
+}
