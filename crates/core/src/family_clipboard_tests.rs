@@ -162,6 +162,7 @@ fn line(a: (f64, f64), b: (f64, f64)) -> SketchLine {
         style: None,
         invisible: false,
         slope: None,
+        defines_slope: None,
     }
 }
 

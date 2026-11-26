@@ -2539,7 +2539,8 @@ impl BimApp {
             (Tool::Modify, Some(_)) if !self.outline_pending => c.under.get(c.cycle).copied(),
             (_, Some(q)) => under_at(q),
             _ => None,
-        };
+        }
+        .filter(|_| self.roof_edge_edit.is_none());
 
         // While a note is written here, the pointer is its editor's.
         let writing = self.writing_in(key);
@@ -2561,6 +2562,7 @@ impl BimApp {
         let picking = self.underlay_edit.is_some();
         if response.drag_started_by(PointerButton::Primary)
             && self.tool == Tool::Modify
+            && self.roof_edge_edit.is_none()
             && (!sketching || outline_walls)
             && !writing
             && !picking
@@ -2695,7 +2697,10 @@ impl BimApp {
             // What lay under the press, which the hand may have left by the time the button came up. Walls' Outline's
             // Ctrl click always looks again: its hover was taken without Ctrl, when a wall was not what it sought.
             let found = if Some(q) == local && !outline_walls { hovered } else { under_at(q) };
-            if self.outline_pending && (mods.ctrl || mods.command) {
+            if self.roof_edge_edit.is_some() {
+                let hit = self.roof_edge_edit.as_ref().and_then(|edit| edit.hit(at, |q| pos(rect.min, view.px(P2(q[0], q[1])))));
+                self.roof_edge_pick(hit, click_modifiers(ui));
+            } else if self.outline_pending && (mods.ctrl || mods.command) {
                 if !outline_boxed {
                     match found.filter(|id| model.wall(*id).is_some()) {
                         Some(id) => {
@@ -2889,6 +2894,9 @@ impl BimApp {
         }
         if writing {
             self.note_canvas(ui, &response, &p, d.place, &d);
+        }
+        if let Some(edit) = &self.roof_edge_edit {
+            edit.paint(&p, |q| pos(rect.min, view.px(P2(q[0], q[1]))), local.map(|q| pos(rect.min, q)));
         }
         if let Some(sk) = &self.sketch {
             let over = local

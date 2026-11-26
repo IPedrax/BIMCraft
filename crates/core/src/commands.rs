@@ -631,7 +631,9 @@ other_files(
         &[],
         "{id, sketch?: [[[x,y],[x,y]],…]} redraws a floor's, a ceiling's, a roof's footprint's or a shaft's outline and its \
          holes (a floor's or a ceiling's openings, a roof's courtyards; a shaft has none) as a sketch, all at once (see \
-         `sketch`); a roof's gable edges stay gables where the new footprint has the same edge. Without `sketch`, gives the \
+         `sketch`); a roof's gable edges stay gables where the new footprint has the same edge. Roof lines may carry \
+         `slope` (degrees, 0 inherits) and `defines_slope` (false upright, true sloping); explicit choices override the \
+         old gable choice. Without `sketch`, gives these choices with the \
          outline and holes it has now, as the lines to edit. The line a Pick Walls placed in the window's sketch remembers its \
          wall and face while that sketch is open, never in the project: a command gives every line by its coordinates, and \
          `floor`'s `outline` takes their place. The outline must be simple, as `floor` says; a line that \
@@ -1387,7 +1389,8 @@ other_files(
          boundary's) left upright, gable ends; `gable` leaves a rectangle's short ends upright. `slopes`: a slope in \
          degrees (up to 75) for each edge, numbered as `gables` are, 0 for an edge that takes `slope`; none, every edge \
          does; the eaves stay level and an edge in `gables` stays upright whatever its slope. A `sketch` line may carry \
-         a `slope` for the edges along it. Or with `extrusion` {line: \
+         a `slope` for the edges along it and `defines_slope` (false makes them upright, true slopes them), overriding \
+         the gable choice there. At least one edge of a pitched roof must slope. Or with `extrusion` {line: \
          [[x,y],[x,y]], profile: [[along, up],…], from?, to}: its underside's profile in the upright plane through `line`, \
          along it from its start and up from the base, swept square to it from `from` (0) to `to` mm to its left. \
          `openings` are holes through it in plan; with `join`, a roof it runs into, it ends where it meets that one's top",
@@ -2422,7 +2425,11 @@ other_files(
          A filled region's, a floor's or a toposolid's model pattern is set by `pattern_origin` [x, y], plan mm, where its lines start, and \
          `pattern_angle`, degrees counter-clockwise (both shown by `elements`); to put a pattern line of one on a reference \
          line, Model::align_pattern gives the `pattern_origin` that does. A floor's, a ceiling's, a roof's or a shaft's \
-         outline it sets is held to what `floor` says of it. A plan's (a level's or a plan view's) `view_range` merges \
+         outline it sets is held to what `floor` says of it. For a footprint roof with individual pitches, changing `slope` requires \
+         `roof_slope_mode`: `inherited` keeps explicit edge pitches, `all` changes every defining edge to the new pitch (upright edges \
+         and inheritance markers stay). If that moves the shared eave datum, the first call refuses with the signed change in mm; \
+         repeat with `allow_eave_change: true` only after accepting that height change. No mutation or history on refusal. \
+         A plan's (a level's or a plan view's) `view_range` merges \
          {top?, cut?, bottom?, depth?: mm, top_from?, bottom_from?, depth_from?: associated|above|below|unlimited|{level: \
          id|GUID}}: each plane an offset over the level it is measured from (the plan's own, the next up or down, one \
          named, or no limit); the cut plane is the plan's own level's, and a top of null from its own level is the level above. \
@@ -15521,6 +15528,7 @@ fn roof(s: &mut Session, p: &Value) -> R {
     if absent(p.get("slopes")) {
         r.slopes = slopes_of_edges(&r, &lines, &[]);
     }
+    define_roof_slopes(m, &mut r, &lines).map_err(|e| bad(c, e))?;
     // Match sketch slopes before moving the edges: offsets keep their numbers, not their locations.
     // An edited boundary is already the eave outline, so this applies only at creation.
     if given && r.extrusion.is_none() {
@@ -15545,7 +15553,31 @@ fn roof(s: &mut Session, p: &Value) -> R {
 
 /// `lines` as a roof keeps them: none holds a `slope`, which the roof keeps as its `slopes`.
 fn unslope(lines: &[SketchLine]) -> Vec<SketchLine> {
-    lines.iter().map(|l| SketchLine { slope: None, ..l.clone() }).collect()
+    lines.iter().map(|l| SketchLine { slope: None, defines_slope: None, ..l.clone() }).collect()
+}
+
+/// Per-line slope definition overrides the existing gable choice, without discarding its pitch.
+/// Resolve automatic gables before applying explicit choices so they cannot override the sketch.
+fn define_roof_slopes(m: &Model, r: &mut Roof, lines: &[SketchLine]) -> Result<(), String> {
+    let said: Vec<_> = lines.iter().filter_map(|l| Some((l.points(), l.defines_slope?))).collect();
+    if said.is_empty() {
+        return Ok(());
+    }
+    let up = m.roof_uprights(r)?;
+    let gables: Vec<usize> = r
+        .edges()
+        .enumerate()
+        .filter_map(|(i, (a, b))| {
+            let upright = said.iter().find(|(drawn, _)| sketch::along(drawn, a, b)).map_or(up[i], |(_, defines)| !defines);
+            upright.then_some(i)
+        })
+        .collect();
+    if gables.iter().copied().eq(up.iter().enumerate().filter(|(_, u)| **u).map(|(i, _)| i)) {
+        return Ok(());
+    }
+    r.gables = gables;
+    r.gable = false;
+    Ok(())
 }
 
 /// The `slopes` of roof `r`'s footprint edges, as the sketch `lines` that say a `slope` give them: an edge along such a line has
@@ -15700,7 +15732,13 @@ fn sketch_param(c: &str, p: &Value, key: &str, old: &[SketchLine]) -> Result<Opt
             Given::Arc([a, b, t]) => Ok(SketchLine::arc(a, b, t)),
             Given::Full(k) => {
                 let curve = k.fields().curve().map_err(|e| bad(c, format!("`{key}` line {i}: {e}")))?;
-                let mut l = SketchLine { style: k.style.clone(), invisible: k.invisible, slope: k.slope, ..SketchLine::from(curve) };
+                let mut l = SketchLine {
+                    style: k.style.clone(),
+                    invisible: k.invisible,
+                    slope: k.slope,
+                    defines_slope: k.defines_slope,
+                    ..SketchLine::from(curve)
+                };
                 if k.id != 0 {
                     let id = k.id;
                     let was = old.iter().find(|o| o.id == id).ok_or_else(|| {
@@ -15788,7 +15826,7 @@ fn sketch_lines(s: &mut Session, p: &Value) -> R {
 }
 
 /// An element's sketch: the one it keeps, while that still draws its outline and holes; else their edges, as new lines.
-fn boundary_now(e: &Element) -> Option<Vec<SketchLine>> {
+fn boundary_now(m: &Model, e: &Element) -> Option<Vec<SketchLine>> {
     let (outline, holes) = match e {
         Element::Floor(f) => (f.boundary.clone(), f.openings.clone()),
         Element::Ceiling(x) => (x.boundary.clone(), x.openings.clone()),
@@ -15800,18 +15838,23 @@ fn boundary_now(e: &Element) -> Option<Vec<SketchLine>> {
     let mut lines = kept.unwrap_or_else(|| sketch::lines_of(&outline, &holes));
     // A roof's lines say the slope their edges share, when they have one of their own.
     if let Element::Roof(r) = e
-        && !r.slopes.is_empty()
         && r.edges().count() <= crate::model::MAX_ROOF_POINTS
     {
+        let up = m.roof_uprights(r).ok()?;
         for l in &mut lines {
             let drawn = l.points();
+            let defines: Vec<bool> =
+                r.edges().enumerate().filter(|(_, (a, b))| sketch::along(&drawn, *a, *b)).map(|(i, _)| !up[i]).collect();
+            l.defines_slope = defines.first().copied().filter(|first| defines.iter().all(|d| d == first));
             let mine: Vec<f64> = r
                 .edges()
                 .enumerate()
                 .filter(|(_, (a, b))| sketch::along(&drawn, *a, *b))
                 .map(|(i, _)| r.slopes.get(i).copied().unwrap_or(0.0))
                 .collect();
-            l.slope = mine.first().copied().filter(|first| mine.iter().all(|s| s == first));
+            if !r.slopes.is_empty() {
+                l.slope = mine.first().copied().filter(|first| mine.iter().all(|s| s == first));
+            }
         }
     }
     Some(lines)
@@ -15841,8 +15884,8 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
         s.model_mut().elements.insert(id, Element::FilledRegion(FilledRegion { sketch: lines, ..r }));
         return Ok(json!({"id": id, "area_m2": m2(profile.area())}));
     }
-    let now =
-        boundary_now(&e).ok_or_else(|| bad(c, format!("{id} isn't a floor, a ceiling, a roof's footprint, a shaft or a filled region")))?;
+    let now = boundary_now(m, &e)
+        .ok_or_else(|| bad(c, format!("{id} isn't a floor, a ceiling, a roof's footprint, a shaft or a filled region")))?;
     if !absent(p.get("sketch"))
         && let Some((room, part)) = m.finish_of(id)
     {
@@ -15876,6 +15919,7 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
                 |(a, b): (P2, P2), (c, d): (P2, P2)| (a.dist(c) <= TOL && b.dist(d) <= TOL) || (a.dist(d) <= TOL && b.dist(c) <= TOL);
             let kept: Vec<(P2, P2)> = old.edges().enumerate().filter(|(i, _)| old.gables.contains(i)).map(|(_, e)| e).collect();
             new.gables = new.edges().enumerate().filter(|(_, e)| kept.iter().any(|k| same(*k, *e))).map(|(i, _)| i).collect();
+            define_roof_slopes(m, &mut new, &lines).map_err(|e| bad(c, e))?;
             Element::Roof(new)
         }
         _ => return Err(bad(c, format!("{id} isn't a floor, a ceiling, a roof's footprint or a shaft"))),
@@ -20474,6 +20518,17 @@ fn room_finish(s: &mut Session, p: &Value) -> R {
 fn modify(s: &mut Session, p: &Value) -> R {
     let c = "modify";
     let fields = p.as_object().ok_or_else(|| bad(c, "params must be {id | ids, …fields}"))?;
+    let roof_mode = string(c, p, "roof_slope_mode")?;
+    if roof_mode.as_deref().is_some_and(|mode| !matches!(mode, "inherited" | "all")) {
+        return Err(bad(c, "`roof_slope_mode` must be `inherited` or `all`"));
+    }
+    let allow_eave = flag(c, p, "allow_eave_change")?;
+    if (roof_mode.is_some() || fields.contains_key("allow_eave_change")) && !fields.contains_key("slope") {
+        return Err(bad(c, "roof pitch choices require `slope`"));
+    }
+    if roof_mode.as_deref() == Some("all") && fields.contains_key("slopes") {
+        return Err(bad(c, "give `roof_slope_mode: all` or explicit `slopes`, not both"));
+    }
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
     let mut edited = Vec::new();
@@ -20492,6 +20547,9 @@ fn modify(s: &mut Session, p: &Value) -> R {
             ));
         }
         let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+        if (roof_mode.is_some() || fields.contains_key("allow_eave_change")) && !matches!(e,Element::Roof(r) if r.extrusion.is_none()) {
+            return Err(bad(c, "roof pitch choices apply only to footprint roofs"));
+        }
         // A room's floor and ceiling are its room's: `room_finish` lets one go or makes it again, and one that follows a
         // room is where and what the room's type says.
         if matches!(e, Element::Room(_))
@@ -20514,7 +20572,7 @@ fn modify(s: &mut Session, p: &Value) -> R {
         let obj = v.as_object_mut().ok_or_else(|| bad(c, format!("element {id} can't be edited")))?;
         for (k, val) in fields {
             let val = match k.as_str() {
-                "id" | "ids" => continue,
+                "id" | "ids" | "roof_slope_mode" | "allow_eave_change" => continue,
                 // An image's height, and a PDF's scale (1 : n, its paper's size n times), set its width: it keeps its aspect.
                 "height" | "scale" if matches!(e, Element::Image(_)) => {
                     let Element::Image(im) = e else { continue };
@@ -20562,6 +20620,31 @@ fn modify(s: &mut Session, p: &Value) -> R {
             }
         }
         let mut e2 = serde_json::from_value::<Element>(v).map_err(|e| bad(c, format!("element {id}: {e}")))?;
+        if let (Element::Roof(old), Element::Roof(next)) = (e, &mut e2)
+            && old.extrusion.is_none()
+            && next.extrusion.is_none()
+            && fields.contains_key("slope")
+        {
+            *next = m.roof_with_pitch(next, next.slope, roof_mode.as_deref() == Some("all"))?;
+            let individual = m.roof_pitch_summary(old)?.individual || m.roof_pitch_summary(next)?.individual;
+            if old.slope != next.slope && individual {
+                let delta = m.roof_eave_height(next) - m.roof_eave_height(old);
+                if roof_mode.is_none() {
+                    return Err(bad(
+                        c,
+                        format!(
+                            "roof {id}: choose `roof_slope_mode` (`inherited` keeps individual pitches; `all` changes all defining pitches). Eave height change: {delta:+.3} mm"
+                        ),
+                    ));
+                }
+                if delta.abs() > 1e-6 && !allow_eave {
+                    return Err(bad(
+                        c,
+                        format!("roof {id}: eave height changes by {delta:+.3} mm; accept with `allow_eave_change: true` or cancel"),
+                    ));
+                }
+            }
+        }
         // A note's new text keeps its runs on what didn't change, unless it is given runs of its own.
         if let (Element::Text(old), Element::Text(n)) = (e, &mut e2)
             && old.text != n.text
