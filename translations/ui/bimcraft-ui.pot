@@ -15136,6 +15136,10 @@ msgstr ""
 msgid "Remove Constraints"
 msgstr ""
 
+#: crates/core/src/commands.rs:3257
+msgid "Remove Framing"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:6667
 msgid "Remove Paint"
 msgstr ""

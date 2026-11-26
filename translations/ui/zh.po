@@ -15136,6 +15136,10 @@ msgstr ""
 msgid "Remove Constraints"
 msgstr "删除约束"
 
+#: crates/core/src/commands.rs:3257
+msgid "Remove Framing"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:6667
 msgid "Remove Paint"
 msgstr "移除油漆"
@@ -24326,13 +24330,40 @@ msgstr "上"
 #: crates/ui-egui/src/codes.rs:641
 #~ msgid "A name of your own"
 #~ msgstr ""
+#: crates/ui-egui/src/editor.rs:828
+#~ msgid "A scan's points, which a family has none of"
+#~ msgstr ""
 #: crates/ui-egui/src/shortcuts.rs:413
 #: crates/ui-egui/src/shortcuts.rs:434
 #~ msgid "Add Shortcut"
 #~ msgstr "添加快捷键"
+#: crates/ui-egui/src/editor/document.rs:552
+#~ msgid "An annotation family is two-dimensional: draw it with Symbolic Line, Text and Filled Region."
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:824
+#~ msgid "An arc's points along its axes: east, north, west and south"
+#~ msgstr ""
 #: crates/ui-egui/src/lib.rs:5761
 #~ msgid "Annotation Settings: line weights, line styles, line patterns and fill patterns"
 #~ msgstr "注释设置：线宽、线样式、线型图案和填充图案"
+#: crates/ui-egui/src/lib.rs:5834
+#~ msgid "Annotation Settings: line weights, line styles, line patterns and fill patterns, and the Asset Manager"
+#~ msgstr ""
+#: crates/core/src/commands.rs:1472
+#~ msgid "Annotation Symbol"
+#~ msgstr ""
+#: crates/ui-egui/src/orbit.rs:1563
+#~ msgid "Annotation symbols go on a sheet or a flat view: open one from the Project Browser."
+#~ msgstr ""
+#: crates/ui-egui/src/editor/document.rs:656
+#~ msgid "Arc: click its start and its end, then a point the arc passes through"
+#~ msgstr ""
+#: crates/ui-egui/src/editor/views.rs:916
+#~ msgid "Arc: click the third point off the line through the first two"
+#~ msgstr ""
+#: crates/ui-egui/src/properties.rs:321
+#~ msgid "Azimuth (°)"
+#~ msgstr "方位角 (°)"
 #: crates/ui-egui/src/rebar_detail.rs:131
 #~ msgid "Beams: {}"
 #~ msgstr ""
@@ -24357,9 +24388,18 @@ msgstr "上"
 #: crates/ui-egui/src/properties.rs:2325
 #~ msgid "Click to see which rules, and what would bring the stair inside them"
 #~ msgstr ""
+#: crates/ui-egui/src/lib.rs:7232
+#~ msgid "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
+#~ msgstr "单击坡段的终点：越过顶端则为单跑，高度由选项栏指定；未到则为平台。按 Esc 取消。"
+#: crates/ui-egui/src/lib.rs:7048
+#~ msgid "Click where the annotation symbol goes."
+#~ msgstr ""
 #: crates/ui-egui/src/lib.rs:6826
 #~ msgid "Click where the detail line starts."
 #~ msgstr "单击详图线的起点。"
+#: crates/ui-egui/src/lib.rs:7236
+#~ msgid "Click which way the next run goes from the landing: on, left, right, or back beside it."
+#~ msgstr "单击平台之后下一梯段的走向：直行、左转、右转，或折返到旁边。"
 #: crates/ui-egui/src/shortcuts.rs:442
 #~ msgid "Command / Tool:"
 #~ msgstr "命令 / 工具："
@@ -24378,18 +24418,61 @@ msgstr "上"
 #: crates/ui-egui/src/codes.rs:216
 #~ msgid "Documents this code's numbers are from:"
 #~ msgstr ""
+#: crates/ui-egui/src/editor/document.rs:668
+#~ msgid "Dot: click where a filled circle goes"
+#~ msgstr ""
+#: crates/ui-egui/src/templates.rs:775
+#~ msgid "Each is a length, and Top may be left empty for the level above."
+#~ msgstr "每项都是长度，顶部可留空，此时取上方标高。"
 #: crates/ui-egui/src/codes.rs:235
 #~ msgid "Each rule shows where its number comes from on the Stairs tab."
 #~ msgstr ""
+#: crates/ui-egui/src/properties.rs:322
+#~ msgid "Elevation (°)"
+#~ msgstr "仰角 (°)"
 #: crates/ui-egui/src/shortcuts.rs:232
 #: crates/ui-egui/src/shortcuts.rs:235
 #~ msgid "Failed to read file: {}"
 #~ msgstr "读取文件失败：{}"
+#: crates/ui-egui/src/editor.rs:1336
+#~ msgid "Fill Type"
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:1334
+#~ msgid "Filled Region Rings"
+#~ msgstr ""
+#: crates/ui-egui/src/editor/document.rs:677
+#~ msgid "Filled Region: click its ring's corners, then its first corner again or Enter"
+#~ msgstr ""
+#: crates/ui-egui/src/structure.rs:135
+#~ msgid "Frame: the selected walls, floors and roofs framed, a wall's studs, plates and headers, a floor's joists, rims and trimmers and a roof's rafters and ridge boards worked out from each"
+#~ msgstr ""
+#: crates/ui-egui/src/browser.rs:825
+#: crates/ui-egui/src/editor/document.rs:459
+#: crates/ui-egui/src/editor/document.rs:1308
+#: crates/ui-egui/src/editor/tabs.rs:339
+#: crates/ui-egui/src/editor.rs:1215
+#~ msgid "Generic Annotation"
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:813
+#~ msgid "How far apart the coordinate grid's points are, in the family's millimetres (1 mm by default)"
+#~ msgstr ""
+#: crates/ui-egui/src/properties.rs:2916
+#~ msgid "Its structure layer is {}, deeper than the framing type's target depth of {}: the studs are as deep as the layer"
+#~ msgstr ""
+#: crates/ui-egui/src/properties.rs:2918
+#~ msgid "Its structure layer is {}, shallower than the framing type's target depth of {}: the studs are as deep as the layer"
+#~ msgstr ""
+#: crates/ui-egui/src/editor/document.rs:664
+#~ msgid "Label: click where a label reading a parameter goes"
+#~ msgstr ""
 #: crates/ui-egui/src/codes.rs:565
 #~ msgid "Left out of the file, unknown to this version: {}"
 #~ msgstr ""
 #: crates/ui-egui/src/codes.rs:380 crates/ui-egui/src/codes.rs:419
 #~ msgid "Left to the project"
+#~ msgstr ""
+#: crates/ui-egui/src/editor/document.rs:652
+#~ msgid "Line: click its points in the plan; Enter or a double-click closes it"
 #~ msgstr ""
 #: crates/ui-egui/src/shortcuts.rs:409
 #~ msgid "Load File..."
@@ -24403,20 +24486,53 @@ msgstr "上"
 #: crates/ui-egui/src/codes.rs:204
 #~ msgid "Manage > Building Codes changes a rule for this project."
 #~ msgstr ""
+#: crates/ui-egui/src/editor/document.rs:686
+#~ msgid "Masking Region: a filled region that hides the model under it"
+#~ msgstr ""
+#: crates/ui-egui/src/properties.rs:441
+#~ msgid "Max Slope (%)"
+#~ msgstr "最大坡度 (%)"
+#: crates/ui-egui/src/editor.rs:1429
+#~ msgid "Middle"
+#~ msgstr ""
+#: crates/ui-egui/src/properties.rs:2890
+#~ msgid "No Framing"
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:1405
+#~ msgid "No parameter `{}`. Create it in Family Types, or use one of: {}"
+#~ msgstr ""
 #: crates/ui-egui/src/rebar_detail.rs:249
 #~ msgid "Nothing to draw: the beam has no bars."
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:797
+#~ msgid "Off: a point with nothing to snap to follows the cursor exactly. On: it rounds to the step below."
+#~ msgstr ""
+#: crates/ui-egui/src/templates.rs:750
+#~ msgid "Offsets from the plan's level."
+#~ msgstr "相对平面所在标高的偏移。"
+#: crates/ui-egui/src/editor/options.rs:94
+#~ msgid "On: 1 × 1 at 1:100 becomes 100 × 100 in the model. Off: it stays 1 × 1 in the model."
 #~ msgstr ""
 #: crates/ui-egui/src/codes.rs:529
 #~ msgid "Open the project's building code and its rules"
 #~ msgstr ""
+#: crates/ui-egui/src/properties.rs:207
+#~ msgid "Pattern Angle (°)"
+#~ msgstr "图案角度 (°)"
 #: crates/ui-egui/src/properties.rs:3980
 #~ msgid "Picture…"
 #~ msgstr "图片…"
+#: crates/ui-egui/src/dock.rs:930
+#~ msgid "Plugin panel"
+#~ msgstr ""
 #: crates/ui-egui/src/settings.rs:586
 #~ msgid "Properties over the Project Browser, on the left, as at first"
 #~ msgstr "“属性”在“项目浏览器”之上、位于左侧，与最初一样"
 #: crates/ui-egui/src/codes.rs:631
 #~ msgid "Read a building code from an XML file, as one of the project's own"
+#~ msgstr ""
+#: crates/ui-egui/src/structure.rs:151
+#~ msgid "Remove Framing: the selected walls, floors and roofs framed no more; their framing type stays in the project"
 #~ msgstr ""
 #: crates/ui-egui/src/codes.rs:666
 #~ msgid "Reset to the Code's Rules"
@@ -24425,14 +24541,29 @@ msgstr "上"
 #: crates/ui-egui/src/shortcuts.rs:426
 #~ msgid "Restore Defaults"
 #~ msgstr "恢复默认设置"
+#: crates/ui-egui/src/editor.rs:1332
+#~ msgid "Rings (JSON)"
+#~ msgstr ""
+#: crates/ui-egui/src/properties.rs:264
+#~ msgid "Rotation (°)"
+#~ msgstr "旋转 (°)"
 #: crates/ui-egui/src/lib.rs:4827
 #~ msgid "Save As…"
 #~ msgstr "另存为…"
+#: crates/ui-egui/src/editor/options.rs:16
+#~ msgid "Scale with View"
+#~ msgstr ""
 #: crates/ui-egui/src/shortcuts.rs:459
 #~ msgid "Select an action to assign."
 #~ msgstr "选择要分配的操作。"
 #: crates/ui-egui/src/rebar_detail.rs:104
 #~ msgid "Select the reinforced beams to detail first."
+#~ msgstr ""
+#: crates/ui-egui/src/structure.rs:192
+#~ msgid "Select the walls, floors or roofs to frame first."
+#~ msgstr ""
+#: crates/ui-egui/src/structure.rs:224
+#~ msgid "Select the walls, floors or roofs to remove framing from first."
 #~ msgstr ""
 #: crates/ui-egui/src/shortcuts.rs:468
 #~ msgid "Shortcut '{}' added for '{}'."
@@ -24450,23 +24581,70 @@ msgstr "上"
 #: crates/ui-egui/src/shortcuts.rs:401
 #~ msgid "Shortcuts are typed with Ctrl held (Cmd on a Mac): Ctrl, then W and A for Wall."
 #~ msgstr ""
+#: crates/ui-egui/src/editor.rs:796
+#~ msgid "Snap to coordinates"
+#~ msgstr ""
+#: crates/ui-egui/src/editor/document.rs:748
+#~ msgid "Snaps: what this family's plans stick to while its symbols are drawn"
+#~ msgstr ""
 #: crates/ui-egui/src/rebar_detail.rs:139
 #~ msgid "Stations are where the sections are cut, along the beam; blank is the middle of each zone of stirrups."
 #~ msgstr ""
 #: crates/ui-egui/src/steel.rs:288
 #~ msgid "Steel List and Cut Plan"
 #~ msgstr ""
+#: crates/ui-egui/src/editor.rs:801
+#~ msgid "Step"
+#~ msgstr ""
 #: crates/ui-egui/src/codes.rs:509
 #~ msgid "Still outside: {}"
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:1337
+#~ msgid "Symbol Fill Type"
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:1347
+#: crates/ui-egui/src/editor.rs:1353
+#~ msgid "Symbol Line Style"
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:1423
+#~ msgid "Symbol Text Type"
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:1437
+#~ msgid "Symbol Wrap Width"
 #~ msgstr ""
 #: crates/ui-egui/src/codes.rs:634
 #~ msgid "Take this code of the project's own away; a project held to it keeps its rules"
 #~ msgstr ""
+#: crates/ui-egui/src/framing_diagram.rs:49
+#: crates/ui-egui/src/properties.rs:1289
+#~ msgid "Target Depth"
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:1422
+#~ msgid "Text Type"
+#~ msgstr ""
+#: crates/ui-egui/src/editor/document.rs:660
+#~ msgid "Text: click where plain text goes, then type it in Properties"
+#~ msgstr ""
 #: crates/ui-egui/src/codes.rs:602
 #~ msgid "The building code this project's stairs and railings are held to. A new stair starts with its numbers. Any rule can be changed, for a state's or a city's own; a stair outside the rules is still built, and marked."
 #~ msgstr ""
+#: crates/ui-egui/src/editor.rs:822
+#~ msgid "The centre of an arc or a dot"
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:819
+#~ msgid "The ends of symbols and reference lines, and the points picked so far"
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:823
+#~ msgid "The foot of the perpendicular from the last point"
+#~ msgstr ""
 #: crates/ui-egui/src/codes.rs:397
 #~ msgid "The methods the project's electrical demand is worked out by. A command given a method of its own uses that one instead."
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:820
+#~ msgid "The middle of a symbolic line"
+#~ msgstr ""
+#: crates/ui-egui/src/editor.rs:826
+#~ msgid "The nearest point of a symbolic line"
 #~ msgstr ""
 #: crates/ui-egui/src/presets.rs:217
 #~ msgid "The palettes, the tools shown, the project scale and the layout, kept under this name"
@@ -24490,6 +24668,9 @@ msgstr "上"
 #: crates/ui-egui/src/codes.rs:84
 #~ msgid "The winders come too close to a point at the inside. Spread them into the flights so each keeps some depth."
 #~ msgstr ""
+#: crates/ui-egui/src/editor.rs:795
+#~ msgid "These apply to the lines, arcs, labels and regions drawn in this family's plan."
+#~ msgstr ""
 #: crates/ui-egui/src/codes.rs:228
 #~ msgid "These numbers haven't been checked against the documents yet. Check one against a copy before you rely on it."
 #~ msgstr ""
@@ -24499,133 +24680,14 @@ msgstr "上"
 #: crates/ui-egui/src/lib.rs:4849
 #~ msgid "Tick the tools this palette shows; Find still has the others"
 #~ msgstr "勾选此面板要显示的工具；其余工具仍可通过“查找”找到"
+#: crates/ui-egui/src/properties.rs:2792
+#~ msgid "Type {} has no Structure layer to frame"
+#~ msgstr ""
+#: crates/ui-egui/src/properties.rs:2887
+#~ msgid "Type {} has no Structure layer to frame: give it one in Edit Type, or pick a timber frame wall type"
+#~ msgstr ""
 #: crates/ui-egui/src/codes.rs:643
 #~ msgid "Unsaved, the rules are still the project's when applied."
-#~ msgstr ""
-#: crates/ui-egui/src/codes.rs:632
-#~ msgid "Write these rules as an XML file, to hand to another project or office"
-#~ msgstr ""
-#: crates/ui-egui/src/shortcuts.rs:242
-#~ msgid "{} Skipped {}."
-#~ msgstr "{} 已跳过 {} 个。"
-#: crates/ui-egui/src/editor.rs:828
-#~ msgid "A scan's points, which a family has none of"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:552
-#~ msgid "An annotation family is two-dimensional: draw it with Symbolic Line, Text and Filled Region."
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:824
-#~ msgid "An arc's points along its axes: east, north, west and south"
-#~ msgstr ""
-#: crates/core/src/commands.rs:1472
-#~ msgid "Annotation Symbol"
-#~ msgstr ""
-#: crates/ui-egui/src/orbit.rs:1563
-#~ msgid "Annotation symbols go on a sheet or a flat view: open one from the Project Browser."
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:656
-#~ msgid "Arc: click its start and its end, then a point the arc passes through"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/views.rs:916
-#~ msgid "Arc: click the third point off the line through the first two"
-#~ msgstr ""
-#: crates/ui-egui/src/lib.rs:7048
-#~ msgid "Click where the annotation symbol goes."
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:668
-#~ msgid "Dot: click where a filled circle goes"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:1336
-#~ msgid "Fill Type"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:1334
-#~ msgid "Filled Region Rings"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:677
-#~ msgid "Filled Region: click its ring's corners, then its first corner again or Enter"
-#~ msgstr ""
-#: crates/ui-egui/src/browser.rs:825
-#: crates/ui-egui/src/editor/document.rs:459
-#: crates/ui-egui/src/editor/document.rs:1308
-#: crates/ui-egui/src/editor/tabs.rs:339
-#: crates/ui-egui/src/editor.rs:1215
-#~ msgid "Generic Annotation"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:813
-#~ msgid "How far apart the coordinate grid's points are, in the family's millimetres (1 mm by default)"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:664
-#~ msgid "Label: click where a label reading a parameter goes"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:652
-#~ msgid "Line: click its points in the plan; Enter or a double-click closes it"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:686
-#~ msgid "Masking Region: a filled region that hides the model under it"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:1429
-#~ msgid "Middle"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:1405
-#~ msgid "No parameter `{}`. Create it in Family Types, or use one of: {}"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:797
-#~ msgid "Off: a point with nothing to snap to follows the cursor exactly. On: it rounds to the step below."
-#~ msgstr ""
-#: crates/ui-egui/src/editor/options.rs:94
-#~ msgid "On: 1 × 1 at 1:100 becomes 100 × 100 in the model. Off: it stays 1 × 1 in the model."
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:1332
-#~ msgid "Rings (JSON)"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/options.rs:16
-#~ msgid "Scale with View"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:796
-#~ msgid "Snap to coordinates"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:748
-#~ msgid "Snaps: what this family's plans stick to while its symbols are drawn"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:801
-#~ msgid "Step"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:1337
-#~ msgid "Symbol Fill Type"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:1347
-#: crates/ui-egui/src/editor.rs:1353
-#~ msgid "Symbol Line Style"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:1423
-#~ msgid "Symbol Text Type"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:1437
-#~ msgid "Symbol Wrap Width"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:1422
-#~ msgid "Text Type"
-#~ msgstr ""
-#: crates/ui-egui/src/editor/document.rs:660
-#~ msgid "Text: click where plain text goes, then type it in Properties"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:822
-#~ msgid "The centre of an arc or a dot"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:819
-#~ msgid "The ends of symbols and reference lines, and the points picked so far"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:823
-#~ msgid "The foot of the perpendicular from the last point"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:820
-#~ msgid "The middle of a symbolic line"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:826
-#~ msgid "The nearest point of a symbolic line"
-#~ msgstr ""
-#: crates/ui-egui/src/editor.rs:795
-#~ msgid "These apply to the lines, arcs, labels and regions drawn in this family's plan."
 #~ msgstr ""
 #: crates/ui-egui/src/editor.rs:1425
 #~ msgid "Vertical Align"
@@ -24642,51 +24704,21 @@ msgstr "上"
 #: crates/ui-egui/src/editor.rs:1436
 #~ msgid "Wrap Width"
 #~ msgstr ""
+#: crates/ui-egui/src/codes.rs:632
+#~ msgid "Write these rules as an XML file, to hand to another project or office"
+#~ msgstr ""
 #: crates/ui-egui/src/editor/views.rs:772
 #~ msgid "annotation symbols are drawn in the plan"
 #~ msgstr ""
-#: crates/ui-egui/src/lib.rs:5834
-#~ msgid "Annotation Settings: line weights, line styles, line patterns and fill patterns, and the Asset Manager"
-#~ msgstr ""
-#: crates/ui-egui/src/properties.rs:321
-#~ msgid "Azimuth (°)"
-#~ msgstr "方位角 (°)"
-#: crates/ui-egui/src/lib.rs:7232
-#~ msgid "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
-#~ msgstr "单击坡段的终点：越过顶端则为单跑，高度由选项栏指定；未到则为平台。按 Esc 取消。"
-#: crates/ui-egui/src/lib.rs:7236
-#~ msgid "Click which way the next run goes from the landing: on, left, right, or back beside it."
-#~ msgstr "单击平台之后下一梯段的走向：直行、左转、右转，或折返到旁边。"
-#: crates/ui-egui/src/templates.rs:775
-#~ msgid "Each is a length, and Top may be left empty for the level above."
-#~ msgstr "每项都是长度，顶部可留空，此时取上方标高。"
-#: crates/ui-egui/src/properties.rs:322
-#~ msgid "Elevation (°)"
-#~ msgstr "仰角 (°)"
-#: crates/ui-egui/src/properties.rs:441
-#~ msgid "Max Slope (%)"
-#~ msgstr "最大坡度 (%)"
-#: crates/ui-egui/src/templates.rs:750
-#~ msgid "Offsets from the plan's level."
-#~ msgstr "相对平面所在标高的偏移。"
-#: crates/ui-egui/src/properties.rs:207
-#~ msgid "Pattern Angle (°)"
-#~ msgstr "图案角度 (°)"
-#: crates/ui-egui/src/properties.rs:264
-#~ msgid "Rotation (°)"
-#~ msgstr "旋转 (°)"
 #: crates/ui-egui/src/canvas.rs:4114
 #~ msgid "ramp: `{}` is not a slope"
 #~ msgstr "坡道：`{}` 不是有效的坡度"
+#: crates/ui-egui/src/shortcuts.rs:242
+#~ msgid "{} Skipped {}."
+#~ msgstr "{} 已跳过 {} 个。"
 #: crates/ui-egui/src/canvas.rs:6016
 #~ msgid "{} up"
 #~ msgstr "上行 {}"
-#: crates/ui-egui/src/dock.rs:930
-#~ msgid "Plugin panel"
-#~ msgstr ""
-#: crates/ui-egui/src/properties.rs:2792
-#~ msgid "Type {} has no Structure layer to frame"
-#~ msgstr ""
 #: crates/ui-egui/src/properties.rs:1444
 #~ msgid "{} up to {}"
 #~ msgstr ""
@@ -24695,37 +24727,6 @@ msgstr "上"
 #~ msgstr ""
 #: crates/ui-egui/src/properties.rs:1441
 #~ msgid "{}, flat"
-#~ msgstr ""
-#: crates/ui-egui/src/structure.rs:135
-#~ msgid "Frame: the selected walls, floors and roofs framed, a wall's studs, plates and headers, a floor's joists, rims and trimmers and a roof's rafters and ridge boards worked out from each"
-#~ msgstr ""
-#: crates/ui-egui/src/properties.rs:2916
-#~ msgid "Its structure layer is {}, deeper than the framing type's target depth of {}: the studs are as deep as the layer"
-#~ msgstr ""
-#: crates/ui-egui/src/properties.rs:2918
-#~ msgid "Its structure layer is {}, shallower than the framing type's target depth of {}: the studs are as deep as the layer"
-#~ msgstr ""
-#: crates/ui-egui/src/properties.rs:2890
-#~ msgid "No Framing"
-#~ msgstr ""
-#: crates/ui-egui/src/structure.rs:152
-#~ msgid "Remove Framing"
-#~ msgstr ""
-#: crates/ui-egui/src/structure.rs:151
-#~ msgid "Remove Framing: the selected walls, floors and roofs framed no more; their framing type stays in the project"
-#~ msgstr ""
-#: crates/ui-egui/src/structure.rs:192
-#~ msgid "Select the walls, floors or roofs to frame first."
-#~ msgstr ""
-#: crates/ui-egui/src/structure.rs:224
-#~ msgid "Select the walls, floors or roofs to remove framing from first."
-#~ msgstr ""
-#: crates/ui-egui/src/framing_diagram.rs:49
-#: crates/ui-egui/src/properties.rs:1289
-#~ msgid "Target Depth"
-#~ msgstr ""
-#: crates/ui-egui/src/properties.rs:2887
-#~ msgid "Type {} has no Structure layer to frame: give it one in Edit Type, or pick a timber frame wall type"
 #~ msgstr ""
 #: crates/ui-egui/src/properties.rs:2916
 #~ msgid "⚠ Layer deeper than target"

@@ -3254,7 +3254,7 @@ other_files(
     .menu("Structure > Framing"),
     edit(
         "unframe",
-        "Remove Framing",
+        ui_msg!("Remove Framing"),
         &[],
         "{ids | id} walls (their types: every wall of each), floors and roofs framed no more: their framing type is left in the project",
         crate::framing::unframe,
