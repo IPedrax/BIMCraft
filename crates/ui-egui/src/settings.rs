@@ -441,6 +441,29 @@ impl BimApp {
         self.card.state = Some(state.clone());
     }
 
+    /// The card sections, elevations, callouts and sheets rasterize their pictures on, while the user lets the 3D view use the
+    /// card (Settings > Performance) and it hasn't failed: made the first time one asks. None where the window has no card, as
+    /// in every test but those that hand one in.
+    pub(crate) fn view_card(&mut self) -> Option<std::sync::Arc<dyn bimcraft_core::view3d::Raster>> {
+        if !self.card.wanted {
+            return None;
+        }
+        if self.view_card.is_none()
+            && let Some(state) = &self.card.state
+        {
+            // Tried once: a device that can't make one draws these views on the processor.
+            self.view_card = Some(
+                crate::viewcard::ViewCard::new(state)
+                    .map_err(|e| {
+                        eprintln!("BIMCraft: no graphics card for sections and sheets ({e}): they are drawn on the processor");
+                    })
+                    .ok(),
+            );
+        }
+        let card = self.view_card.as_ref()?.as_ref().filter(|c| !c.failed())?;
+        Some(std::sync::Arc::clone(card) as std::sync::Arc<dyn bimcraft_core::view3d::Raster>)
+    }
+
     /// The bindings and the presets as the settings file keeps them: the current set, the user's
     /// snapshots, and the preset the set came from.
     fn shortcuts_config(&self) -> crate::shortcuts::Config {

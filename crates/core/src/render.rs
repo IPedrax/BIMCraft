@@ -16,6 +16,7 @@ use bimcraft_i18n::msg;
 
 use std::f64::consts::PI;
 use std::fmt::Write;
+use std::sync::Arc;
 
 use tiny_skia::{Color, FillRule, IntSize, LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Stroke, StrokeDash, Transform};
 
@@ -1898,9 +1899,42 @@ pub struct SectionWork {
     deferred_components: usize,
     deferred_runs: usize,
     resolved: std::sync::atomic::AtomicUsize,
+    /// What a card draws sections' and elevations' pictures from, the last few asked for (see [`section_picture_on`]).
+    cards: std::sync::Mutex<Vec<(Id, Arc<CardScene>)>>,
 }
 
+/// A section's or an elevation's whole scene ([`Scene::section_whole`]) and the mesh a card rasterizes its pictures from.
+pub(crate) struct CardScene {
+    scene: Scene,
+    mesh: Arc<view3d::gpu::Mesh>,
+}
+
+/// How many sections' card scenes a model's work keeps: one for each view open at once, and the sheet's.
+const CARD_SCENES: usize = 4;
+
 impl SectionWork {
+    /// What a card draws section or elevation `id`'s pictures from, seen as `look` shows it: made the first time, then kept
+    /// with the work (the model's snapshot) for every pan and zoom. None where the mesh can't be made (too big for the
+    /// machine), or when `cancelled`.
+    fn card_scene(&self, m: &Model, id: Id, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Arc<CardScene>> {
+        if let Some((_, found)) = self.cards.lock().ok()?.iter().find(|(k, _)| *k == id) {
+            return Some(Arc::clone(found));
+        }
+        let (cam, clip) = section_camera(m, id, View { scale: 1.0, cx: 0.0, cy: 0.0, width: 1, height: 1, angle: 0.0 })?;
+        let clip = Clip { x: (f64::NEG_INFINITY, f64::INFINITY), y: (f64::NEG_INFINITY, f64::INFINITY), ..clip };
+        let work = (&self.solids, &self.ranges, &self.placed[..], &self.boxes[..]);
+        let scene = Scene::section_whole(m, work, &cam, &clip, look, cancelled)?;
+        let mesh = view3d::gpu::Mesh::section(&scene, look, &|| cancelled()).ok()??;
+        let held = Arc::new(CardScene { scene, mesh: Arc::new(mesh) });
+        let mut cards = self.cards.lock().ok()?;
+        cards.retain(|(k, _)| *k != id);
+        if cards.len() >= CARD_SCENES {
+            cards.remove(0);
+        }
+        cards.push((id, Arc::clone(&held)));
+        Some(held)
+    }
+
     pub fn new(m: &Model) -> Self {
         let (solids, placed, boxes) = view3d::solids_and_extremes(m);
         let solids = view3d::PreparedSolids::Owned(solids);
@@ -1920,6 +1954,7 @@ impl SectionWork {
             deferred_components: 0,
             deferred_runs: 0,
             resolved: Default::default(),
+            cards: Default::default(),
         }
     }
 
@@ -1998,6 +2033,7 @@ impl SectionWork {
             deferred_components: 0,
             deferred_runs: 0,
             resolved: Default::default(),
+            cards: Default::default(),
         })
     }
 
@@ -2417,6 +2453,47 @@ pub fn section_picture_cancellable(
     let scene = Scene::section_cancellable(m, (&work.solids, &work.ranges, &work.placed, &work.boxes), &cam, &clip, &look, cancelled)?;
     let image = scene.picture_cancellable(&cam, Some(&clip), tints, &look, cancelled);
     (!cancelled()).then_some(image)
+}
+
+/// [`section_picture_cancellable`], its triangles rasterized by `card` (the desktop's graphics card) from a scene and a mesh
+/// the work keeps for the section, so a pan or a zoom only rasterizes again; the rest of the picture is the processor's, as it
+/// draws it. Drawn wholly on the processor where the card can't (it failed, the mesh is too big, a picture it gives back
+/// doesn't fit): the same picture either way.
+pub fn section_picture_on(
+    m: &Model,
+    work: &SectionWork,
+    id: Id,
+    view: View,
+    tints: &[(Id, Rgb)],
+    card: &dyn view3d::Raster,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<Image> {
+    let picture = section_picture_card(m, work, id, view, tints, card, cancelled);
+    if cancelled() {
+        return None;
+    }
+    picture.or_else(|| section_picture_cancellable(m, work, id, view, tints, cancelled))
+}
+
+/// [`section_picture_on`], none where the card can't draw it (or `cancelled`), rather than the processor's.
+pub fn section_picture_card(
+    m: &Model,
+    work: &SectionWork,
+    id: Id,
+    view: View,
+    tints: &[(Id, Rgb)],
+    card: &dyn view3d::Raster,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<Image> {
+    if cancelled() || !work.is_of(m) {
+        return None;
+    }
+    let (cam, clip) = section_camera(m, id, view)?;
+    let look = Look::of(m, id);
+    let held = work.card_scene(m, id, &look, cancelled)?;
+    let raster = card.section(&held.mesh, &cam, &clip)?;
+    let picture = held.scene.section_picture_from((&cam, &clip), tints, &look, &held.mesh, raster, cancelled)?;
+    (!cancelled()).then_some(picture)
 }
 
 /// [`section_picture`], of `w`'s solids and points.
@@ -8981,5 +9058,98 @@ mod tests {
             grid_dash(&crate::lines::LinePattern(vec![crate::lines::Segment::Dash(0.1), crate::lines::Segment::Space(0.05)]), 1.0),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod card_tests {
+    use super::*;
+    use crate::engine::Session;
+    use crate::view3d::{Caps, Raster, Rastered, gpu::Mesh};
+
+    /// A card that can't: the processor draws instead.
+    struct Refusing;
+
+    impl Raster for Refusing {
+        fn section(&self, _: &Arc<Mesh>, _: &Camera, _: &Clip) -> Option<Rastered> {
+            None
+        }
+        fn picture(&self, _: &Arc<Mesh>, _: &Camera, _: Option<&Arc<Caps>>) -> Option<Vec<u8>> {
+            None
+        }
+    }
+
+    /// A card that gives back a picture of another size, or what names no element: none of it is taken.
+    struct Wrong(bool);
+
+    impl Raster for Wrong {
+        fn section(&self, _: &Arc<Mesh>, cam: &Camera, _: &Clip) -> Option<Rastered> {
+            let n = (cam.width * cam.height) as usize;
+            Some(match self.0 {
+                true => Rastered { width: cam.width + 1, height: cam.height, depth: vec![0.5; n], ids: vec![[1, 1]; n] },
+                false => Rastered { width: cam.width, height: cam.height, depth: vec![0.5; n], ids: vec![[7, u32::MAX]; n] },
+            })
+        }
+        fn picture(&self, _: &Arc<Mesh>, _: &Camera, _: Option<&Arc<Caps>>) -> Option<Vec<u8>> {
+            Some(vec![1, 2, 3])
+        }
+    }
+
+    fn sample() -> Session {
+        let mut s = Session::new();
+        s.script(crate::sample::SAMPLE).unwrap();
+        s
+    }
+
+    fn cuts(s: &Session) -> Vec<Id> {
+        s.model.elements.iter().filter(|(_, e)| matches!(e, Element::Section(_) | Element::Elevation(_))).map(|(id, _)| *id).collect()
+    }
+
+    #[test]
+    fn what_a_card_rasters_of_a_section_s_whole_scene_makes_the_processor_s_picture() {
+        let s = sample();
+        let work = SectionWork::new(&s.model);
+        for id in cuts(&s) {
+            let fit = section_fit(&s.model, id, 480, 360);
+            for view in [fit, View { scale: fit.scale * 4.0, cx: fit.cx + 1500.0, ..fit }] {
+                let (cam, clip) = section_camera(&s.model, id, view).unwrap();
+                let look = Look::of(&s.model, id);
+                let held = work.card_scene(&s.model, id, &look, &|| false).unwrap();
+                let raster = held.scene.rastered_as_a_card(&held.mesh, &cam, &clip, &look);
+                let tints = [(cuts(&s)[0], Rgb(200, 30, 30))];
+                let from_card = held.scene.section_picture_from((&cam, &clip), &tints, &look, &held.mesh, raster, &|| false).unwrap();
+                let cpu = section_picture(&s.model, id, view, &tints).unwrap();
+                if let Err(e) = from_card.same_as(&cpu) {
+                    panic!("{id}: {e}");
+                }
+            }
+            // Kept for the next pan or zoom: the same scene and mesh.
+            let look = Look::of(&s.model, id);
+            let (a, b) =
+                (work.card_scene(&s.model, id, &look, &|| false).unwrap(), work.card_scene(&s.model, id, &look, &|| false).unwrap());
+            assert!(Arc::ptr_eq(&a, &b));
+        }
+    }
+
+    #[test]
+    fn a_card_that_can_t_or_gives_back_what_doesn_t_fit_leaves_the_processor_s_picture() {
+        let s = sample();
+        let work = SectionWork::new(&s.model);
+        let id = cuts(&s)[4];
+        let view = section_fit(&s.model, id, 320, 240);
+        let cpu = section_picture(&s.model, id, view, &[]).unwrap();
+        for card in [&Refusing as &dyn Raster, &Wrong(true), &Wrong(false)] {
+            assert!(section_picture_card(&s.model, &work, id, view, &[], card, &|| false).is_none());
+            let drawn = section_picture_on(&s.model, &work, id, view, &[], card, &|| false).unwrap();
+            drawn.same_as(&cpu).unwrap();
+        }
+        // A sheet's 3D view from a card whose picture is the wrong size is the processor's.
+        let sheet = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Sheet(sh) if sh.number == "A103")).map(|(i, _)| *i).unwrap();
+        let images = |d: &Drawing| -> Vec<Vec<u8>> {
+            d.prims.iter().filter_map(|p| if let Prim::Image { rgba, .. } = p { Some(rgba.clone()) } else { None }).collect()
+        };
+        assert_eq!(images(&sheet::draw_on(&s.model, sheet, Some(&Wrong(true))).unwrap()), images(&sheet::draw(&s.model, sheet).unwrap()));
+        // Cancelled, nothing.
+        assert!(section_picture_on(&s.model, &work, id, view, &[], &Refusing, &|| true).is_none());
     }
 }

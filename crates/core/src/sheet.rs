@@ -555,13 +555,19 @@ fn view_into(
     view: View,
     (ox, oy): (f32, f32),
     drawn: &mut Vec<(usize, Id)>,
+    card: Option<&dyn view3d::Raster>,
 ) -> Option<bool> {
+    // A section's picture, rasterized by the card where there is one: the same picture either way.
+    let section_picture = |w: &render::SectionWork| match (card, m.elements.id(id)) {
+        (Some(card), Some(key)) => render::section_picture_on(m, w, key, view, &[], card, &|| false),
+        _ => render::section_picture_in(m, w, id, view, &[]),
+    };
     let inner = match m.elements.get(id) {
         Some(Element::Level(_) | Element::PlanView(_)) => render::draw_at(m, id, view, 1.0),
         Some(Element::Section(_) | Element::Elevation(_)) => {
             // Its regions keep the ink of this very picture.
             let w = work.get_or_init(|| render::SectionWork::new(m));
-            let img = render::section_picture_in(m, w, id, view, &[]);
+            let img = section_picture(w);
             let drawing = match &img {
                 Some(img) => render::section_at_over_in(m, w, id, view, 1.0, img),
                 None => render::section_at(m, id, view, 1.0),
@@ -576,7 +582,7 @@ fn view_into(
         // A detail of a section or an elevation goes over the picture of what lies beyond its fragment.
         Some(Element::DetailView(_)) => {
             let w = work.get_or_init(|| render::SectionWork::new(m));
-            let img = render::section_picture_in(m, w, id, view, &[]);
+            let img = section_picture(w);
             let drawing = match &img {
                 Some(img) => render::section_at_over_in(m, w, id, view, 1.0, img),
                 None => render::section_at(m, id, view, 1.0),
@@ -603,12 +609,26 @@ fn view_into(
         Some(Element::View3D(v)) => {
             let look = Look::of(m, id);
             let cam = view3d::camera_of(m, v, view.scale, ROOM * DENSITY, &look);
-            let mut img = scene.get_or_insert_with(|| view3d::Scene::new(m)).render_in(&cam, &[], &look);
+            let scene = scene.get_or_insert_with(|| view3d::Scene::new(m));
             // What its section box cuts, filled.
-            if look.section_box().is_some() {
-                img.capped(&cam, &view3d::CapSource::new(m).caps_in(m, m.elements.id(id), &look), &[], &look);
-            }
-            d.push(Prim::Image { at: (ox, oy), width: img.width, height: img.height, rgba: img.rgba, ink: false });
+            let caps = look.section_box().map(|_| std::sync::Arc::new(view3d::CapSource::new(m).caps_in(m, m.elements.id(id), &look)));
+            // Drawn by the card where there is one, the processor's picture to the pixel, else by the processor.
+            let (width, height) = (cam.width.clamp(1, view3d::MAX_SIDE), cam.height.clamp(1, view3d::MAX_SIDE));
+            let on_card = card.and_then(|card| {
+                let mesh = std::sync::Arc::new(view3d::gpu::Mesh::new(scene, &look).ok()?);
+                card.picture(&mesh, &cam, caps.as_ref()).filter(|rgba| rgba.len() == width as usize * height as usize * 4)
+            });
+            let (width, height, rgba) = match on_card {
+                Some(rgba) => (width, height, rgba),
+                None => {
+                    let mut img = scene.render_in(&cam, &[], &look);
+                    if let Some(caps) = &caps {
+                        img.capped(&cam, caps, &[], &look);
+                    }
+                    (img.width, img.height, img.rgba)
+                }
+            };
+            d.push(Prim::Image { at: (ox, oy), width, height, rgba, ink: false });
             // Its dimensions, over the picture: lines of the sheet's, at paper size.
             let mut inner = Drawing::new(view);
             for mk in crate::dims3d::marks(m, id, &cam, &look, DENSITY) {
@@ -653,7 +673,7 @@ pub fn draw_view(m: &Model, id: impl Key, scale: f64) -> Option<Drawing> {
     d.weights = m.line_weights().at(m.units.default_scale());
     let mut scene = None;
     let mut drawn = Vec::new();
-    view_into(&mut d, m, &work, &mut scene, guid, view, (0.0, 0.0), &mut drawn)?;
+    view_into(&mut d, m, &work, &mut scene, guid, view, (0.0, 0.0), &mut drawn, None)?;
     // Alone, its elements own what they draw.
     for (i, owner) in drawn {
         if let Some(o) = d.owners.get_mut(i) {
@@ -670,9 +690,20 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
     draw_traced(m, id).map(|(d, _)| d)
 }
 
+/// [`draw`], the pictures of its sections, elevations and 3D views drawn by `card` (the desktop's graphics card) where it can:
+/// the same sheet, sooner.
+pub fn draw_on(m: &Model, id: impl Key, card: Option<&dyn view3d::Raster>) -> Option<Drawing> {
+    draw_traced_on(m, id, card).map(|(d, _)| d)
+}
+
 /// [`draw`], with the place of each primitive an element on a view draws and the element (which its viewport owns, for a
 /// pick): how an export puts it on the element's layer.
 pub(crate) fn draw_traced(m: &Model, id: impl Key) -> Option<(Drawing, Vec<(usize, Id)>)> {
+    draw_traced_on(m, id, None)
+}
+
+/// [`draw_traced`], as [`draw_on`] draws it.
+fn draw_traced_on(m: &Model, id: impl Key, card: Option<&dyn view3d::Raster>) -> Option<(Drawing, Vec<(usize, Id)>)> {
     let sheet = m.sheet(id)?;
     let guid = m.guid(id);
     let paper = paper(&sheet.size)?;
@@ -706,7 +737,7 @@ pub(crate) fn draw_traced(m: &Model, id: impl Key) -> Option<(Drawing, Vec<(usiz
         let (w, h) = (view.width as f32, view.height as f32);
         d.push(Prim::Fill { rings: vec![vec![(ox, oy), (ox + w, oy), (ox + w, oy + h), (ox, oy + h)]], color: PAPER });
         // A schedule's title is its first row; it has no view title under it.
-        if view_into(&mut d, m, &work, &mut scene, vp.view, view, (ox, oy), &mut drawn) != Some(true) {
+        if view_into(&mut d, m, &work, &mut scene, vp.view, view, (ox, oy), &mut drawn, card) != Some(true) {
             continue;
         }
         d.part(Part::Projection);

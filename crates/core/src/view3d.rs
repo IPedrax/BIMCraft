@@ -2954,10 +2954,39 @@ impl Scene {
 
     pub(crate) fn section_cancellable(
         m: &Model,
+        work: Work<'_>,
+        cam: &Camera,
+        clip: &Clip,
+        look: &Look,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Scene> {
+        Self::section_kept(m, work, cam, clip, look, false, cancelled)
+    }
+
+    /// The scene a card draws every picture of a section or an elevation from, whatever part of it a view shows and at
+    /// whatever scale: what lies past the line through `cam`'s target, square to its direction, and before the far clip of
+    /// `clip`, with nothing left out for lying behind something else (which depends on the picture), so a pan or a zoom
+    /// draws again from the same scene.
+    pub(crate) fn section_whole(
+        m: &Model,
+        work: Work<'_>,
+        cam: &Camera,
+        clip: &Clip,
+        look: &Look,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Scene> {
+        let cam = Camera { width: 1, height: 1, ..*cam };
+        Self::section_kept(m, work, &cam, clip, look, true, cancelled)
+    }
+
+    /// [`section_cancellable`](Self::section_cancellable); `whole`, [`section_whole`](Self::section_whole).
+    fn section_kept(
+        m: &Model,
         (solids, ranges, placed, boxes): Work<'_>,
         cam: &Camera,
         clip: &Clip,
         look: &Look,
+        whole: bool,
         cancelled: &(dyn Fn() -> bool + Sync),
     ) -> Option<Scene> {
         if cancelled() {
@@ -3005,8 +3034,11 @@ impl Scene {
         // what it would be with them.
         let mut tiles = Tiles::of(vec![f32::NEG_INFINITY; w * h], w, h);
         let nearest = |i: &usize| screens.get(*i).copied().flatten().map_or(f64::INFINITY, |s| s[5]);
-        let mut pending: Vec<usize> =
-            in_order(&boxes, |(id, ..)| hides(*id)).into_iter().enumerate().filter_map(|(i, hiding)| hiding.then_some(i)).collect();
+        let mut pending: Vec<usize> = in_order(&boxes, |(id, ..)| hides(*id) && !whole)
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, hiding)| hiding.then_some(i))
+            .collect();
         pending.sort_by(|a, b| nearest(b).total_cmp(&nearest(a)).then(a.cmp(b)));
         let (mut batch, mut hit, mut lit) = (256, vec![u32::MAX; w * h], vec![0.0; w * h]);
         while !pending.is_empty() {
@@ -3049,8 +3081,13 @@ impl Scene {
         }
         // What can show, in the order of the elements.
         let screened: Vec<_> = boxes.iter().zip(&screens).collect();
-        let kept: Vec<&Boxed3> =
-            in_order(&screened, |(b, s)| tiles.may_show_on(clip, s.as_ref()).then_some(*b)).into_iter().flatten().collect();
+        // The whole scene keeps what lies past the line and before the far clip, wherever it is across the picture.
+        let past = |s: Option<&[f64; 6]>| {
+            let slack = |z: f64| 1e-3 + 1e-6 * z.abs();
+            s.is_none_or(|&[.., z0, z1]| !(z0 > clip.near + slack(z0) || clip.far.is_some_and(|f| z1 < clip.near - f - slack(z1))))
+        };
+        let shows = |s: Option<&[f64; 6]>| if whole { past(s) } else { tiles.may_show_on(clip, s) };
+        let kept: Vec<&Boxed3> = in_order(&screened, |(b, s)| shows(s.as_ref()).then_some(*b)).into_iter().flatten().collect();
         let groups: Vec<&[&Boxed3]> = kept.chunks(TRIS_AT_ONCE).collect();
         let made = in_order(&groups, |group| {
             let mut components = crate::component_geometry::Components::new(m);
@@ -3999,6 +4036,91 @@ impl Scene {
         look: &Look,
         cancelled: &(dyn Fn() -> bool + Sync),
     ) -> Image {
+        self.picture_given(cam, clip, tints, look, None, cancelled)
+    }
+
+    /// A section's or an elevation's picture through `cam` and `clip`, of what `look` shows, from what a card rasterized of
+    /// `mesh` ([`Mesh::section`](gpu::Mesh::section), of this scene): each pixel's depth and the plane and element there, which
+    /// pick the scene's triangle the processor would have drawn there; everything else (edges, tints, the scans' points, what
+    /// picks and what regions keep) as the processor's picture has it. None where `raster` isn't the picture's size or names
+    /// what the mesh doesn't hold: the caller draws it on the processor.
+    pub(crate) fn section_picture_from(
+        &self,
+        (cam, clip): (&Camera, &Clip),
+        tints: &[(Id, Rgb)],
+        look: &Look,
+        mesh: &gpu::Mesh,
+        raster: Rastered,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Image> {
+        let (w, h) = (cam.width.clamp(1, MAX_SIDE) as usize, cam.height.clamp(1, MAX_SIDE) as usize);
+        if (raster.width as usize, raster.height as usize) != (w, h) || raster.depth.len() != w * h || raster.ids.len() != w * h {
+            return None;
+        }
+        // The first of the scene's triangles on each plane of each element: what the processor's picture holds a pixel of it by.
+        let mut first: HashMap<(u32, Id), u32> = HashMap::new();
+        for (i, t) in self.tris.iter().enumerate() {
+            let plane = self.planes.get(i).map_or(i, |p| *p);
+            let (Ok(plane), Ok(i)) = (u32::try_from(plane), u32::try_from(i)) else { return None };
+            first.entry((plane.saturating_add(1), t.owner)).or_insert(i);
+        }
+        // The card's depth back to the processor's: mm toward the camera from the line.
+        let view = mesh.section_view(cam, clip.far);
+        let reach = 2.0 * f64::from(view.depth);
+        let mut hit = vec![u32::MAX; w * h];
+        let mut depth = raster.depth;
+        for (k, [plane, owner]) in raster.ids.iter().enumerate() {
+            if cancelled() {
+                return None;
+            }
+            if *plane == 0 || *owner == 0 {
+                depth[k] = f32::NEG_INFINITY;
+                continue;
+            }
+            let id = mesh.owners.get(*owner as usize - 1)?.id;
+            hit[k] = *first.get(&(*plane, id))?;
+            let d = f64::from(depth[k]);
+            if !(0.0..=1.0).contains(&d) {
+                return None;
+            }
+            depth[k] = ((d - f64::from(view.aim)) * reach) as f32;
+        }
+        Some(self.picture_given(cam, Some(clip), tints, look, Some((depth, hit)), cancelled))
+    }
+
+    /// What a card gives back for a section through `cam` and `clip` of `mesh` ([`gpu::Mesh::section`] of this scene), as
+    /// the processor rasterizes it: what [`section_picture_from`](Self::section_picture_from) is held to with no card.
+    #[cfg(test)]
+    pub(crate) fn rastered_as_a_card(&self, mesh: &gpu::Mesh, cam: &Camera, clip: &Clip, look: &Look) -> Rastered {
+        let (w, h) = (cam.width.clamp(1, MAX_SIDE) as usize, cam.height.clamp(1, MAX_SIDE) as usize);
+        let (mut depth, mut hit, mut lit) = (vec![f32::NEG_INFINITY; w * h], vec![u32::MAX; w * h], vec![0.0; w * h]);
+        let shown = |t: &Tri| (look.is_plain() || t.seen_in(look)) && look.forms_show(t.vis, false) && !self.masses.contains(&t.owner);
+        self.raster((cam, Some(clip), None), (w, h), shown, None, &|_| None, (&mut depth, &mut hit, &mut lit));
+        let view = mesh.section_view(cam, clip.far);
+        let reach = 2.0 * f64::from(view.depth);
+        let slot = |id: Id| mesh.owners.iter().position(|o| o.id == id).map_or(0, |k| k as u32 + 1);
+        let ids = hit
+            .iter()
+            .map(|&t| match self.tris.get(t as usize) {
+                Some(tri) => [self.planes.get(t as usize).map_or(t as usize, |p| *p) as u32 + 1, slot(tri.owner)],
+                None => [0, 0],
+            })
+            .collect();
+        let depth = depth.iter().map(|z| if z.is_finite() { (f64::from(view.aim) + f64::from(*z) / reach) as f32 } else { 0.0 }).collect();
+        Rastered { width: w as u32, height: h as u32, depth, ids }
+    }
+
+    /// [`picture_cancellable`](Self::picture_cancellable), its opaque surfaces' depths and triangles `given` (by a card) or
+    /// rasterized here.
+    fn picture_given(
+        &self,
+        cam: &Camera,
+        clip: Option<&Clip>,
+        tints: &[(Id, Rgb)],
+        look: &Look,
+        given: Option<(Vec<f32>, Vec<u32>)>,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Image {
         if cancelled() {
             return Image::empty();
         }
@@ -4037,14 +4159,21 @@ impl Scene {
         let see_through = |t: &Tri| !flat && t.alpha(look) > 0;
         let shown =
             |t: &Tri| ((plain || t.seen_in(look)) && look.forms_show(t.vis, false)) && !(clip.is_some() && self.masses.contains(&t.owner));
-        let mut depth = vec![f32::NEG_INFINITY; w * h];
-        let mut hit = vec![u32::MAX; w * h];
         let mut curve_lit = vec![0.0; w * h];
         let opaque = |t: &Tri| shown(t) && !see_through(t);
         // A 3D view's section box keeps what lies inside it; a section has its own clip.
         let cut = look.section_box().filter(|_| clip.is_none()).map(|b| Boxed::new(cam, b));
         let cut = cut.as_ref();
-        self.raster_cancellable((cam, clip, cut), (w, h), opaque, None, &corner_light, (&mut depth, &mut hit, &mut curve_lit), cancelled);
+        // What a card rasterized, or the processor's own; a curve's light is a shaded view's, which a card's section never is.
+        let (mut depth, mut hit) = match given.filter(|(d, t)| d.len() == w * h && t.len() == w * h && flat) {
+            Some(given) => given,
+            None => {
+                let (mut depth, mut hit) = (vec![f32::NEG_INFINITY; w * h], vec![u32::MAX; w * h]);
+                let buffers = (&mut depth[..], &mut hit[..], &mut curve_lit[..]);
+                self.raster_cancellable((cam, clip, cut), (w, h), opaque, None, &corner_light, buffers, cancelled);
+                (depth, hit)
+            }
+        };
         if cancelled() {
             return Image::empty();
         }
@@ -4357,6 +4486,29 @@ pub struct Clip {
     pub far: Option<f64>,
     pub x: (f64, f64),
     pub y: (f64, f64),
+}
+
+/// What a card rasterized of a section's or an elevation's picture ([`Raster::section`]): for each pixel, row by row, the card's
+/// depth there (0 to 1, as [`gpu::Mesh::section_view`] maps it) and the plane and the element of the nearest triangle, each one
+/// more than its number, as a [`gpu::Vertex`] holds them (an element by its place in [`gpu::Mesh::owners`]); 0 where none is.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Rastered {
+    pub width: u32,
+    pub height: u32,
+    pub depth: Vec<f32>,
+    pub ids: Vec<[u32; 2]>,
+}
+
+/// A graphics card the desktop lends the core to draw pictures with, faster than the processor: the core never names one, and
+/// whatever it can't do (none here) the processor does instead, to the same picture.
+pub trait Raster: Send + Sync {
+    /// The opaque triangles of `mesh` ([`gpu::Mesh::section`]) through `cam`, kept as `clip` keeps them: what lies past the
+    /// line and before the far clip, between its columns and rows.
+    fn section(&self, mesh: &Arc<gpu::Mesh>, cam: &Camera, clip: &Clip) -> Option<Rastered>;
+
+    /// The 3D view's picture of `mesh` ([`gpu::Mesh::new`]) through `cam`, as [`Scene::render_in`] draws it on paper, with the
+    /// caps of its section box filled where it has them: red, green, blue and alpha, row by row.
+    fn picture(&self, mesh: &Arc<gpu::Mesh>, cam: &Camera, caps: Option<&Arc<Caps>>) -> Option<Vec<u8>>;
 }
 
 /// A 3D view's section box as `cam` sees it: what of a pixel's depth, or of the model, it keeps. In a parallel view, the

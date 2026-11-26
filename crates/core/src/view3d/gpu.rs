@@ -67,6 +67,9 @@ pub struct View {
     pub target: [f32; 3],
     pub scale: f32,
     pub depth: f32,
+    /// The card's depth (0 to 1) at the target in a parallel view: half way in a 3D view, whose depth reaches as far either
+    /// side of it; 1 in a section's or an elevation's, which keeps only what lies past its line ([`Mesh::section_view`]).
+    pub aim: f32,
     /// In perspective: the lens's focal length in px, how far the eye is from the target, mm, and the card's depth (larger
     /// nearer, 1 at [`NEAR`] in front of the eye and 0 as far past the target as the mesh reaches) as `a + b / ahead` for a
     /// point `ahead` mm in front of the eye.
@@ -394,15 +397,23 @@ impl Mesh {
         Self::new_cancellable(scene, look, &|| false).and_then(|mesh| mesh.ok_or_else(|| "mesh build was cancelled".into()))
     }
 
+    /// The mesh a card rasterizes a section's or an elevation's picture from (`Scene::section_picture_from`): what `look` shows of
+    /// `scene` as the processor's section picture draws it, in hidden line whatever the view's style, with no masses (a section
+    /// outlines where it cuts them), no scans' points (the processor puts those over what the card gives back), no levels'
+    /// marks and no section box.
+    pub fn section(scene: &Scene, look: &Look, cancelled: &dyn Fn() -> bool) -> Result<Option<Mesh>, String> {
+        Self::build(scene, look, cancelled, true, true)
+    }
+
     /// The same mesh with no shapes: every copy's triangles its own, as they were before the card placed copies. What the
     /// placed copies are held to.
     pub fn flat(scene: &Scene, look: &Look) -> Result<Mesh, String> {
-        Self::build(scene, look, &|| false, false).and_then(|mesh| mesh.ok_or_else(|| "mesh build was cancelled".into()))
+        Self::build(scene, look, &|| false, false, false).and_then(|mesh| mesh.ok_or_else(|| "mesh build was cancelled".into()))
     }
 
     /// The same mesh, abandoning a superseded view between batches of triangles.
     pub fn new_cancellable(scene: &Scene, look: &Look, cancelled: &dyn Fn() -> bool) -> Result<Option<Mesh>, String> {
-        Self::build(scene, look, cancelled, true)
+        Self::build(scene, look, cancelled, true, false)
     }
 
     /// How many triangles it draws, each copy's counted.
@@ -410,18 +421,19 @@ impl Mesh {
         self.vertices.len() / 3 + self.shapes.iter().map(|s| s.vertices.len() / 3 * s.instances.len()).sum::<usize>()
     }
 
-    fn build(scene: &Scene, look: &Look, cancelled: &dyn Fn() -> bool, instancing: bool) -> Result<Option<Mesh>, String> {
+    fn build(scene: &Scene, look: &Look, cancelled: &dyn Fn() -> bool, instancing: bool, section: bool) -> Result<Option<Mesh>, String> {
         if cancelled() {
             return Ok(None);
         }
-        let wireframe = look.style() == VisualStyle::Wireframe;
+        // A section's picture is hidden line, whatever the view says.
+        let wireframe = !section && look.style() == VisualStyle::Wireframe;
         // Only the shapes the surfaces are drawn from are of use.
         let instancing = instancing && !wireframe;
         // Paper faces with their edges: nothing lit, textured or seen through, as a section's picture.
-        let lines = look.style() != VisualStyle::Shaded;
+        let lines = section || look.style() != VisualStyle::Shaded;
         let plain = look.is_plain();
-        // A wireframe draws a scan's points no more than the processor's does.
-        let scans: Vec<&super::Scan> = scene.scans.iter().filter(|s| !wireframe && (plain || look.shows(s.owner))).collect();
+        // A wireframe draws a scan's points no more than the processor's does; a section's are the processor's to draw.
+        let scans: Vec<&super::Scan> = scene.scans.iter().filter(|s| !section && !wireframe && (plain || look.shows(s.owner))).collect();
         // What the view shows, an element's run of triangles at a time.
         let mut shown = Vec::new();
         let mut reach: Option<(P3, P3)> = None;
@@ -441,8 +453,12 @@ impl Mesh {
             if plain || look.shows(span.id) {
                 // A part the view hides (a stair's headroom unless it shows it, a curtain wall's panels or mullions) is left out
                 // of its element's run.
-                let part_shown =
-                    |i: &usize| scene.tris.get(*i).is_some_and(|t| if plain { look.forms_show(t.vis, false) } else { t.seen_in(look) });
+                let part_shown = |i: &usize| {
+                    scene.tris.get(*i).is_some_and(|t| {
+                        (if plain { look.forms_show(t.vis, false) } else { t.seen_in(look) })
+                            && !(section && scene.masses.contains(&t.owner))
+                    })
+                };
                 shown.extend(span.at.clone().filter(part_shown));
                 for (a, t) in
                     alphas.get_mut(span.at.clone()).unwrap_or_default().iter_mut().zip(scene.tris.get(span.at.clone()).unwrap_or_default())
@@ -572,7 +588,7 @@ impl Mesh {
         let is_taken = |i: usize| taken.get(i).copied().unwrap_or(false);
         let clear_from = shown.iter().filter(|&&i| !clear(i) && !is_taken(i)).count() * 3;
         let drawn = shown.iter().filter(|&&i| !is_taken(i)).count();
-        let levels: Vec<_> = scene.levels.iter().filter(|(id, ..)| !wireframe && (plain || look.shows(*id))).cloned().collect();
+        let levels: Vec<_> = scene.levels.iter().filter(|(id, ..)| !section && !wireframe && (plain || look.shows(*id))).cloned().collect();
         // The box round what is shown (the box round its elements' boxes) and the levels.
         let corners = levels.iter().flat_map(|(.., c)| c.iter());
         let reached = reach.iter().flat_map(|(lo, hi)| [lo, hi]);
@@ -594,7 +610,8 @@ impl Mesh {
             owners: Vec::new(),
             skins: vec![Skin::default(); scene.skins.len()],
             texels: Vec::new(),
-            display: look.display(),
+            // A section's picture draws as ever: its edges, and no silhouettes or shadows.
+            display: if section { super::DisplayOptions::default() } else { look.display() },
             groups: Vec::new(),
             cube: 0..0,
             cube_planes: 0,
@@ -602,7 +619,7 @@ impl Mesh {
             group_spheres: Vec::new(),
             copy_spheres: Vec::new(),
             cells: Vec::new(),
-            section_box: look.section_box(),
+            section_box: if section { None } else { look.section_box() },
             lines,
             wireframe,
             wires: Vec::new(),
@@ -870,7 +887,25 @@ impl Mesh {
             let b = NEAR * far / (far - NEAR);
             Perspective { focal: focal as f32, eye: eye as f32, a: (-NEAR / (far - NEAR)) as f32, b: b as f32 }
         });
-        View { right: f(right), up: f(up), back: f(back), target: f(target), scale: cam.scale as f32, depth: depth as f32, perspective }
+        View {
+            right: f(right),
+            up: f(up),
+            back: f(back),
+            target: f(target),
+            scale: cam.scale as f32,
+            depth: depth as f32,
+            aim: 0.5,
+            perspective,
+        }
+    }
+
+    /// How a card draws a section's or an elevation's picture through `cam` (parallel, its target on the line): what lies past
+    /// the line, up to `far` (the far clip; none, as far as the mesh reaches), is 0 to 1 in the card's depth, 1 on the line, so
+    /// the card's own clipping keeps what the processor's [`Clip`](super::Clip) keeps in depth.
+    pub fn section_view(&self, cam: &Camera, far: Option<f64>) -> View {
+        let reach = self.radius + dot(sub(cam.target, self.origin), sub(cam.target, self.origin)).sqrt() + 1.0;
+        let far = far.filter(|f| f.is_finite() && *f > 0.0).map_or(reach, |f| f.min(reach));
+        View { depth: (far / 2.0) as f32, aim: 1.0, perspective: None, ..self.view(cam) }
     }
 
     /// What a card draws of the mesh through `cam`: every group and copy but those wholly past one side of what the picture

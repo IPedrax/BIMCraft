@@ -69,7 +69,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Plafondarmatuur"
 
-#: crates/core/src/render.rs:4460
+#: crates/core/src/render.rs:4537
 msgid "Ceiling Plan"
 msgstr "Plafondplan"
 
@@ -152,8 +152,8 @@ msgstr "Kruisarcering"
 msgid "Cut to Clipboard"
 msgstr ""
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5824
+#: crates/core/src/render.rs:6270
 msgid "DN"
 msgstr "DN"
 
@@ -571,7 +571,7 @@ msgstr "Metaal"
 msgid "Mounting Height"
 msgstr "Montagehoogte"
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4270
 msgid "NOT ENCLOSED"
 msgstr "NIET OMSLOTEN"
 
@@ -699,7 +699,7 @@ msgstr ""
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4270
 msgid "REDUNDANT"
 msgstr "OVERBODIG"
 
@@ -989,8 +989,8 @@ msgstr ""
 msgid "Type"
 msgstr "Type"
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5824
+#: crates/core/src/render.rs:6270
 msgid "UP"
 msgstr "OMHOOG"
 
