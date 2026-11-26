@@ -3438,7 +3438,7 @@ fn project_units_offer_the_decimals_their_units_allow_and_the_project_keeps_the_
     press(&mut h, "Manage");
     press(&mut h, "Project Units");
     press(&mut h, "4'-1\"");
-    h.get_all_by_role(Role::ComboBox).find(|n| n.value().as_deref() == Some("1")).expect("the rounding list").click_accesskit();
+    h.get_all_by_role(Role::ComboBox).find(|n| n.value().as_deref() == Some("1\"")).expect("the rounding list").click_accesskit();
     h.run();
     press(&mut h, "1/16\"");
     assert!(h.get_all_by_role(Role::ComboBox).any(|n| n.value().as_deref() == Some("1/16\"")), "sixteenths picked");
