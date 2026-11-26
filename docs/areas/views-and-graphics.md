@@ -578,7 +578,7 @@ it needs (`needs_face`, by the tool's title). Floor and Ceiling sketch on the vi
 face picked on the model.
 
 A level's own plan is the level (its `view_range`, `crop` and `graphics` are the level's); every other plan of it is an `Element::PlanView`
-(Revit's Duplicate View: `duplicate_view`, which only plans take). A plan has a key: the level's id, or a plan view's. `Model::plan_level` says
+(Revit's Duplicate View: `duplicate_view`). A plan has a key: the level's id, or a plan view's. `Model::plan_level` says
 which level a key shows, and everything that draws or measures the model takes that level (`draw_plan`, `plan_shows`, the canvas's tools), while
 what is the view's own takes the key: its graphics (`graphics_of`), view range (`view_range_of`, which a template may control), crop (`crop_of`)
 and annotation. Annotation says which view it is in: a note or a spot elevation by `view`, a dimension or a tag by an optional `view` beside its
@@ -588,6 +588,14 @@ its parent's view range and graphics (`plan_source`; `graphics`, `scale`, `detai
 of its own and draws its parent's annotation as well as its own. Deleting a view deletes what is annotated in it and its dependents; a level
 takes its plan views with it. A project that has none writes the same file as before. A plan's own name, lettered at its bottom left, is in the drawings that make an image (`plan`, `ceiling_plan`: `titled`), not in the window's (`draw`, `draw_ceiling`) or a sheet's (`draw_at`), where the tab and the viewport's title say it. The desktop: View > Duplicate View, DP, and the Project
 Browser's right-click, which also has Delete for a plan view; `Sheet::Plan` and `Sheet::Ceiling` hold the key.
+
+Sections also accept plain `duplicate_view` (the default mode): **Project Browser > right-click a section > Duplicate**.
+The copy opens as an independent `Element::Section` with a new id and GUID and a unique default name (`<view> Copy 1`), or
+the supplied `name`. Its cut line, far clip depth, crop, graphics (including scale, detail and any assigned template) and
+underlay start as the source's. Rename and view edits affect the copy alone; template-controlled settings still follow the
+assigned template. The Browser opens the copy as `Sheet::Section`, even from a plan or ceiling plan. Plain duplication leaves
+annotations behind in the source view; `detailing` and `dependent` modes are refused for sections. Duplication of elevations,
+3D views, schedules and sheets remains unsupported. The View tab's Duplicate View menu and DP shortcut remain plan-only.
 
 Fill patterns, filled region types and filled regions (`fills.rs`) follow line patterns and styles. A `FillPattern` is
 families of parallel lines as a PAT file has them (`HatchLine`: an angle, an origin, a spacing across, a shift along, and

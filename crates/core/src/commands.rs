@@ -1548,8 +1548,10 @@ other_files(
         "duplicate_view",
         "Duplicate View",
         &["DP"],
-        "{view, mode?: duplicate|detailing|dependent, name?} a new plan view of a plan's level (a level's own plan, or a plan \
-         view; sections, elevations, schedules, sheets and the 3D view aren't duplicated yet): `duplicate` (the default) has \
+        "{view, mode?: duplicate|detailing|dependent, name?} duplicates a plan (a level's own plan, or a plan view) or a section. \
+         A section accepts only `duplicate`: a new independent section with the same cut line, depth, crop, graphics, scale \
+         and underlay, without annotation. Elevations, schedules, sheets and the 3D view aren't duplicated yet. For plans, \
+         `duplicate` (the default) has \
          the same view range, crop and graphics and no annotation of its own; `detailing` copies the dimensions, tags, notes \
          and spot elevations in it too, as its own; `dependent` follows its parent's view range, graphics, scale and detail \
          (change those in the parent), has a crop of its own and shows its parent's annotation as well as its own. Named \
@@ -15362,24 +15364,18 @@ fn own_to_set(c: &str, m: &Model, view: impl Key, group: Group, what: &str) -> R
     }
 }
 
-/// Revit's Duplicate View, of a plan: a new plan view of the same level (see the catalog entry).
+/// Revit's Duplicate View: a new plan view of the same level, or an independent section (see the catalog entry).
 fn duplicate_view(s: &mut Session, p: &Value) -> R {
     let c = "duplicate_view";
     let m = &s.model;
     let view = view_param(c, m, p, false)?;
-    let Some(level) = m.plan_level(view).map(|l| m.guid(l)) else {
-        return Err(bad(
-            c,
-            format!(
-                "{} isn't a plan: plans are duplicated, sections, elevations, schedules, sheets and the 3D view not yet",
-                view_title(m, view)
-            ),
-        ));
-    };
     let source = m.guid(view);
     let mode = string(c, p, "mode")?.unwrap_or_else(|| "duplicate".into());
     if !matches!(mode.as_str(), "duplicate" | "detailing" | "dependent") {
         return Err(bad(c, format!("`mode` is duplicate, detailing or dependent, not `{mode}`")));
+    }
+    if matches!(m.elements.get(view), Some(Element::Section(_))) && mode != "duplicate" {
+        return Err(bad(c, "sections support only `mode: duplicate`; annotation copying and dependent sections aren't supported"));
     }
     let from = m.plan_view(view);
     if mode == "dependent" && from.is_some_and(|v| v.parent.is_some()) {
@@ -15391,6 +15387,21 @@ fn duplicate_view(s: &mut Session, p: &Value) -> R {
             let word = m.language.word(if mode == "dependent" { msg!("Dependent") } else { "Copy" });
             m.free_view_name(&format!("{} {word}", view_title(m, view)), true)
         }
+    };
+    if let Some(Element::Section(section)) = m.elements.get(view) {
+        let mut new = section.clone();
+        new.name = name.clone();
+        let id = s.model_mut().insert(Element::Section(new));
+        return Ok(json!({"id": id, "name": name, "annotations": 0}));
+    }
+    let Some(level) = m.plan_level(view).map(|l| m.guid(l)) else {
+        return Err(bad(
+            c,
+            format!(
+                "{} isn't a plan or a section: elevations, schedules, sheets and the 3D view aren't duplicated yet",
+                view_title(m, view)
+            ),
+        ));
     };
     // What it starts as: the settings the source is drawn with, a dependent's being its parent's.
     let held = m.elements.get(m.plan_source(view));

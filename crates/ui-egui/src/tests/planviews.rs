@@ -22,6 +22,42 @@ fn in_browser<'a>(h: &'a Harness<BimApp>, label: &'a str) -> egui_kittest::Node<
 }
 
 #[test]
+fn browser_duplicates_a_section_and_opens_it_as_a_section() {
+    for ceiling in [false, true] {
+        let mut h = app(r#"section {"name": "Building cut", "start": [0,0], "end": [8000,0], "depth": 6000}"#);
+        let source = h.state().session.model.view_named("Building cut").unwrap();
+        let original = h.state().session.model.section(source).unwrap().clone();
+        if ceiling {
+            let level = h.state().session.model.levels()[0].0;
+            h.state_mut().open_sheet(Sheet::Ceiling(level));
+            h.run();
+        }
+        // Sections sit below the plan groups: an accessible row can still be clipped by the Browser's scroll area.
+        in_browser(&h, "Building cut").scroll_to_me();
+        h.run();
+        // Re-query after scrolling so the right click uses the row's visible position.
+        in_browser(&h, "Building cut").click_secondary();
+        h.run();
+        assert!(h.query_by_label("Duplicate").is_some(), "the section's context menu should offer Duplicate (ceiling: {ceiling})");
+        assert!(h.query_by_label("Duplicate with Detailing").is_none());
+        assert!(h.query_by_label("Duplicate as Dependent").is_none());
+        assert_eq!(h.query_by_label("Show as Underlay").is_some(), !ceiling);
+        press(&mut h, "Duplicate");
+
+        let m = &h.state().session.model;
+        let copy = m.view_named("Building cut Copy 1").unwrap();
+        assert_ne!(m.guid(copy), m.guid(source));
+        assert_eq!(h.state().sheet, Sheet::Section(copy));
+        let mut expected = original.clone();
+        expected.name = "Building cut Copy 1".into();
+        assert_eq!(m.section(copy), Some(&expected));
+        assert_eq!(m.section(source), Some(&original));
+        assert!(views(&h).is_empty());
+        assert!(h.get_all_by_label("Building cut Copy 1").count() >= 2, "the copy is listed in the Browser and its tab");
+    }
+}
+
+#[test]
 fn duplicate_view_on_the_view_tab_makes_a_plan_view_and_opens_it() {
     let mut h = app(HOUSE);
     press(&mut h, "View");

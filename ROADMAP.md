@@ -104,7 +104,7 @@ The goal is a printable, coordinated drawing set.
 
 | Item | Size |
 |---|---|
-| Duplicate view (with or without detailing) and dependent views: done for plans (`duplicate_view`, DP); left: sections, elevations, 3D views, schedules and sheets | M |
+| Duplicate view (with or without detailing) and dependent views: done for plans (`duplicate_view`, DP); ~~plain section duplication~~: done (`duplicate_view`, Project Browser > right-click a section > Duplicate), with the same cut, crop, scale, graphics and underlay, independently editable and without copying annotations. Left: section duplication with detailing, dependent sections, and duplication of elevations, 3D views, schedules and sheets | M |
 | Detail lines, filled regions, masking regions, line styles: done (line patterns and styles, detail lines a line a click or as a polyline, the shared sketch solver, fill patterns, filled region types, filled and masking regions); left: the rows below | M |
 | Line draw tools for detail lines, sketches and walls: done (rectangle, inscribed and circumscribed polygon, circle, start-end-radius, centre-ends, tangent end and fillet arcs, spline by control points and through points, ellipse and partial ellipse, polyline, Pick Lines, Sides, Radius and Offset; Join into Polyline and Explode Polyline); Fillet Arc and Pick Lines for walls too; left: Pick Faces | M |
 | A line style for each of a region's boundary lines, or invisible: done | S |

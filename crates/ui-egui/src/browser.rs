@@ -95,7 +95,7 @@ enum Act {
     Open3D(Option<Id>),
     /// A family's type: the Component tool places it.
     Place(String, String),
-    /// A plan's right-click menu: a duplicate of it, in a mode of the command's.
+    /// A view's right-click menu: a duplicate of it, in a mode of the command's.
     Duplicate(Id, &'static str),
     /// A right-click menu's Delete: the elements it names go, as Delete takes them.
     Delete(Vec<Id>),
@@ -627,11 +627,14 @@ impl BimApp {
             if !views.is_empty() {
                 let leaf = |id: Id, name: &str| {
                     let node = self.view_leaf(name, Sheet::Section(id));
-                    if self.underlay_target().is_some_and(|on| on != id) {
-                        node.with_menu(vec![(msg!("Show as Underlay"), Act::Underlay(id))])
-                    } else {
-                        node
+                    let mut menu = Vec::new();
+                    if category == "section" {
+                        menu.push((msg!("Duplicate"), Act::Duplicate(id, "duplicate")));
                     }
+                    if self.underlay_target().is_some_and(|on| on != id) {
+                        menu.push((msg!("Show as Underlay"), Act::Underlay(id)));
+                    }
+                    node.with_menu(menu)
                 };
                 kids.push(Node::group(t(group), true, views.iter().map(|(id, name)| leaf(*id, name)).collect()));
             }
