@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use bimcraft_core::model::Id;
 use bimcraft_core::render::Rgb;
-use bimcraft_core::view3d::gpu::{Instance, Mesh, Vertex, Visible};
+use bimcraft_core::view3d::gpu::{Dot, Instance, Mesh, Vertex, Visible};
 use bimcraft_core::view3d::{Camera, Caps, MAX_SIDE, PlaneMark};
 use eframe::egui_wgpu::{RenderState, wgpu};
 use egui::TextureId;
@@ -449,6 +449,10 @@ pub struct Gpu {
     segments: (wgpu::Buffer, u64),
     /// The section box's caps drawn last, over the surfaces it cuts.
     caps: Option<CapsUp>,
+    /// The points of scans' indexes drawn beside the mesh's own, on the card.
+    detail: Option<DetailUp>,
+    /// Points the card had no room for: not tried again.
+    detail_refused: Option<Arc<DetailDots>>,
     mesh: Option<Uploaded>,
     /// A second mesh kept on the card beside the one drawn: what [`park`](Self::park) set aside, so that a view showing it again
     /// (another document's tab gone back to) draws it without uploading it again. The two share [`card_bytes`](Self::card_bytes).
@@ -511,6 +515,42 @@ type Words = Vec<u8>;
 /// The first plane number a section box's cap takes, each its own from here up: past any the scene numbers, short of a scan's
 /// point's (`DOT_PLANE` in `gpu.wgsl`).
 const CAP_PLANE: u32 = 0x8000_0000;
+
+/// How many points of scans' indexes go in one buffer: 20 MB, which any card holds.
+const DETAIL_PER: usize = 1 << 20;
+
+/// The points of scans' indexes a picture draws beyond those the project holds (`view3d::scan_detail`), as the card reads a
+/// mesh's dots: from its origin, numbered as its owners. Packed on a worker, so the frame that takes them only copies them.
+pub(crate) struct DetailDots {
+    pub(crate) mesh: Arc<Mesh>,
+    parts: Vec<Words>,
+}
+
+impl DetailDots {
+    /// `dots`, from `mesh`'s origin; none once `cancelled`.
+    pub(crate) fn pack(mesh: &Arc<Mesh>, dots: &[Dot], cancelled: &dyn Fn() -> bool) -> Option<DetailDots> {
+        let mut parts = Vec::with_capacity(dots.len().div_ceil(DETAIL_PER));
+        for chunk in dots.chunks(DETAIL_PER) {
+            if cancelled() {
+                return None;
+            }
+            let mut bytes = Words::with_capacity(chunk.len() * DOT as usize);
+            for dot in chunk {
+                let at = std::array::from_fn::<f32, 3, _>(|i| (dot.at[i] - mesh.origin[i]) as f32);
+                put(&mut bytes, &at);
+                put_words(&mut bytes, &[dot.color, dot.owner]);
+            }
+            parts.push(bytes);
+        }
+        Some(DetailDots { mesh: Arc::clone(mesh), parts })
+    }
+}
+
+/// Those points on the card: what they are, and their buffers, each with how many it holds.
+struct DetailUp {
+    dots: Arc<DetailDots>,
+    buffers: Vec<(wgpu::Buffer, u32)>,
+}
 
 /// A section box's caps on the card: what they are of (the caps, and the mesh whose elements they name), and their vertices.
 struct CapsUp {
@@ -1027,6 +1067,8 @@ impl Gpu {
             globals,
             segments,
             caps: None,
+            detail: None,
+            detail_refused: None,
             mesh: None,
             parked: None,
             owner: None,
@@ -1242,6 +1284,39 @@ impl Gpu {
         std::mem::swap(&mut self.mesh, &mut self.parked);
         std::mem::swap(&mut self.owner, &mut self.parked_owner);
         self.forget_progress();
+        true
+    }
+
+    /// Draws `detail` with the mesh it was packed for from the next picture on, in place of what it drew before: none, no more.
+    /// Where the card can't hold them, it draws the mesh's own points alone. Whether they are on the card.
+    pub(crate) fn set_detail(&mut self, detail: Option<&Arc<DetailDots>>) -> bool {
+        let same = match (&self.detail, detail) {
+            (Some(up), Some(d)) => Arc::ptr_eq(&up.dots, d),
+            (None, None) => true,
+            _ => false,
+        };
+        let refused = matches!((&self.detail_refused, detail), (Some(a), Some(b)) if Arc::ptr_eq(a, b));
+        if same || refused {
+            return self.detail.is_some();
+        }
+        self.detail = None;
+        self.forget_progress();
+        let Some(dots) = detail else { return false };
+        let mut buffers = Vec::with_capacity(dots.parts.len());
+        let mut held = 0;
+        for part in &dots.parts {
+            match hold(&self.device, &self.queue, part, held, self.full_at) {
+                Ok(buffer) => {
+                    held += part.len() as u64;
+                    buffers.push((buffer, (part.len() as u64 / DOT) as u32));
+                }
+                Err(_) => {
+                    self.detail_refused = Some(Arc::clone(dots));
+                    return false;
+                }
+            }
+        }
+        self.detail = Some(DetailUp { dots: Arc::clone(dots), buffers });
         true
     }
 
@@ -1631,6 +1706,18 @@ impl Gpu {
                 pass.set_bind_group(0, &bind, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 pass.draw(0..*count, 0..1);
+            }
+            // The points of scans' indexes read for this view, once a picture, after the mesh's own and cut as theirs are.
+            if !clear
+                && first
+                && let Some(detail) = self.detail.as_ref().filter(|d| Arc::ptr_eq(&d.dots.mesh, mesh))
+            {
+                pass.set_pipeline(&self.dots);
+                pass.set_bind_group(0, &bind, &[]);
+                for (buffer, count) in &detail.buffers {
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    pass.draw(0..6, 0..*count);
+                }
             }
         }
         if !picture {

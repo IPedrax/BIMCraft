@@ -729,6 +729,10 @@ pub struct BimApp {
     ribbon_peek: bool,
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
+    /// What the caches of scans' indexes may take, MB (none: a share of what's free), and how many of their points the 3D view
+    /// draws (none: as many as the card or the processor draws well). Settings > Graphics.
+    pub(crate) scan_memory_mb: Option<u32>,
+    pub(crate) scan_points: Option<u32>,
     background_grid_dialog: Option<background_grid::GridDialog>,
     /// The underlay of the view on screen, made and kept on the card (`underlay.rs`).
     pub(crate) underlay: underlay::Layer,
@@ -1910,6 +1914,8 @@ impl BimApp {
             palette_json: RefCell::new(None),
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
+            scan_memory_mb: None,
+            scan_points: None,
             background_grid_dialog: None,
             underlay: Default::default(),
             underlay_dialog: None,
@@ -4615,6 +4621,7 @@ impl BimApp {
         (fresh.panels_hidden, fresh.panel_keys) = (std::mem::take(&mut self.panels_hidden), std::mem::take(&mut self.panel_keys));
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
+        (fresh.scan_memory_mb, fresh.scan_points) = (self.scan_memory_mb, self.scan_points);
         fresh.grid_snapping = self.grid_snapping;
         fresh.guide_style = self.guide_style;
         fresh.compressed_save = self.compressed_save;

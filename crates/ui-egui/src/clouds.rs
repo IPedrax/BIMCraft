@@ -52,9 +52,15 @@ pub(crate) struct CloudBox {
     origin: &'static str,
     /// By shared coordinates: the active location taken from the scan instead.
     acquire: bool,
+    /// Keep full detail: every point in an index beside the project's file (`point_cloud`'s `index`), the project keeping
+    /// only the top of it. On at first for big files; off, and greyed out, while the project has no file to keep it beside.
+    pub(crate) index: bool,
     /// Why it couldn't be brought in, shown in the box.
     error: Option<String>,
 }
+
+/// Scan files bigger than this together keep full detail at first, as `point_cloud`'s `index: "auto"` decides.
+pub(crate) const INDEX_FROM: u64 = 64 << 20;
 
 impl BimApp {
     /// Insert > Point Cloud: the files the user picks, then the box for them.
@@ -67,13 +73,16 @@ impl BimApp {
     /// Opens the box for bringing in the scan files `paths`, named for the first.
     pub(crate) fn point_cloud_paths(&mut self, paths: Vec<PathBuf>) {
         let name = paths.first().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        self.cloud_box = Some(CloudBox { paths, name, units: "m", spacing: String::new(), origin: "centre", acquire: false, error: None });
+        let index = files_size(&paths) > INDEX_FROM;
+        self.cloud_box =
+            Some(CloudBox { paths, name, units: "m", spacing: String::new(), origin: "centre", acquire: false, index, error: None });
     }
 
     pub(crate) fn point_cloud_window(&mut self, ctx: &Context) {
         if self.cloud_reading.is_some() {
             return;
         }
+        let saved = self.session.path.is_some();
         let Some(b) = self.cloud_box.as_mut() else { return };
         let (mut ok, mut close) = (false, false);
         let r = Modal::new(UiId::new("point-cloud"), t("Point Cloud")).width(440.0).show(ctx, |ui| {
@@ -112,6 +121,13 @@ impl BimApp {
                 ));
                 ui.add_enabled(b.origin == "shared", egui::Checkbox::new(&mut b.acquire, t("Acquire coordinates from it")))
                     .on_hover_text(t("The active location is set from the scan's instead, so it lands on the project's origin"));
+                ui.add_space(6.0);
+                ui.checkbox(&mut b.index, t("Keep full detail (index beside the project)")).on_hover_text(t(
+                    "Every point goes in a file beside the project's, which views read as they come near; the project keeps a share of them",
+                ));
+                if !saved && b.index {
+                    ui.label(RichText::new(t("The project has no file yet: the index is kept beside the scan's file.")).color(pal().muted));
+                }
                 if let Some(e) = &b.error {
                     ui.add_space(6.0);
                     ui.label(RichText::new(e).color(pal().error));
@@ -131,6 +147,19 @@ impl BimApp {
         }
     }
 
+    /// Find Index… on a scan in the Project Browser: its index's file picked in the system's dialog, then
+    /// `point_cloud_index` reads it there.
+    pub(crate) fn find_cloud_index(&mut self, ctx: &Context, cloud: String) {
+        let dialog = rfd::AsyncFileDialog::new().add_filter(t("Point cloud index"), &["bimpc"]);
+        let dialog = match self.session.path.as_ref().and_then(|p| p.parent()) {
+            Some(dir) => dialog.set_directory(dir),
+            None => dialog,
+        };
+        self.ask_file(ctx, dialog, false, move |app, path| {
+            app.run("point_cloud_index", json!({"cloud": cloud, "path": path.to_string_lossy()}));
+        });
+    }
+
     /// Runs `point_cloud` for the box's files: placed on the plan on screen's level, and selected. A refusal keeps the box
     /// open with the reason in it.
     fn bring_in_cloud(&mut self) {
@@ -140,6 +169,7 @@ impl BimApp {
             "name": b.name.trim(),
             "units": b.units,
             "origin": b.origin,
+            "index": b.index,
         });
         if b.origin == "shared" && b.acquire {
             p["acquire"] = json!(true);
@@ -161,7 +191,8 @@ impl BimApp {
         {
             p["level"] = json!(level);
         }
-        if files_size(&b.paths) >= IN_BACKGROUND {
+        // An index is built on a thread of its own whatever the size: it writes every point to its file.
+        if files_size(&b.paths) >= IN_BACKGROUND || p["index"] == json!(true) {
             self.read_cloud_in_background(p);
             return;
         }

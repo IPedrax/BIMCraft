@@ -405,14 +405,27 @@ other_files(
         "point_cloud",
         ui_msg!("Point Cloud"),
         &[],
-        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?} brings in a laser scan (`path`: \
+        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?, index?} brings in a laser scan (`path`: \
          PTS, XYZ, PLY, LAS, LAZ (COPC too) or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
          cm, m (the default), in or ft; one point kept in each cube `spacing` mm wide) or places one the project holds again \
          (`cloud`, its name), as an element: its middle on `at` (the origin) and its foot on the level, or with `origin: file` \
          where its file's coordinates put it, or with `origin: shared` where they put it as the map's, by the active location \
          (`acquire: true` first sets the location from the scan, so its middle lands at the origin and its foot on 0); `offset` raises its middle over the level, `angle` turns it. Returns its id, the \
-         scan's name, the points kept and read, and where its middle was in the file",
+         scan's name, the points kept and read, and where its middle was in the file. `index` (true, false or auto, the \
+         default: files over 64 MB) keeps every point in an index, `<project>_clouds/<name>.bimpc` beside the project (beside \
+         the scan's file, `<name>.bimpc`, while the project has no file), which views read as they zoom in; the project holds only the top of it (and `spacing` isn't used), \
+         and the reply gives the index's `path`, `count` and `bytes`",
         point_cloud,
+        Files::Read,
+    ),
+    edit_files(
+        "point_cloud_index",
+        ui_msg!("Point Cloud Index"),
+        &[],
+        "{cloud, path?} finds a scan's index again (a `.bimpc` file, which `point_cloud` with `index` built): at `path`, which \
+         must be that scan's index, or where the project holds it. A view draws the top of a scan whose index can't be found, \
+         and `open` lists those as `clouds_not_indexed`",
+        point_cloud_index,
         Files::Read,
     ),
     edit_files(
@@ -5250,6 +5263,10 @@ fn with_links(s: &mut Session, mut reply: Value) -> Value {
     let failed = relink_cads(s);
     if !failed.is_empty() {
         reply["cads_not_reloaded"] = json!(failed);
+    }
+    let failed = reindex(s);
+    if !failed.is_empty() {
+        reply["clouds_not_indexed"] = json!(failed);
     }
     reply
 }
@@ -10395,12 +10412,14 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("the project's scans hold {held} points, all it may; delete the point clouds of one first")));
             }
             let options = cloud::Options { scale, spacing, cap: (cap / paths.len()).max(1) };
-            let key = cloud::ScanKey { paths: paths.clone(), scale, spacing, cap };
+            let index = index_at(s, c, p, &paths, &name)?;
+            let key = cloud::ScanKey { paths: paths.clone(), index: index.clone(), scale, spacing, cap };
             // A scan read ahead for these files and options is what reading them would give (`Session::read_scan_ahead`).
             let ahead = s.scan_read.take().filter(|r| r.key == key).map(|r| r.cloud);
-            let scan = match ahead {
-                Some(cloud) => Ok(cloud),
-                None => read_scan(s, c, &paths, formats, &options, cap, spacing)?,
+            let scan = match (ahead, &index) {
+                (Some(cloud), _) => Ok(cloud),
+                (None, Some(out)) => index_scan(s, c, &paths, formats, scale, out, cap)?,
+                (None, None) => read_scan(s, c, &paths, formats, &options, cap, spacing)?,
             };
             if s.keep_scan
                 && let Ok(cloud) = &scan
@@ -10463,6 +10482,7 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         angle = a;
     }
     let (points, read) = (scan.len(), scan.read());
+    let index = scan.index().map(|r| json!({"path": r.path, "count": r.count, "bytes": scan.indexed().map(|i| i.index.size())}));
     let m = s.model_mut();
     if new {
         m.clouds.insert(name.clone(), scan);
@@ -10471,7 +10491,107 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         m.set_site(site);
     }
     let id = m.insert(Element::PointCloud(PointCloud { cloud: name.clone(), level, at, offset, angle }));
-    Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin, "acquired": acquired}))
+    Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin, "acquired": acquired, "index": index}))
+}
+
+/// Files of more than this many bytes are indexed when `point_cloud`'s `index` is `auto`: a few million points, past which a
+/// project's share of them is a thin one.
+const INDEX_BYTES: u64 = 64 << 20;
+
+/// Where `point_cloud` builds the index of scan `name` from `paths`, as its `index` says, if it does: in a folder beside the
+/// project named for it, `house_clouds/` beside `house.bimc`; beside the scan's first file while the project has none.
+fn index_at(s: &Session, c: &str, p: &Value, paths: &[PathBuf], name: &str) -> Result<Option<PathBuf>, String> {
+    let wanted = match p.get("index") {
+        None | Some(Value::Null) => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(Value::String(a)) if a == "auto" => None,
+        Some(v) => return Err(bad(c, format!("`index` is true, false or \"auto\", not {v}"))),
+    };
+    let big = || paths.iter().map(|p| std::fs::metadata(p).map_or(0, |m| m.len())).sum::<u64>() > INDEX_BYTES;
+    if !wanted.unwrap_or_else(big) {
+        return Ok(None);
+    }
+    // Beside the project, or, while it has no file, beside the scan's first file: the project holds its full path then.
+    let dir = match &s.path {
+        Some(project) => {
+            let stem = project.file_stem().map_or_else(|| "project".into(), |s| s.to_string_lossy().into_owned());
+            project.parent().map_or_else(|| PathBuf::from(format!("{stem}_clouds")), |d| d.join(format!("{stem}_clouds")))
+        }
+        None => paths.first().and_then(|p| p.parent()).map_or_else(PathBuf::new, std::path::Path::to_path_buf),
+    };
+    let file: String = name.chars().map(|ch| if ch.is_alphanumeric() || " -_.()".contains(ch) { ch } else { '_' }).collect();
+    Ok(Some(dir.join(format!("{}.bimpc", file.trim()))))
+}
+
+/// The scan `point_cloud` brings in from `paths` with every point of it in an index at `out`, and the top of the index, no
+/// more than `cap` points, in the project. The outer error is a file's; the inner, the scan's.
+fn index_scan(
+    s: &Session,
+    c: &str,
+    paths: &[PathBuf],
+    formats: Vec<cloud::Format>,
+    scale: f64,
+    out: &std::path::Path,
+    cap: usize,
+) -> Result<Result<Cloud, String>, String> {
+    let budget = match memory::Budget::start(cap as u64, cloud::KEPT_BYTES) {
+        Ok(b) => b.unwrap_or_else(memory::Budget::none),
+        Err(e) => return Err(bad(c, e)),
+    }
+    .watched(s.progress.clone());
+    let mut files = Vec::with_capacity(paths.len());
+    for (path, format) in paths.iter().zip(formats) {
+        let file = std::fs::File::open(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let name = path.file_name().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+        files.push(cloud::index::Input { name, src: Box::new(file), format });
+    }
+    if let Some(dir) = out.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| bad(c, format!("the folder {} can't be made: {e}", dir.display())))?;
+    }
+    let built = cloud::index::build(files, scale, out, cap, Some(&budget), s.progress.clone()).map_err(|e| bad(c, e))?;
+    let r = cloud::lod::IndexRef {
+        path: cloud::lod::relative(out, s.path.as_deref()),
+        full: Some(out.to_string_lossy().into_owned()),
+        id: cloud::lod::IndexRef::id_of(built.id),
+        count: built.count,
+        levels: built.levels,
+    };
+    let scan = match <[_; 1]>::try_from(built.stations) {
+        Ok([one]) => Cloud::new(&one.source, built.scan),
+        Err(stations) => Cloud::of_stations(built.scan, stations),
+    };
+    Ok(scan.and_then(|cloud| cloud.with_index(r)).and_then(|cloud| {
+        cloud.attach(s.path.as_deref())?;
+        Ok(cloud)
+    }))
+}
+
+/// A scan's index found again: at `path`, or where the project holds it.
+fn point_cloud_index(s: &mut Session, p: &Value) -> R {
+    let c = "point_cloud_index";
+    let name = string(c, p, "cloud")?.ok_or_else(|| bad(c, "give `cloud`, the name of a scan the project holds"))?;
+    let scan = s.model.clouds.get(&name).cloned().ok_or_else(|| bad(c, format!("the project holds no scan named `{name}`")))?;
+    let r = scan.index().cloned().ok_or_else(|| bad(c, format!("scan `{name}` has no index: the project holds all its points")))?;
+    let Some(path) = string(c, p, "path")? else {
+        scan.attach(s.path.as_deref()).map_err(|e| bad(c, e))?;
+        return Ok(json!({"cloud": name, "path": r.path}));
+    };
+    let at = beside(s, &path);
+    let r = cloud::lod::IndexRef { path: cloud::lod::relative(&at, s.path.as_deref()), full: Some(at.to_string_lossy().into_owned()), ..r };
+    let moved = scan.with_index(r.clone()).map_err(|e| bad(c, e))?;
+    moved.attach(s.path.as_deref()).map_err(|e| bad(c, e))?;
+    s.model_mut().clouds.insert(name.clone(), moved);
+    Ok(json!({"cloud": name, "path": r.path}))
+}
+
+/// Every scan's index opened; the scans whose index couldn't be, as `{cloud, error}`: a view draws the top of them the project
+/// holds.
+fn reindex(s: &Session) -> Vec<Value> {
+    s.model
+        .clouds
+        .iter()
+        .filter_map(|(name, scan)| scan.attach(s.path.as_deref()).err().map(|error| json!({"cloud": name, "error": error})))
+        .collect()
 }
 
 // ---------- CAD drawings ----------

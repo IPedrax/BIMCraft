@@ -123,6 +123,9 @@ pub struct Settings {
     pub window: Window,
     /// What High Contrast Point Clouds fills a view's scans with.
     pub high_contrast: [u8; 3],
+    /// What the caches of scans' indexes may take, MB, and how many of their points the 3D view draws: none for Auto.
+    pub cloud_memory_mb: Option<u32>,
+    pub cloud_points_3d: Option<u32>,
     /// Grid snapping applies to every view, using the active view's enabled lattice.
     pub grid_snapping: bool,
     /// Select Elements by Face, in a family document's plans and elevations: a face selects what it is of.
@@ -195,6 +198,7 @@ impl Settings {
             "cut_fills_3d": self.cut_fills_3d,
             "window": self.window.to_json(),
             "high_contrast": self.high_contrast,
+            "point_clouds": {"memory_mb": self.cloud_memory_mb, "points_3d": self.cloud_points_3d},
             "grid_snapping": self.grid_snapping,
             "guide_style": self.guide_style.code(),
             "compressed_save": self.compressed_save,
@@ -253,6 +257,8 @@ impl Settings {
             cut_fills_3d: v["cut_fills_3d"].as_bool().unwrap_or(base.cut_fills_3d),
             window: Window::from_json(&v["window"], base.window),
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
+            cloud_memory_mb: auto_or(&v["point_clouds"], "memory_mb", MEMORY_MB, base.cloud_memory_mb),
+            cloud_points_3d: auto_or(&v["point_clouds"], "points_3d", POINTS_3D, base.cloud_points_3d),
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
             guide_style: v["guide_style"].as_str().and_then(GuideStyle::from_code).unwrap_or(base.guide_style),
             compressed_save: v["compressed_save"].as_bool().unwrap_or(base.compressed_save),
@@ -293,6 +299,19 @@ fn usage_from(v: &Value, base: BTreeMap<String, Usage>) -> BTreeMap<String, Usag
 /// action is migrated over the base profile.
 fn shortcuts_from(v: &Value, base: crate::shortcuts::Config) -> crate::shortcuts::Config {
     if v.is_object() { crate::shortcuts::Config::from_json(v, &base) } else { base }
+}
+
+/// What the Point cloud memory setting may be, MB, and the Points drawn in 3D.
+pub(crate) const MEMORY_MB: std::ops::RangeInclusive<u32> = 64..=262_144;
+pub(crate) const POINTS_3D: std::ops::RangeInclusive<u32> = 100_000..=200_000_000;
+
+/// A setting of `v[key]` that is Auto (null) or a number in `range`: what is missing or out of range keeps `base`'s.
+fn auto_or(v: &Value, key: &str, range: std::ops::RangeInclusive<u32>, base: Option<u32>) -> Option<u32> {
+    match v.get(key) {
+        Some(Value::Null) => None,
+        Some(n) => n.as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| range.contains(n)).map_or(base, Some),
+        None => base,
+    }
 }
 
 /// `[r, g, b]`, each 0 to 255: a colour; anything else, none.
@@ -406,6 +425,8 @@ impl BimApp {
         self.cut_fills_3d = kept.cut_fills_3d;
         self.window.kept = kept.window;
         self.scan_contrast = kept.high_contrast;
+        (self.scan_memory_mb, self.scan_points) = (kept.cloud_memory_mb, kept.cloud_points_3d);
+        self.use_scan_memory();
         self.grid_snapping = kept.grid_snapping;
         self.guide_style = kept.guide_style;
         self.compressed_save = kept.compressed_save;
@@ -474,6 +495,8 @@ impl BimApp {
             cut_fills_3d: self.cut_fills_3d,
             window: self.window.kept,
             high_contrast: self.scan_contrast,
+            cloud_memory_mb: self.scan_memory_mb,
+            cloud_points_3d: self.scan_points,
             grid_snapping: self.grid_snapping,
             guide_style: self.guide_style,
             compressed_save: self.compressed_save,
@@ -800,8 +823,60 @@ impl BimApp {
                 self.scan_contrast = crate::footer::HIGH_CONTRAST;
             }
         });
+        let memory = auto_row(
+            ui,
+            "settings-cloud-memory",
+            msg!("Point cloud memory"),
+            &mut self.scan_memory_mb,
+            (MEMORY_MB, 4096, " MB"),
+            msg!("What the points read of scans' indexes may take while views draw them. Auto takes a share of the memory that's free"),
+        );
+        if memory {
+            self.use_scan_memory();
+        }
+        auto_row(
+            ui,
+            "settings-cloud-points",
+            msg!("Points drawn in 3D"),
+            &mut self.scan_points,
+            (POINTS_3D, 10_000_000, ""),
+            msg!(
+                "How many points of indexed scans the 3D view draws once it stands still. Auto: 10 million on the graphics card, 3 million on the processor"
+            ),
+        );
         later(ui, graphics_later);
     }
+
+    /// Sets what the caches of scans' indexes may take, as the user's setting says.
+    pub(crate) fn use_scan_memory(&self) {
+        bimcraft_core::cloud::lod::set_memory(self.scan_memory_mb.map(|mb| u64::from(mb) << 20));
+    }
+}
+
+/// A setting that is Auto or a number: its label, an Auto check box and, unless Auto, the number (`range`; `first` when Auto is
+/// turned off). Whether it changed.
+fn auto_row(
+    ui: &mut Ui,
+    salt: &str,
+    label: &'static str,
+    value: &mut Option<u32>,
+    (range, first, suffix): (std::ops::RangeInclusive<u32>, u32, &str),
+    tip: &'static str,
+) -> bool {
+    let before = *value;
+    ui.push_id(salt, |ui| {
+        ui.horizontal(|ui| {
+            let l = ui.label(t(label)).on_hover_text(t(tip));
+            let mut auto = value.is_none();
+            if ui.checkbox(&mut auto, t("Auto")).labelled_by(l.id).changed() {
+                *value = if auto { None } else { Some(first) };
+            }
+            if let Some(n) = value {
+                ui.add(egui::DragValue::new(n).range(range).suffix(suffix)).labelled_by(l.id).on_hover_text(t(tip));
+            }
+        })
+    });
+    *value != before
 }
 
 /// The Graphics page's settings still to come.

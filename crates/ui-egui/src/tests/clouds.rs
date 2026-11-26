@@ -515,3 +515,135 @@ fn visibility_graphics_sets_the_point_clouds_colours_and_the_heights_their_ramp_
     press(&mut h, "OK");
     assert_eq!(scan_mode(&h), Some(ScanColour { by: ScanBy::Elevation, low: Some(500.0), high: Some(1500.0) }));
 }
+
+/// Frames until the scan being read on a thread of its own has come in.
+fn read_in(h: &mut Harness<BimApp>) {
+    for _ in 0..4000 {
+        if h.state().cloud_reading.is_none() {
+            break;
+        }
+        h.run();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(h.state().cloud_reading.is_none(), "it was never read");
+    h.run();
+}
+
+const KEEP: &str = "Keep full detail (index beside the project)";
+
+#[test]
+fn keep_full_detail_brings_a_scan_in_with_its_index_beside_the_saved_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("house.bimc");
+    let mut h = app(BOX);
+    assert!(h.state_mut().save_to(&project));
+    h.state_mut().point_cloud_paths(vec![face("keep", "survey.xyz", 0.0)]);
+    h.run();
+    // A small scan is held whole at first; asked, it keeps every point in an index.
+    assert!(!h.state().cloud_box.as_ref().unwrap().index, "off for small files");
+    pick(&mut h, Role::CheckBox, KEEP);
+    assert!(h.state().cloud_box.as_ref().unwrap().index);
+    press(&mut h, "OK");
+    read_in(&mut h);
+    assert_eq!(scans(&h).len(), 1, "{}", h.state().status.text);
+    let cloud = h.state().session.model.clouds.get("survey").unwrap();
+    assert!(cloud.index().is_some() && cloud.indexed().is_some(), "the scan has its index, open");
+    assert!(dir.path().join("house_clouds").join("survey.bimpc").is_file(), "beside the project");
+    // The plan and the 3D view draw it.
+    h.run();
+    h.state_mut().open_3d(None);
+    h.run();
+}
+
+#[test]
+fn keep_full_detail_in_a_project_without_a_file_keeps_the_index_beside_the_scan() {
+    let mut h = app(BOX);
+    let scan = face("unsaved", "survey.xyz", 0.0);
+    h.state_mut().point_cloud_paths(vec![scan.clone()]);
+    h.run();
+    pick(&mut h, Role::CheckBox, KEEP);
+    assert!(h.query_by_label("The project has no file yet: the index is kept beside the scan's file.").is_some());
+    press(&mut h, "OK");
+    read_in(&mut h);
+    let cloud = h.state().session.model.clouds.get("survey").unwrap();
+    assert!(cloud.indexed().is_some(), "indexed beside the scan");
+    assert!(scan.with_file_name("survey.bimpc").exists());
+}
+
+#[test]
+fn a_scan_whose_index_is_missing_says_so_in_the_browser_and_find_index_reads_it_where_it_went() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("house.bimc");
+    let mut h = app(BOX);
+    assert!(h.state_mut().save_to(&project));
+    h.state_mut().point_cloud_paths(vec![face("missing", "survey.xyz", 0.0)]);
+    h.run();
+    pick(&mut h, Role::CheckBox, KEEP);
+    press(&mut h, "OK");
+    read_in(&mut h);
+    assert!(h.state_mut().save_to(&project));
+    type_into(&mut h, "Search the Project Browser", "survey");
+    assert!(h.query_by_label("Point Clouds").is_some(), "the browser lists the scans");
+    // The index is moved away, and the project opened again.
+    let (was, moved) = (dir.path().join("house_clouds").join("survey.bimpc"), dir.path().join("moved.bimpc"));
+    std::fs::rename(&was, &moved).unwrap();
+    assert!(h.state_mut().open_path(&project));
+    h.run();
+    type_into(&mut h, "Search the Project Browser", "survey");
+    assert!(h.query_by_label("survey (index missing)").is_some(), "the browser says the index is missing");
+    // Reload Index looks where the project had it, and says it isn't there.
+    h.get_by_label("survey (index missing)").click_secondary();
+    h.run();
+    press(&mut h, "Reload Index");
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert!(h.query_by_label("survey (index missing)").is_some());
+    // Find Index… asks for the file and reads it there.
+    h.get_by_label("survey (index missing)").click_secondary();
+    h.run();
+    press(&mut h, "Find Index…");
+    let tx = crate::dialog::BEGUN.with(|b| b.borrow_mut().pop()).expect("a file dialog was begun");
+    tx.send(Some(vec![moved.clone()])).unwrap();
+    h.run();
+    h.run();
+    let cloud = h.state().session.model.clouds.get("survey").unwrap();
+    assert!(cloud.indexed().is_some(), "{}", h.state().status.text);
+    assert!(h.query_by_label("survey (index missing)").is_none() && h.query_by_label("Point Clouds").is_some());
+}
+
+#[test]
+fn point_cloud_memory_and_points_drawn_in_3d_are_kept_in_settings_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let mut h = app("");
+    h.state_mut().use_settings(file.clone());
+    assert_eq!((h.state().scan_memory_mb, h.state().scan_points), (None, None), "Auto at first");
+    press(&mut h, "Settings");
+    h.state_mut().settings_page = Some(crate::settings::Page::Graphics);
+    h.run();
+    assert!(h.query_by_label("Point cloud memory").is_some() && h.query_by_label("Points drawn in 3D").is_some());
+    // Auto turned off takes a number, kept in the settings file.
+    h.state_mut().scan_memory_mb = Some(2048);
+    h.state_mut().scan_points = Some(5_000_000);
+    h.run();
+    press(&mut h, "Close");
+    let kept: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(kept["point_clouds"], json!({"memory_mb": 2048, "points_3d": 5_000_000}));
+    // Another window starts with them, the memory given to the scans' caches.
+    let mut again = app("");
+    again.state_mut().use_settings(file.clone());
+    assert_eq!((again.state().scan_memory_mb, again.state().scan_points), (Some(2048), Some(5_000_000)));
+    assert_eq!(bimcraft_core::cloud::lod::memory(), 2048 << 20);
+    // Null is Auto; what isn't a number in range keeps what it had.
+    for (text, memory, points) in [
+        (r#"{"point_clouds": {"memory_mb": null, "points_3d": null}}"#, None, None),
+        (r#"{"point_clouds": {"memory_mb": 1, "points_3d": "many"}}"#, None, None),
+        (r#"{"point_clouds": {"memory_mb": 512, "points_3d": 1e12}}"#, Some(512), None),
+        (r#"{"point_clouds": 7}"#, None, None),
+    ] {
+        std::fs::write(&file, text).unwrap();
+        let mut fresh = app("");
+        fresh.state_mut().use_settings(file.clone());
+        assert_eq!((fresh.state().scan_memory_mb, fresh.state().scan_points), (memory, points), "{text}");
+    }
+    bimcraft_core::cloud::lod::set_memory(None);
+}

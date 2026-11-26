@@ -150,3 +150,61 @@ window's session, and `point_cloud` there takes it instead of reading the files 
 small file's is. A read for other files or options, or before the project's other scans took some of its room, isn't taken, and
 it's taken once. A refusal, or Cancel, comes back to the box with its reason. The Properties palette shows a point cloud's level and offset
 (edited), its scan, file and points, its origin and angle; Visibility/Graphics lists `pointcloud` after the model's categories.
+
+## Every point, read as a view zooms in: a scan's index
+
+A project holds no more than `MAX_CLOUD_POINTS` (five million) points of its scans, so a scan of a billion is a thin one in it. Its
+index keeps every point instead, in a file beside the project, and a view reads from it what it shows at the detail it shows it,
+as Revit reads a ReCap project. `point_cloud`'s `index` (true, false, or `auto`, the default: files of more than 64 MB) builds
+it at `<project>_clouds/<scan>.bimpc` beside the project's file, or at `<scan>.bimpc` beside the scan's first file while the
+project has none (the project holds its full path then); the project holds the top of it
+as the scan, and `IndexRef` (`cloud/lod.rs`) in the scan's entry of the project file: its path from the project's folder, the path
+it was built at in full (where it's looked for after the project is saved elsewhere), its id, its count and the levels the scan
+holds. An older BIMCraft leaves `index` out and shows the top. `spacing` isn't used for an indexed scan.
+
+**The file** (`cloud/index.rs`, BIMCraft's own, little-endian). A header of 128 bytes: `BIMPC\0\r\n`, the version (1), flags
+(colours, intensities), a random id (`u128`), the count, the scan's middle in its files' coordinates (as a `Cloud`'s origin), the
+root cube's lowest corner from it and its width, mm, and where the table of nodes starts and how many it has. Then each node's
+points, deflated; then the table, 32 bytes a node: its level, its key (x, y, z at that level), where its points are, their bytes and
+how many. A point's place is a `u32` along each axis of the root cube, so the node at level `l` holding it is its top `l` bits; a
+node stores the bits below them, the top 16 where that's within half a millimetre (`FINEST`) and all 32 where not, axis by axis,
+then each point's colour (3 bytes) and intensity (1), as the scan's are made (`Shade`, the file's range). Each point is in one node.
+A node keeps one point in each cell of a 128³ grid of its cube and hands the rest to its children, down to a leaf of no more than
+32,768 (Potree's method): so the points of a level are `edge / 2^(l + 7)` apart at least, and the levels from the root are a
+sample that gets finer as it goes down. An index is hostile when read: its header, the table (the nodes' levels and keys in the
+cube, their bytes in the file, no two in one place, their points the header's count) and each node's length after inflating are
+checked, and a node that can't be read gives no points.
+
+**Building one** (`index::build`) reads the files twice: once to measure them (`Stats`: bounds and shades), once to sort each
+point into a bucket file of the node of its cube at the level where a bucket holds about two million (up to 512 of them, in a
+`.bimpc.tmp` folder beside the index). Buckets are built side by side, as many as the memory the machine has free leaves room for
+(`Budget::left`); one with more is split into its eight. A bucket's subtree is built in memory, top down, and written as it goes,
+but for its top, which the levels above take their sample from, bottom up (`climb`). The table and the header are written last,
+the file renamed from `.bimpc.part`, the buckets removed, whatever ends it. Its stages report to the progress ("Measuring the
+scan", "Sorting the points", "Building the index") and stop at Cancel. The scan the project holds is the levels from the root that
+fit in what the project has room for, whole (`Built::levels`; a thinned root when even it doesn't), so a view draws below them.
+
+**Reading it** (`cloud/lod.rs`). `open` opens every scan's index (`Cloud::attach`, shared by every copy of the scan) and lists
+those it can't as `clouds_not_indexed`; their views draw the top. `point_cloud_index {cloud, path?}` finds one again. A view
+asks `Indexed::select` for the nodes below the scan's levels that it shows, most needed first, until they hold so many points:
+a node is read below one whose points are more than `SPREAD` (1.5) px apart on the screen there, and only where the view shows
+it: the picture, the section box, a plan's slab from its cut to its view depth. Nodes read are kept in a cache, its least recently
+asked for going first once every index's together take more than `lod::memory()`: what the app set, or a quarter of the memory
+the machine has free, between 256 MB and 8 GB, halved while it runs short. The 3D view (`view3d::scan_detail`, drawn by
+`Scene::render_detailed` or as the mesh's dots by `Detail::dots`) and plans (`render::scans`) draw a node's points as the scan's.
+A plan and an export read the nodes they show; the window draws a plan from what's read (`render::from_cache`, which says how
+many it didn't have) and has a thread read the rest. A snap looks among every point near the cursor (`Cloud::nearest_of_all`,
+a few nodes read).
+
+A billion points take about a billion times ten bytes before deflating, and the build needs about sixteen bytes a point free on
+the disk while it sorts them.
+
+In the desktop, the Point Cloud box has Keep full detail (index beside the project), on for files of more than 64 MB, and says
+where the index goes when the project has no file yet (beside the scan's); an indexed scan is always built on a thread of its own, behind the progress box. The 3D view
+(`Orbit::detail_for`) asks a worker for the points of the indexes once the camera has stood still 150 ms: on the card they're a
+store of their own beside the mesh's dots (`Gpu::set_detail`, drawn by the same pipeline and cut by the section box as they are),
+on the processor `Scene::render_detailed`; the last ones stay drawn while the view moves. A plan is drawn from what's read and,
+where that left nodes out, drawn again by the plan worker, which reads them (`PlanCache::complete`). Settings > Graphics has Point
+cloud memory (`lod::set_memory`) and Points drawn in 3D (Auto: ten million on the card, three on the processor). The Project
+Browser lists the point clouds; a scan whose index isn't open says "(index missing)", and its menu has Find Index… and Reload
+Index (`point_cloud_index`).

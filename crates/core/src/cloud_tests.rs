@@ -718,3 +718,144 @@ fn a_scan_with_no_intensity_keeps_its_colours_when_a_view_asks_for_intensity() {
     let all = dots(&s);
     assert!(!all.is_empty() && all.iter().all(|d| d.1 == Rgb(255, 0, 0)));
 }
+
+// ---------- A scan's index ----------
+
+use std::ops::Not;
+
+use crate::cloud::index::{TUNED, Tuning};
+
+/// A floor 6 m square half a metre up, a point every 10 mm, metres, red: 361,201 points.
+fn floor() -> String {
+    let mut text = String::new();
+    for i in 0..=600 {
+        for k in 0..=600 {
+            text += &format!("{} {} 0.5 255 0 0\n", f64::from(i) * 0.01, f64::from(k) * 0.01);
+        }
+    }
+    text
+}
+
+/// A session whose project is saved in a folder of this test's own as `house.bimc`, with the floor brought in indexed, small
+/// buckets and a sample of 20,000 points; and the project's file.
+fn indexed(test: &str) -> (Session, PathBuf, Value) {
+    TUNED.with(|t| t.set(Some((Tuning { bucket: 100_000, leaf: 2_000 }, 20_000))));
+    let path = scan(test, "floor.xyz", &floor());
+    let dir = PathBuf::from(&path).parent().unwrap().to_path_buf();
+    let _ = std::fs::remove_dir_all(dir.join("house_clouds"));
+    let project = dir.join("house.bimc");
+    let mut s = Session::new();
+    run(&mut s, "save", json!({"path": project}));
+    let r = run(&mut s, "point_cloud", json!({"path": path, "index": true, "origin": "file"}));
+    run(&mut s, "save", json!({}));
+    (s, project, r)
+}
+
+/// A plan of Level 1 two pixels to the millimetre, 400 px square about (`x`, `y`).
+fn close_plan(m: &crate::model::Model, x: f64, y: f64) -> render::Drawing {
+    let level = m.levels().first().map(|l| l.0).unwrap();
+    render::draw(m, level, render::View { scale: 2.0, cx: x, cy: y, width: 400, height: 400, angle: 0.0 })
+}
+
+#[test]
+fn an_index_is_kept_beside_a_saved_project_and_the_project_holds_its_top() {
+    // In a project without a file, the index is kept beside the scan's file, by its full path.
+    let mut s = Session::new();
+    let path = scan("unsaved", "dots.xyz", "0 0 0\n1 1 1\n");
+    let r = run(&mut s, "point_cloud", json!({"path": path, "index": true}));
+    let beside = PathBuf::from(&path).with_file_name("dots.bimpc");
+    assert_eq!(r["index"]["path"], beside.to_string_lossy().as_ref(), "{r}");
+    assert!(beside.exists() && s.model.clouds.get("dots").unwrap().indexed().is_some());
+    // Saved, then opened, the project finds it there.
+    let file = PathBuf::from(&path).with_file_name("elsewhere.bimc");
+    run(&mut s, "save", json!({"path": file}));
+    let mut t = Session::new();
+    let r = run(&mut t, "open", json!({"path": file}));
+    assert_eq!(r["clouds_not_indexed"], Value::Null, "{r}");
+    assert!(t.model.clouds.get("dots").unwrap().indexed().is_some());
+    // Not asked for, a small file holds all its points, as ever.
+    let r = run(&mut s, "point_cloud", json!({"path": scan("unsaved", "floor.xyz", "0 0 0\n1 1 1\n")}));
+    assert_eq!(r["index"], Value::Null);
+
+    let (s, project, r) = indexed("index");
+    assert_eq!(r["index"]["path"], "house_clouds/floor.bimpc", "{r}");
+    assert_eq!((r["read"].as_u64(), r["index"]["count"].as_u64()), (Some(361_201), Some(361_201)));
+    let points = r["points"].as_u64().unwrap();
+    assert!(points <= 20_000 && points > 1_000, "{points}");
+    assert!(project.parent().unwrap().join("house_clouds/floor.bimpc").exists());
+    let cloud = s.model.clouds.get("floor").unwrap();
+    assert!(cloud.indexed().is_some());
+    assert_eq!(cloud.stations(), &[]);
+}
+
+#[test]
+fn a_plan_zoomed_in_reads_the_index_for_every_point_it_shows() {
+    let (s, project, _) = indexed("zoom");
+    let full = drawn(&close_plan(&s.model, 3000.0, 3000.0), red);
+    // Opened again, nothing has been read: drawn from what's read, it shows the top and says what it didn't read.
+    let mut t = Session::new();
+    let r = run(&mut t, "open", json!({"path": project}));
+    assert_eq!(r["clouds_not_indexed"], Value::Null, "{r}");
+    let (d, missing) = render::from_cache(|| close_plan(&t.model, 3000.0, 3000.0));
+    let top = drawn(&d, red);
+    assert!(missing > 0 && full > 3 * top, "{missing} {full} {top}");
+    // Drawn as an export draws it, it reads them, and then they're read.
+    assert_eq!(drawn(&close_plan(&t.model, 3000.0, 3000.0), red), full);
+    let (d, missing) = render::from_cache(|| close_plan(&t.model, 3000.0, 3000.0));
+    assert_eq!((missing, drawn(&d, red)), (0, full));
+    // Its points 10 mm apart, 20 px at this scale: a dot for each.
+    assert!(full > 300 * 4, "{full}");
+}
+
+#[test]
+fn a_scan_whose_index_is_gone_shows_its_top_until_the_index_is_found() {
+    let (_, project, _) = indexed("gone");
+    let dir = project.parent().unwrap();
+    let moved = dir.join("elsewhere.bimpc");
+    std::fs::rename(dir.join("house_clouds/floor.bimpc"), &moved).unwrap();
+    let mut t = Session::new();
+    let r = run(&mut t, "open", json!({"path": project}));
+    assert_eq!(r["clouds_not_indexed"][0]["cloud"], "floor", "{r}");
+    let top = drawn(&close_plan(&t.model, 3000.0, 3000.0), red);
+    assert!(top > 0);
+    let e = fails(&mut t, "point_cloud_index", json!({"cloud": "floor"}));
+    assert!(e.contains("can't be opened"), "{e}");
+    let r = run(&mut t, "point_cloud_index", json!({"cloud": "floor", "path": "elsewhere.bimpc"}));
+    assert_eq!(r["path"], "elsewhere.bimpc");
+    assert!(drawn(&close_plan(&t.model, 3000.0, 3000.0), red) > 3 * top);
+    // Another file isn't taken for its index.
+    std::fs::write(dir.join("other.bimpc"), b"nothing").unwrap();
+    assert!(fails(&mut t, "point_cloud_index", json!({"cloud": "floor", "path": "other.bimpc"})).contains("isn't a BIMCraft"));
+    // A scan without one has none to find.
+    run(&mut t, "point_cloud", json!({"path": scan("gone", "box.xyz", BOX), "index": false}));
+    assert!(fails(&mut t, "point_cloud_index", json!({"cloud": "box"})).contains("has no index"));
+}
+
+#[test]
+fn a_3d_view_near_a_scan_reads_its_index_and_a_snap_finds_its_points() {
+    let (s, _, r) = indexed("near");
+    let id = r["id"].as_u64().unwrap();
+    let scene = Scene::new(&s.model);
+    let far = scene.fit(AZIMUTH, ELEVATION, 320, 240);
+    let near = crate::view3d::Camera { scale: far.scale * 40.0, ..far };
+    let look = Look::default();
+    let few = crate::view3d::scan_detail(&s.model, &far, &look, 10_000_000, true).points();
+    let many = crate::view3d::scan_detail(&s.model, &near, &look, 10_000_000, true);
+    assert!(many.points() > few && many.missing == 0, "{} {few}", many.points());
+    let img = scene.render_detailed(&near, &[], &look, &many);
+    let plain = scene.render(&near, &[]);
+    assert!(pixels(&img, red) > pixels(&plain, red), "{} {}", pixels(&img, red), pixels(&plain, red));
+    let dot = (0..240)
+        .flat_map(|y| (0..320).map(move |x| (f64::from(x) + 0.5, f64::from(y) + 0.5)))
+        .find(|&(x, y)| red(img.color(x, y)) && red(plain.color(x, y)).not())
+        .unwrap();
+    assert_eq!(img.pick(dot.0, dot.1), Some(id));
+    // A snap finds a point of the index the project doesn't hold: there's one every 10 mm.
+    let cloud = s.model.clouds.get("floor").unwrap();
+    let o = cloud.origin();
+    let at = [1231.0 - o[0], 2341.0 - o[1]];
+    let z = (-10.0, 10.0);
+    assert!(cloud.nearest(at, 3.0, z).is_none());
+    let p = cloud.nearest_of_all(at, 3.0, z).unwrap();
+    assert!((f64::from(p[0]) - (1230.0 - o[0])).abs() < 1.0 && (f64::from(p[1]) - (2340.0 - o[1])).abs() < 1.0, "{p:?}");
+}

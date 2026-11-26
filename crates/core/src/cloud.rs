@@ -14,8 +14,10 @@ use flate2::write::ZlibEncoder;
 use serde::{Deserialize, Serialize};
 
 mod e57;
+pub mod index;
 #[cfg(feature = "laz")]
 mod laz;
+pub mod lod;
 
 /// Points a cloud may keep: a file with more is thinned down to it.
 pub const MAX_CLOUD_POINTS: usize = 5_000_000;
@@ -39,6 +41,8 @@ pub const MAX_CLOUDS: usize = 16;
 pub const MAX_STATIONS: usize = 256;
 /// How wide a square of a cloud's [`Grid`] is, mm.
 const CELL: f64 = 250.0;
+/// The most nodes of a scan's index a snap reads.
+const NEAREST_NODES: usize = 64;
 
 /// What a build without the `laz` feature says of a LAZ file.
 const NO_LAZ: &str =
@@ -212,6 +216,10 @@ pub struct Cloud {
     packed: Arc<OnceLock<CloudFile>>,
     /// Where its points are from above, made the first time something snaps to it.
     grid: Arc<OnceLock<Grid>>,
+    /// Its index, when every point of it is kept in one beside the project and these are the top of it.
+    index: Option<lod::IndexRef>,
+    /// Its index opened, once it has been: not in a file.
+    opened: Arc<OnceLock<Arc<lod::Indexed>>>,
     /// Each intensity's place among its points', worked out the first time a view colours by them.
     stretch: Arc<OnceLock<Arc<[u8; 256]>>>,
 }
@@ -240,6 +248,7 @@ impl PartialEq for Cloud {
             && (Arc::ptr_eq(&self.points, &other.points) || self.points == other.points)
             && self.colours == other.colours
             && self.intensity == other.intensity
+            && self.index == other.index
     }
 }
 
@@ -294,7 +303,10 @@ impl Cloud {
         if stations.len() > MAX_STATIONS {
             return Err(format!("a cloud comes from up to {MAX_STATIONS} files, not {}", stations.len()));
         }
-        if !stations.is_empty() && stations.iter().map(|t| t.points).try_fold(0_usize, usize::checked_add) != Some(points.len()) {
+        // An indexed scan's stations hold the points each file gave the index.
+        if !stations.is_empty()
+            && !stations.iter().map(|t| t.points).try_fold(0_usize, usize::checked_add).is_some_and(|n| n == points.len() || n == read)
+        {
             return Err("a cloud's stations hold all its points between them".into());
         }
         for t in &mut stations {
@@ -326,8 +338,45 @@ impl Cloud {
             hi,
             packed: Arc::default(),
             grid: Arc::default(),
+            index: None,
+            opened: Arc::default(),
             stretch: Arc::default(),
         })
+    }
+
+    /// This scan with every point of it in the index `index` names, these being the top of it.
+    pub fn with_index(self, index: lod::IndexRef) -> Result<Cloud, String> {
+        index.check()?;
+        Ok(Cloud { index: Some(index), packed: Arc::default(), opened: Arc::default(), ..self })
+    }
+
+    /// What the project holds of its index, if it has one.
+    pub fn index(&self) -> Option<&lod::IndexRef> {
+        self.index.as_ref()
+    }
+
+    /// Its index, open, if it has been opened ([`Cloud::attach`]).
+    pub fn indexed(&self) -> Option<&Arc<lod::Indexed>> {
+        self.opened.get()
+    }
+
+    /// Opens its index at the path the project holds (from the folder of the project at `project`), or the full one it was
+    /// built at, unless it's open; why it can't be when it can't. Every copy of the scan shares it.
+    pub fn attach(&self, project: Option<&std::path::Path>) -> Result<(), String> {
+        let Some(r) = &self.index else { return Ok(()) };
+        if self.opened.get().is_some() {
+            return Ok(());
+        }
+        let near = lod::resolve(&r.path, project);
+        let opened = match lod::Indexed::open(&near, r) {
+            Ok(i) => i,
+            Err(first) => match r.full.as_deref().map(std::path::Path::new).filter(|f| *f != near) {
+                Some(full) => lod::Indexed::open(full, r).map_err(|_| first)?,
+                None => return Err(first),
+            },
+        };
+        let _ = self.opened.set(Arc::new(opened));
+        Ok(())
     }
 
     /// The file it was read from.
@@ -444,6 +493,30 @@ impl Cloud {
         best.map(|(_, p)| p)
     }
 
+    /// [`Cloud::nearest`] among every point of it: those of its index too, when it's open, read as they're needed (a few
+    /// nodes, those round `at`, which stay read for the next).
+    pub fn nearest_of_all(&self, at: [f64; 2], reach: f64, z: (f64, f64)) -> Option<[f32; 3]> {
+        let mut best = self.nearest(at, reach, z).map(|p| ((f64::from(p[0]) - at[0]).hypot(f64::from(p[1]) - at[1]), p));
+        let Some(ix) = self.indexed() else { return best.map(|(_, p)| p) };
+        if !(reach.is_finite() && reach >= 0.0 && at.iter().all(|v| v.is_finite())) {
+            return best.map(|(_, p)| p);
+        }
+        let near = |lo: [f64; 3], hi: [f64; 3]| {
+            let touches = lo[0] <= at[0] + reach && hi[0] >= at[0] - reach && lo[1] <= at[1] + reach && hi[1] >= at[1] - reach;
+            (touches && lo[2] <= z.1 && hi[2] >= z.0).then_some(f64::MAX / 4.0)
+        };
+        for i in ix.select(&near, 2_000_000).into_iter().take(NEAREST_NODES) {
+            let Some(node) = ix.fetch(i) else { continue };
+            for p in node.points.iter() {
+                let d = (f64::from(p[0]) - at[0]).hypot(f64::from(p[1]) - at[1]);
+                if d <= reach && (z.0..=z.1).contains(&f64::from(p[2])) && best.is_none_or(|(b, _)| d < b) {
+                    best = Some((d, *p));
+                }
+            }
+        }
+        best.map(|(_, p)| p)
+    }
+
     /// The box round its points, from its middle, mm.
     pub fn bounds(&self) -> ([f64; 3], [f64; 3]) {
         (self.lo.map(f64::from), self.hi.map(f64::from))
@@ -461,6 +534,7 @@ impl Cloud {
                 points: crate::commands::base64(&deflate(&points)),
                 colours: colours.map(|c| crate::commands::base64(&deflate(&c))),
                 intensity: self.intensity.as_ref().map(|l| crate::commands::base64(&deflate(l))),
+                index: self.index.clone(),
             }
         })
     }
@@ -482,6 +556,9 @@ struct CloudFile {
     /// Each point's intensity as a byte, deflated and in base64; an older file has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     intensity: Option<String>,
+    /// Where every point of it is, when the project holds only the top of them; an older file has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    index: Option<lod::IndexRef>,
 }
 
 pub(crate) fn deflate(bytes: &[u8]) -> Vec<u8> {
@@ -529,7 +606,11 @@ impl TryFrom<CloudFile> for Cloud {
             None => None,
         };
         let source = f.source.chars().take(crate::model::MAX_TEXT).collect();
-        let cloud = Cloud::checked(source, f.stations.clone(), f.origin, f.read, points, colours, intensity)?;
+        let mut cloud = Cloud::checked(source, f.stations.clone(), f.origin, f.read, points, colours, intensity)?;
+        if let Some(r) = &f.index {
+            r.check()?;
+            cloud.index = Some(r.clone());
+        }
         let _ = cloud.packed.set(f);
         Ok(cloud)
     }
@@ -607,6 +688,8 @@ pub struct ScanRead {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ScanKey {
     pub(crate) paths: Vec<std::path::PathBuf>,
+    /// The index it was built into, if it was.
+    pub(crate) index: Option<std::path::PathBuf>,
     pub(crate) scale: f64,
     pub(crate) spacing: f64,
     pub(crate) cap: usize,

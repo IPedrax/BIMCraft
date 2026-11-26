@@ -90,6 +90,10 @@ pub(crate) struct PlanCache {
     work: PlanWork,
     /// What each room lit so far covers, of the model it was found in.
     outlines: Option<(Weak<Model>, HashMap<Id, RoomOutline>)>,
+    /// The drawing shown left out points of scans' indexes not read yet (`render::from_cache`), and the drawing asked of the
+    /// worker to draw it whole, reading them: asked once for each.
+    partial: bool,
+    completing: Option<(Weak<Model>, Id, View, bool)>,
 }
 
 /// What a room covers in plan, and whether it is bounded.
@@ -101,7 +105,8 @@ struct PlanJob {
     level: Id,
     view: View,
     ceiling: bool,
-    pipeline: Arc<crate::retained::Pipeline>,
+    /// The card's, where the plan's triangles are kept on it.
+    pipeline: Option<Arc<crate::retained::Pipeline>>,
     look: crate::retained::Look,
     selected: Vec<Id>,
     hovered: Option<Id>,
@@ -112,21 +117,29 @@ struct PlanDone {
     level: Id,
     view: View,
     ceiling: bool,
+    attached: usize,
     drawing: Arc<Drawing>,
     made: Option<crate::retained::Made>,
 }
 
 fn plan_job(job: PlanJob, cancel: &crate::view_worker::Cancel) -> Option<PlanDone> {
     let PlanJob { model, level, view, ceiling, pipeline, look, selected, hovered } = job;
+    let attached = attached(&model);
     let drawing = Arc::new(if ceiling { render::draw_ceiling(&model, level, view) } else { render::draw(&model, level, view) });
     if cancel.cancelled() {
         return None;
     }
-    let made = crate::retained::make(&pipeline, Arc::clone(&drawing), look, &selected, hovered, &|| cancel.cancelled());
+    let made = pipeline
+        .and_then(|pipeline| crate::retained::make(&pipeline, Arc::clone(&drawing), look, &selected, hovered, &|| cancel.cancelled()));
     if cancel.cancelled() {
         return None;
     }
-    Some(PlanDone { model: Arc::downgrade(&model), level, view, ceiling, drawing, made })
+    Some(PlanDone { model: Arc::downgrade(&model), level, view, ceiling, attached, drawing, made })
+}
+
+/// How many of the model's scans have their index open: a drawing made before one was opened is made again.
+fn attached(model: &Model) -> usize {
+    model.clouds.values().filter(|c| c.indexed().is_some()).count()
 }
 
 /// A copy of a canvas asks for its own.
@@ -139,21 +152,90 @@ impl Clone for PlanWork {
     }
 }
 
-type PlanShot = (Weak<Model>, Id, View, bool, Arc<Drawing>);
+/// A drawing shown: of which model, level, view, plan or ceiling, with how many scans' indexes open.
+type PlanShot = (Weak<Model>, Id, View, bool, usize, Arc<Drawing>);
 
 impl PlanCache {
+    /// The drawing of a view at `view`: the one shown, or made now of the points of scans' indexes read already, the rest asked
+    /// of a worker ([`PlanCache::complete`]).
     pub(crate) fn drawing(&mut self, model: &Arc<Model>, level: Id, view: View, ceiling: bool) -> Arc<Drawing> {
-        if let Some((m, id, v, up, drawing)) = &self.shown
+        let open = attached(model);
+        if let Some((m, id, v, up, n, drawing)) = &self.shown
             && m.ptr_eq(&Arc::downgrade(model))
             && *id == level
             && *v == view
             && *up == ceiling
+            && *n == open
         {
             return Arc::clone(drawing);
         }
-        let drawing = Arc::new(if ceiling { render::draw_ceiling(model, level, view) } else { render::draw(model, level, view) });
-        self.shown = Some((Arc::downgrade(model), level, view, ceiling, Arc::clone(&drawing)));
+        let (drawing, missing) =
+            render::from_cache(|| if ceiling { render::draw_ceiling(model, level, view) } else { render::draw(model, level, view) });
+        let drawing = Arc::new(drawing);
+        self.partial = missing > 0;
+        self.shown = Some((Arc::downgrade(model), level, view, ceiling, open, Arc::clone(&drawing)));
         drawing
+    }
+
+    /// Where the drawing shown of a view at `view` left out points of scans' indexes not read yet, the same drawing asked of the
+    /// worker, which reads them, and shown once it comes: the cache is then warm, and the next drawings are whole at once.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn complete(
+        &mut self,
+        ctx: &egui::Context,
+        model: &Arc<Model>,
+        level: Id,
+        view: View,
+        ceiling: bool,
+        pipeline: Option<&Arc<crate::retained::Pipeline>>,
+        look: crate::retained::Look,
+    ) -> Option<Arc<Drawing>> {
+        if !self.partial {
+            return None;
+        }
+        let weak = Arc::downgrade(model);
+        if let Some(done) = self.work.0.as_ref().and_then(crate::view_worker::Latest::take)
+            && done.model.ptr_eq(&weak)
+            && (done.level, done.view, done.ceiling) == (level, view, ceiling)
+        {
+            self.shown = Some((done.model, level, view, ceiling, done.attached, Arc::clone(&done.drawing)));
+            match done.made {
+                Some(made) => self.retained.adopt(made),
+                None => self.retained = Default::default(),
+            }
+            self.partial = false;
+            ctx.request_repaint();
+            return Some(done.drawing);
+        }
+        // Only a view that stands still: one that moves asks for its drawings anyway.
+        let still = self.shown.as_ref().is_some_and(|(m, id, v, up, ..)| m.ptr_eq(&weak) && *id == level && *v == view && *up == ceiling);
+        if !still {
+            return None;
+        }
+        let asked = self.completing.as_ref().is_some_and(|(m, id, v, up)| m.ptr_eq(&weak) && *id == level && *v == view && *up == ceiling);
+        let wake = ctx.clone();
+        let worker = self.work.0.get_or_insert_with(|| crate::view_worker::Latest::new(plan_job, move || wake.request_repaint()));
+        if !asked {
+            let (selected, hovered) = self.retained.tints();
+            worker.request(PlanJob {
+                model: Arc::clone(model),
+                level,
+                view,
+                ceiling,
+                pipeline: pipeline.cloned(),
+                look,
+                selected,
+                hovered,
+            });
+            self.completing = Some((weak, level, view, ceiling));
+        }
+        // A worker that fails leaves the drawing as it is, its points read on the next one.
+        let _ = worker.start();
+        let _ = worker.take_error();
+        if worker.busy() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        }
+        None
     }
 
     /// The drawing to show of a view at `view` on a card: the last whole one, while a worker makes the one for `view`, so that moving never
@@ -175,16 +257,18 @@ impl PlanCache {
             && done.model.ptr_eq(&Arc::downgrade(model))
             && (done.level, done.ceiling) == (level, ceiling)
         {
-            self.shown = Some((done.model, level, done.view, ceiling, done.drawing));
+            self.shown = Some((done.model, level, done.view, ceiling, done.attached, done.drawing));
             match done.made {
                 Some(made) => self.retained.adopt(made),
                 None => self.retained = Default::default(),
             }
+            self.partial = false;
         }
+        let open = attached(model);
         let Some(drawing) = self
             .shown
             .as_ref()
-            .filter(|(m, id, _, up, _)| m.ptr_eq(&Arc::downgrade(model)) && *id == level && *up == ceiling)
+            .filter(|(m, id, _, up, n, _)| m.ptr_eq(&Arc::downgrade(model)) && *id == level && *up == ceiling && *n == open)
             .map(|(.., drawing)| Arc::clone(drawing))
         else {
             return self.drawing(model, level, view, ceiling);
@@ -205,7 +289,7 @@ impl PlanCache {
                 level,
                 view,
                 ceiling,
-                pipeline: Arc::clone(pipeline),
+                pipeline: Some(Arc::clone(pipeline)),
                 look,
                 selected,
                 hovered,
@@ -2223,6 +2307,8 @@ impl BimApp {
             Some(pipeline) => c.drawing.moving(ui.ctx(), &model, key, view, up, pipeline, look),
             None => c.drawing.drawing(&model, key, view, up),
         };
+        // What a drawing left out of scans' indexes, read on the worker and shown when it comes.
+        let d = c.drawing.complete(ui.ctx(), &model, key, view, up, pipeline.as_ref(), look).unwrap_or(d);
         let d = Shown::new(d, view, rect.min);
         // What the pointer is over, for a snap reference to mark: the plan's picking, whichever tool is drawing.
         let picked = local.map(|q| d.pick_all(q, PICK)).unwrap_or_default();

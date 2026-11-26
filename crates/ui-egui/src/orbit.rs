@@ -136,6 +136,78 @@ fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<Sce
     Some(SceneDone { streamed, model: job.model, view: job.view, scene, fitted, mesh })
 }
 
+/// What the points of indexed scans were read for: the mesh the card draws them with, or the scene the processor does.
+#[derive(Clone)]
+enum DetailFor {
+    Card(Arc<Mesh>),
+    Processor(Arc<Scene>),
+}
+
+impl DetailFor {
+    fn same(&self, other: &DetailFor) -> bool {
+        match (self, other) {
+            (DetailFor::Card(a), DetailFor::Card(b)) => Arc::ptr_eq(a, b),
+            (DetailFor::Processor(a), DetailFor::Processor(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+}
+
+/// The points of a model's indexed scans a 3D view reads below the top the project holds, for a camera that stood still: of
+/// which model and view, for what, at most how many, and with how many indexes open.
+#[derive(Clone)]
+struct DetailJob {
+    model: Arc<Model>,
+    view: Option<Id>,
+    cam: Camera,
+    shown: DetailFor,
+    most: usize,
+    open: usize,
+}
+
+impl DetailJob {
+    fn same(&self, other: &DetailJob) -> bool {
+        Arc::ptr_eq(&self.model, &other.model)
+            && self.view == other.view
+            && self.cam == other.cam
+            && self.shown.same(&other.shown)
+            && self.most == other.most
+            && self.open == other.open
+    }
+}
+
+/// Those points read: as the card draws them (packed for its mesh) or as the processor does.
+pub(crate) struct DetailDone {
+    view: Option<Id>,
+    shown: DetailFor,
+    card: Option<Arc<crate::gpu::DetailDots>>,
+    processor: Option<view3d::Detail>,
+}
+
+/// How long the camera stands still before the points of indexed scans are read for it.
+const DETAIL_STILL: std::time::Duration = std::time::Duration::from_millis(150);
+/// How many of their points the 3D view draws at most, unless the user said (Settings > Graphics): on the card, and on the processor.
+pub(crate) const DETAIL_CARD: usize = 10_000_000;
+pub(crate) const DETAIL_PROCESSOR: usize = 3_000_000;
+
+/// Reads the points a job asks for, from the indexes' files where they aren't read yet.
+fn read_detail(job: DetailJob, cancel: &crate::view_worker::Cancel) -> Option<DetailDone> {
+    let look = Look::of_3d_view(&job.model, job.view);
+    let detail = view3d::scan_detail(&job.model, &job.cam, &look, job.most, true);
+    if cancel.cancelled() {
+        return None;
+    }
+    let (card, processor) = match &job.shown {
+        DetailFor::Card(mesh) => {
+            let dots = detail.dots(mesh, &look);
+            drop(detail);
+            (Some(Arc::new(crate::gpu::DetailDots::pack(mesh, &dots, &|| cancel.cancelled())?)), None)
+        }
+        DetailFor::Processor(_) => (None, Some(detail)),
+    };
+    Some(DetailDone { view: job.view, shown: job.shown, card, processor })
+}
+
 /// Caps made: of which model, for which box.
 type Capped = (Arc<Model>, (P3, P3), Arc<Caps>);
 
@@ -452,6 +524,15 @@ pub struct Orbit {
     /// Fly mode, while the view flies (`fly.rs`); and whether the window holds the pointer for it.
     pub(crate) fly: Option<crate::fly::Fly>,
     pub(crate) fly_held: bool,
+    /// The points of indexed scans read for the camera as it last stood still, drawn with the picture until the next come; the
+    /// worker that reads them, what was asked of it, the camera and since when it has stood, and the one drawn on screen.
+    pub(crate) detail: Option<Arc<DetailDone>>,
+    detail_worker: Option<crate::view_worker::Latest<DetailJob, DetailDone>>,
+    detail_asked: Option<DetailJob>,
+    still: Option<(Camera, std::time::Instant)>,
+    painted_detail: Option<Arc<DetailDone>>,
+    /// How many of those points it draws at most (Settings > Graphics): none for [`DETAIL_CARD`] or [`DETAIL_PROCESSOR`].
+    pub(crate) detail_most: Option<u32>,
 }
 
 /// The next view's slot on the card.
@@ -520,6 +601,12 @@ impl Default for Orbit {
             caps_requested: None,
             fly: None,
             fly_held: false,
+            detail: None,
+            detail_worker: None,
+            detail_asked: None,
+            still: None,
+            painted_detail: None,
+            detail_most: None,
         }
     }
 }
@@ -1385,6 +1472,70 @@ impl Orbit {
         OnCard::Ready(mesh, failed)
     }
 
+    /// The points of `model`'s indexed scans the picture through `cam` draws besides those the project holds: read on the worker
+    /// once the camera has stood still a moment, and the last read drawn meanwhile, while it is of the mesh the card draws
+    /// (`mesh`) or the scene the processor does. Nothing at all where no scan has its index open.
+    fn detail_for(&mut self, ctx: &egui::Context, model: &Arc<Model>, cam: Camera, mesh: Option<&Arc<Mesh>>) -> Option<Arc<DetailDone>> {
+        let open = model.clouds.values().filter(|c| c.indexed().is_some()).count();
+        if open == 0 {
+            if self.detail.is_some() || self.detail_worker.is_some() {
+                (self.detail, self.detail_worker, self.detail_asked, self.still) = (None, None, None, None);
+            }
+            return None;
+        }
+        let shown = match mesh {
+            Some(mesh) => DetailFor::Card(Arc::clone(mesh)),
+            None => DetailFor::Processor(Arc::clone(&self.scene.as_ref()?.1)),
+        };
+        let view = self.view;
+        if let Some(done) = self.detail_worker.as_ref().and_then(crate::view_worker::Latest::take)
+            && done.view == view
+            && done.shown.same(&shown)
+        {
+            self.detail = Some(Arc::new(done));
+        }
+        if self.detail.as_ref().is_some_and(|d| d.view != view || !d.shown.same(&shown)) {
+            self.detail = None;
+        }
+        let most = self.detail_most.map_or(if mesh.is_some() { DETAIL_CARD } else { DETAIL_PROCESSOR }, |n| n as usize);
+        let job = DetailJob { model: Arc::clone(model), view, cam, shown, most, open };
+        if self.detail_asked.as_ref().is_some_and(|asked| asked.same(&job)) {
+            if let Some(worker) = &self.detail_worker {
+                let _ = worker.start();
+                let _ = worker.take_error();
+            }
+            return self.detail.clone();
+        }
+        let now = std::time::Instant::now();
+        let since = match self.still {
+            Some((c, at)) if c == cam => now.duration_since(at),
+            _ => {
+                self.still = Some((cam, now));
+                std::time::Duration::ZERO
+            }
+        };
+        if cfg!(test) {
+            // A test reads them in the frame, as it makes caps.
+            self.detail_asked = Some(job.clone());
+            if let Some(done) = read_detail(job, &crate::view_worker::Cancel::default()) {
+                self.detail = Some(Arc::new(done));
+            }
+            return self.detail.clone();
+        }
+        if since < DETAIL_STILL {
+            ctx.request_repaint_after(DETAIL_STILL - since);
+            return self.detail.clone();
+        }
+        let wake = ctx.clone();
+        let worker = self.detail_worker.get_or_insert_with(|| crate::view_worker::Latest::new(read_detail, move || wake.request_repaint()));
+        worker.request(job.clone());
+        self.detail_asked = Some(job);
+        // A worker that fails draws the top of the scans alone, as before they had an index.
+        let _ = worker.start();
+        let _ = worker.take_error();
+        self.detail.clone()
+    }
+
     /// The picture of `shot` on `p`, over the view's ground: drawn on the card from `mesh` where there is one, else on the
     /// processor, and with it what picks in it ([`Picker`]). It is drawn again only where what it shows has changed; the work
     /// plane's marks alone are laid again over it as it was. A card that fails is given up and the processor draws: what to say.
@@ -1398,6 +1549,14 @@ impl Orbit {
     ) -> Option<Status> {
         let Shown { model, scene, cam, tints, marks: plane_marks, dragged: reboxed, cut: boxed, caps } = shot;
         let mut failed = None;
+        // The points of indexed scans read for where the camera stood still: drawn with the mesh on the card, or by the processor.
+        let on_card = mesh.filter(|_| card.gpu.is_some());
+        let detail = self.detail_for(ctx, model, cam, on_card);
+        let same_detail = match (&self.painted_detail, &detail) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        };
         // The ground, which a canvas colour of the user's changes without making the drawing dark or light.
         let dark = color(render::PAPER);
         let same_caps = |held: &Option<Arc<Caps>>| match (held, &caps) {
@@ -1405,13 +1564,15 @@ impl Orbit {
             (None, None) => true,
             _ => false,
         };
-        if !matches!(&self.shown, Some((m, c, t, k, g, b, h)) if Arc::ptr_eq(m, model) && *c == cam && t.as_slice() == tints && *k == dark && *g == mesh.is_some() && *b == reboxed && same_caps(h))
+        if !matches!(&self.shown, Some((m, c, t, k, g, b, h)) if Arc::ptr_eq(m, model) && *c == cam && t.as_slice() == tints && *k == dark && *g == mesh.is_some() && *b == reboxed && same_caps(h) && same_detail)
         {
+            self.painted_detail = detail.clone();
             // The card's picture, if it makes one; the processor's if not, and if the card fails it for good.
             let (mut drawn, mut exact) = (false, true);
             if let (Some(mesh), Some(gpu)) = (mesh, card.gpu.as_mut()) {
                 gpu.swapped_ink = crate::style::canvas_dark();
                 plane_marks.clone_into(&mut gpu.marks);
+                gpu.set_detail(detail.as_ref().and_then(|d| d.card.as_ref()));
                 // The model's box, whichever the mesh was made under.
                 let cut = reboxed.or(boxed);
                 match gpu.draw_capped(mesh, &cam, tints, rgb(color(render::PAPER)), cut, caps.as_ref()) {
@@ -1431,7 +1592,10 @@ impl Orbit {
                 // As the view shown says: what it hides, and the colours it draws in.
                 let look = self.look(model);
                 let look = if reboxed.is_some() { look.with_section_box(reboxed) } else { look };
-                let mut image = scene.render_in(&cam, tints, &look);
+                let mut image = match detail.as_ref().and_then(|d| d.processor.as_ref()) {
+                    Some(detail) => scene.render_detailed(&cam, tints, &look, detail),
+                    None => scene.render_in(&cam, tints, &look),
+                };
                 if let Some(caps) = &caps {
                     image.capped(&cam, caps, tints, &look);
                 }
@@ -1748,6 +1912,7 @@ impl BimApp {
         let paste_plane = pasting.then(|| model.work_plane(active).resolve(&model).ok()).flatten();
         let paste_box = paste_plane.and_then(|_| self.paste_extent(&bimcraft_core::clipboard::Frame::ThreeD));
         let o = &mut self.orbit;
+        o.detail_most = self.scan_points;
         (o.rect, o.ppp) = (rect, ppp);
         o.show_view(&model, active);
         // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands
