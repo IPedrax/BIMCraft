@@ -4695,9 +4695,6 @@ fn lines_outside_columns(line: &[P2], columns: &[&[P2]]) -> Vec<Vec<P2>> {
     })
 }
 
-/// A layer where it's cut, along `ring`: where it's `room` px wide or more, its material's cut
-/// pattern over the paper, its courses along unit `u`; else, unless it's its element's structure
-/// (which stays poché), lighter.
 /// A slanted compound wall's layers where a section's line (from `start`, running `u`) cuts it, `cut` its pieces there in the
 /// section's `[along, up]`: each layer the part of them between where the line crosses the layer's two boundaries, which lean
 /// across the section with it; a thin line up each boundary between two, within the cut. A straight wall's boundaries are
@@ -4808,6 +4805,9 @@ fn leaning_layers(
     }
 }
 
+/// A layer where it's cut, along `ring`: where it's `room` px wide or more, its material's cut
+/// pattern over the paper, its courses along unit `u`; else, unless it's its element's structure
+/// (which stays poché), lighter.
 fn cut_layer(d: &mut Drawing, m: &Model, layer: &Layer, ring: &[P2], u: P2, room: f64) {
     let over = pattern_style(d, true);
     // The paper's pixels: the layer as wide on it, and the pattern's lines as far apart, however near the view is.
