@@ -58,7 +58,7 @@ pub fn view(s: &App, th: &Theme) -> El {
 
 /// The table: a column for each of the schedule's, a row for each of its rows.
 fn grid(s: &App) -> El {
-    let kit = Kit::neutral(true);
+    let kit = Kit::neutral(s.dark());
     let lit = Palette::dark().accent_fill;
     let mut table = Table::new(state, state_mut, count, row_id).name("schedule").zebra(true);
     for (i, head) in s.grid.shown.columns.iter().enumerate() {

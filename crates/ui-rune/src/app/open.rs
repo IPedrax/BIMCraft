@@ -12,6 +12,7 @@ impl App {
             return false;
         }
         self.leave();
+        self.close_menu();
         (self.fitted, self.moved) = (false, false);
         (self.rubber, self.region) = (None, false);
         self.history.clear();

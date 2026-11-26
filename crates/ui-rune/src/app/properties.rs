@@ -12,6 +12,7 @@ use crate::lang::{t, tf};
 use crate::props::apply::{self, Command, Edit};
 use crate::props::panel::{Editor, Panel};
 use crate::typeprops;
+use crate::views::ViewKind;
 
 /// A field of the palette with the text being typed into it.
 pub struct Field {
@@ -64,7 +65,12 @@ impl App {
         if narrowed.is_none() {
             self.palette.filter = None;
         }
-        let panel = Panel::of(&self.session.model, &self.selection, narrowed, self.level);
+        // The plan's own properties are a floor plan's: another view on screen (the level stays the last plan's) has none to show.
+        let plan = match self.view {
+            ViewKind::Plan(id) if self.session.model.level(id).is_some() => Some(id),
+            _ => None,
+        };
+        let panel = Panel::of(&self.session.model, &self.selection, narrowed, plan);
         self.palette.fields = panel
             .all_rows()
             .filter(|r| matches!(r.editor, Editor::Text { .. }))

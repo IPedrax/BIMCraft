@@ -125,3 +125,27 @@ fn a_view_is_opened_by_its_short_name_and_a_name_that_is_none_opens_nothing() {
     assert!(!app.open_named("nonsense") && !app.open_named("") && app.view == shown);
     assert!(!app.open_named("3d"), "it is the view already shown");
 }
+
+#[test]
+fn the_palette_with_nothing_selected_belongs_to_the_view_shown() {
+    use crate::props::panel::Subject;
+    let mut app = App::sample();
+    let level = app.level.expect("a level");
+    assert_eq!(app.palette.panel.subject, Subject::Plan(level), "a floor plan shows its own properties");
+    let section = first_of(&app, "Sections (Building Section)");
+    assert!(app.open_view(section));
+    assert_eq!(app.palette.panel.subject, Subject::Nothing, "a section is not the level's floor plan");
+    assert!(app.open_view(ViewKind::Ceiling(level)));
+    assert_eq!(app.palette.panel.subject, Subject::Nothing, "nor is a ceiling plan: its graphics are not the plan's");
+    app.set_level(level);
+    assert_eq!(app.palette.panel.subject, Subject::Plan(level), "the floor plan has its own properties again");
+}
+
+#[test]
+fn opening_a_view_closes_the_plans_right_click_menu() {
+    let mut app = App::sample();
+    app.tooling.menu = Some((10.0, 10.0));
+    let section = first_of(&app, "Sections (Building Section)");
+    assert!(app.open_view(section));
+    assert!(app.tooling.menu.is_none(), "the menu is the plan's, so it does not stay over another view");
+}
