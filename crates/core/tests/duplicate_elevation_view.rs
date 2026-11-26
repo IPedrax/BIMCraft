@@ -5,6 +5,7 @@ use bimcraft_core::model::{Element, Id};
 use bimcraft_core::render::{self, View};
 use serde_json::json;
 
+#[cfg(test)]
 fn north() -> (Session, Id) {
     let mut s = Session::new();
     s.execute("wall", &json!({"points": [[0, 0], [8000, 0]], "height": 3000})).unwrap();
