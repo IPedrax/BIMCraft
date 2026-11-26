@@ -1,0 +1,113 @@
+[
+  {
+    "name": "fmt",
+    "command": [
+      "cargo",
+      "fmt",
+      "--check"
+    ],
+    "exit_code": 0,
+    "seconds": 5.18,
+    "log": "/tmp/parameter-precision-nov25-fmt.log"
+  },
+  {
+    "name": "adjacent-angle",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "-p",
+      "bimcraft-ui-egui",
+      "the_browser_lists_the_corner_mullion_family_and_its_rotation_is_typed_in_degrees",
+      "--",
+      "--test-threads=2"
+    ],
+    "exit_code": 0,
+    "seconds": 0.88,
+    "log": "/tmp/parameter-precision-nov25-adjacent-angle.log"
+  },
+  {
+    "name": "core-units",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "-p",
+      "bimcraft-core",
+      "units::tests",
+      "--",
+      "--test-threads=2"
+    ],
+    "exit_code": 0,
+    "seconds": 701.73,
+    "log": "/tmp/parameter-precision-nov25-core-units.log"
+  },
+  {
+    "name": "clippy",
+    "command": [
+      "cargo",
+      "clippy",
+      "--locked",
+      "--workspace",
+      "--all-targets",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "exit_code": 0,
+    "seconds": 123.9,
+    "log": "/tmp/parameter-precision-nov25-clippy.log"
+  },
+  {
+    "name": "wasm",
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "--manifest-path",
+      "crates/plugin/tests/sample-plugin/Cargo.toml",
+      "--target",
+      "wasm32-unknown-unknown",
+      "--release"
+    ],
+    "exit_code": 0,
+    "seconds": 2.61,
+    "log": "/tmp/parameter-precision-nov25-wasm.log"
+  },
+  {
+    "name": "workspace-headless",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--workspace",
+      "--exclude",
+      "bimcraft",
+      "--exclude",
+      "bimcraft-ui-egui",
+      "--",
+      "--test-threads=2"
+    ],
+    "exit_code": 101,
+    "seconds": 768.52,
+    "log": "/tmp/parameter-precision-nov25-workspace-headless.log"
+  },
+  {
+    "name": "workspace-headless-loopback",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--workspace",
+      "--exclude",
+      "bimcraft",
+      "--exclude",
+      "bimcraft-ui-egui",
+      "--",
+      "--test-threads=2"
+    ],
+    "exit_code": 0,
+    "seconds": 1061.69,
+    "log": "/tmp/parameter-precision-nov25-workspace-headless-loopback.log"
+  }
+]

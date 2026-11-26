@@ -1,0 +1,302 @@
+    Finished `test` profile [unoptimized] target(s) in 0.20s
+     Running unittests src/main.rs (/tmp/parameter-precision-target/debug/deps/bimcraft-eca0828c8912d34a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_assistant-4655a07c3eeb481c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 58 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_cli-a8f8800a6c160b1c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 32 filtered out; finished in 0.00s
+
+     Running tests/dwg.rs (/tmp/parameter-precision-target/debug/deps/dwg-ed4917f36faa25ed)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_core-434965f6a7042873)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2904 filtered out; finished in 0.00s
+
+     Running tests/agent_docs.rs (/tmp/parameter-precision-target/debug/deps/agent_docs-10a7437dc5b33b5d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/bounds_cache.rs (/tmp/parameter-precision-target/debug/deps/bounds_cache-8cec08a55eb8791f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/component_preparation.rs (/tmp/parameter-precision-target/debug/deps/component_preparation-e760fbb55adc64dd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/compound_corner.rs (/tmp/parameter-precision-target/debug/deps/compound_corner-4ecca9a63d811b76)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/drawing_lettering.rs (/tmp/parameter-precision-target/debug/deps/drawing_lettering-6b4cbd5ed7d0071e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/family_overwrite.rs (/tmp/parameter-precision-target/debug/deps/family_overwrite-91016bbfdb8af90a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.00s
+
+     Running tests/grid_types.rs (/tmp/parameter-precision-target/debug/deps/grid_types-03997a3853bf4a53)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/ifc_grids.rs (/tmp/parameter-precision-target/debug/deps/ifc_grids-a4babf945c3e724f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/ifc_supplementary_quantities.rs (/tmp/parameter-precision-target/debug/deps/ifc_supplementary_quantities-cb1bc55a515204eb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/ifc_wall_authoring.rs (/tmp/parameter-precision-target/debug/deps/ifc_wall_authoring-fc2aa6ba81503f7a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/industrial_doors.rs (/tmp/parameter-precision-target/debug/deps/industrial_doors-461eb829822322a3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/memory_budget.rs (/tmp/parameter-precision-target/debug/deps/memory_budget-6def5b64d039db0d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/opening_elevation.rs (/tmp/parameter-precision-target/debug/deps/opening_elevation-a70cf1f0e0c2a648)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/opening_level.rs (/tmp/parameter-precision-target/debug/deps/opening_level-ed28d8887cd978aa)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/primitive_fragments.rs (/tmp/parameter-precision-target/debug/deps/primitive_fragments-afb0fd609e475692)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/property.rs (/tmp/parameter-precision-target/debug/deps/property-a2bb66747bf51075)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/property_boundaries.rs (/tmp/parameter-precision-target/debug/deps/property_boundaries-c2d56d17148dcf38)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/revision_metadata.rs (/tmp/parameter-precision-target/debug/deps/revision_metadata-3892d95975a10c54)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/roof_overhang.rs (/tmp/parameter-precision-target/debug/deps/roof_overhang-11471b8e9b850904)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/scan_framing.rs (/tmp/parameter-precision-target/debug/deps/scan_framing-d981fcc10f715034)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/script_references.rs (/tmp/parameter-precision-target/debug/deps/script_references-d326e0cbedf59d7e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/select_instances.rs (/tmp/parameter-precision-target/debug/deps/select_instances-69608195a80e4fb2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/separator_wall_end.rs (/tmp/parameter-precision-target/debug/deps/separator_wall_end-93a8af995871a2f2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/sheet_custom_paper.rs (/tmp/parameter-precision-target/debug/deps/sheet_custom_paper-4901c1e0c608efcc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/sheet_fit.rs (/tmp/parameter-precision-target/debug/deps/sheet_fit-124687ac4baea055)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running tests/sheet_paper.rs (/tmp/parameter-precision-target/debug/deps/sheet_paper-855e0386c1e7e76a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/sheet_title_block.rs (/tmp/parameter-precision-target/debug/deps/sheet_title_block-50da50865183cf6e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/sheet_title_fitting.rs (/tmp/parameter-precision-target/debug/deps/sheet_title_fitting-a5184d3516e996c9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/spatial_cache.rs (/tmp/parameter-precision-target/debug/deps/spatial_cache-fed99c59ba9abd36)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/steel_profiles.rs (/tmp/parameter-precision-target/debug/deps/steel_profiles-974aee34f7ee4470)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running tests/timber_framing.rs (/tmp/parameter-precision-target/debug/deps/timber_framing-8e7156175ffd169b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/viewport_placement.rs (/tmp/parameter-precision-target/debug/deps/viewport_placement-b6779c7a0e020c21)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_cowork-8b17f468f62d1c27)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 31 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_dwg-5ccbb2c64991703e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_i18n-0c57745734f36d54)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_plugin-8beca7165e2649b4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/plugins.rs (/tmp/parameter-precision-target/debug/deps/plugins-46100f36361af1ca)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 25 filtered out; finished in 0.00s
+
+     Running tests/sample.rs (/tmp/parameter-precision-target/debug/deps/sample-e3922db38bdc1498)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_plugin_sdk-2eb03ff2927695c9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_pyaddins-072e6d91df375aae)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 27 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_rvt-d0790476c8723ec2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 239 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_ui_egui-f226f222c4ace528)
+
+running 14 tests
+test tests::parameter_precision::precision_wall_noop_apply_keeps_total_and_layers ... ok
+test tests::parameter_precision::precision_family_typed_value_survives_repeat_apply ... ok
+test tests::parameter_precision::precision_invalid_type_input_does_not_commit_other_fields ... ok
+test tests::parameter_precision::precision_room_type_offsets_survive_other_field_edit ... ok
+test tests::parameter_precision::precision_project_type_parameter_is_a_change_only_control ... ok
+test tests::parameter_precision::precision_untouched_family_value_keeps_submicron_source_precision ... ok
+test tests::parameter_precision::precision_instance_fields_are_change_only_controls ... ok
+test tests::parameter_precision::precision_layer_reorder_and_duplicate_keep_original_values ... ok
+test tests::parameter_precision::precision_family_other_field_cancel_history_and_reopen ... ok
+test tests::parameter_precision::precision_wall_layer_edit_keeps_other_layers_and_repeated_apply ... ok
+test tests::parameter_precision::precision_project_decimals_keep_their_display_and_untouched_values ... ok
+test tests::parameter_precision::precision_family_noop_apply_keeps_stored_lengths ... ok
+test tests::parameter_precision::precision_typed_lengths_are_exact_in_metric_and_imperial_projects ... ok
+test tests::parameter_precision::precision_screenshots ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 1636 filtered out; finished in 4.67s
+
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_update-72da2c88b48de87f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 118 filtered out; finished in 0.00s

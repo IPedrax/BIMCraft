@@ -890,8 +890,8 @@ offsets, a stair type's rules, Edit Pattern, a view range, Reinforce, a project 
 fills a length with `Units::field`, never `Units::length`. `length` is what drawings show, rounded (3 mm in metres is `0.00`), so
 a field left alone would be read back as 0. In mm, cm and m, `field` is `length` while that reads back as the value, else the
 value in mm with its unit (`3 mm`), which `Units::parse` reads. Inches and feet round to a sixteenth of an inch and a hundredth
-of a foot by design, so `field` is `length` there. A field that commits only when its text changes (the Properties palette)
-keeps `length`.
+of a foot by design, so `field` is `length` there. The Properties palette commits only when its text changes and shows
+lengths with `with_unit`; angles show a degree sign and accept input with or without it.
 
 A project also keeps how many places lengths show (`Model::decimals`, the `units` command's `decimals`; Manage > Project Units
 lists them under the units): metres and feet 2 to 5, centimetres 1 to 4, millimetres 0 to 3, none for inches and feet-inches,
@@ -899,6 +899,14 @@ which show sixteenths. None, and the fewest, are what drawings always showed. A 
 Code that has a `Model` shows a length with `Model::length`, `Model::with_unit` and `Model::field`, which pass the places on;
 `Units::length` is for code that has only the units (so it shows the fewest places), and dimension types and schedules take
 the places as `DimensionType::length` and `schedule::shown_to` do. Typed lengths are read exactly whatever places are shown.
+
+Type Properties additionally stages the raw value, initial text and edit state of native dimension fields, layer thicknesses,
+room offsets and family type lengths (`OriginalLength` in `properties.rs`). An untouched field keeps its raw value, even when
+imperial display rounds or the value is finer than the typed-input parser's 0.001 mm precision. An actual text edit uses that
+parser, including deliberately retyping the same rounded text. The snapshot travels with a reordered layer; Apply refreshes it.
+An unchanged Apply/OK skips the type command, so one Undo reaches the real edit. Validation and history still belong to the
+existing `type`, `family` and `type_parameter` commands. Instance/project-parameter change-only controls retain their existing
+paths. Family Editor, the separate stair-rule table and other dialogs are outside this bounded staging repair.
 
 ## Benchmarking the window
 

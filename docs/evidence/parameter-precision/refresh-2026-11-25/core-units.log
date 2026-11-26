@@ -1,0 +1,272 @@
+   Compiling once_cell v1.21.4
+   Compiling syn v3.0.9
+   Compiling num-traits v0.2.19
+   Compiling tracing-core v0.1.36
+   Compiling tracing v0.1.44
+   Compiling synstructure v0.14.0
+   Compiling jxl-bitstream v1.1.0
+   Compiling bytemuck_derive v1.12.1
+   Compiling zerofrom-derive v0.1.8
+   Compiling zerofrom v0.1.8
+   Compiling bytemuck v1.25.2
+   Compiling brotli-decompressor v5.0.3
+   Compiling jxl-oxide-common v1.0.0
+   Compiling yoke-derive v0.8.4
+   Compiling hashbrown v0.17.1
+   Compiling jxl-grid v0.6.2
+   Compiling yoke v0.8.3
+   Compiling jxl-coding v1.0.1
+   Compiling jxl-threadpool v1.0.0
+   Compiling font-types v0.12.7
+   Compiling font-types v0.11.3
+   Compiling thiserror-impl v2.0.21
+   Compiling indexmap v2.14.2
+   Compiling read-fonts v0.39.2
+   Compiling thiserror v2.0.21
+   Compiling read-fonts v0.46.0
+   Compiling jxl-modular v0.11.3
+   Compiling jxl-image v0.13.0
+   Compiling brotli v8.0.4
+   Compiling color v0.3.3
+   Compiling euclid v0.22.14
+   Compiling serde_core v1.0.229
+   Compiling hayro-cmap v0.1.1
+   Compiling peniko v0.6.1
+   Compiling guillotiere v0.7.0
+   Compiling skrifa v0.49.0
+   Compiling jxl-vardct v0.11.1
+   Compiling moxcms v0.8.1
+   Compiling vello_common v0.3.0
+   Compiling hayro-font v0.5.0
+   Compiling jxl-frame v0.13.3
+   Compiling write-fonts v0.48.1
+   Compiling skrifa v0.42.1
+   Compiling hayro-interpret v0.9.0
+   Compiling subsetter v0.2.6
+   Compiling image v0.25.10
+   Compiling vello_cpu v0.3.0
+   Compiling tiny-skia-path v0.12.0
+   Compiling tiny-skia-path v0.11.4
+   Compiling jxl-color v0.11.0
+   Compiling pic-scale v0.7.14
+   Compiling serde_derive v1.0.229
+   Compiling float-cmp v0.9.0
+   Compiling krilla v0.8.2
+   Compiling zip v9.2.0
+   Compiling rayon v1.12.0
+   Compiling proj4rs v0.3.0
+   Compiling hayro v0.9.0
+   Compiling tempfile v3.27.0
+   Compiling serde v1.0.229
+   Compiling jxl-render v0.12.4
+   Compiling tiny-skia v0.11.4
+   Compiling serde_json v1.0.154
+   Compiling jxl-jbr v0.2.1
+   Compiling quick-xml v0.41.0
+   Compiling jxl-oxide v0.12.6
+   Compiling cap v0.1.2
+   Compiling bimcraft-core v0.12.0 (/private/tmp/parameter-precision-nov25/crates/core)
+    Finished `test` profile [unoptimized] target(s) in 11m 22s
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_core-cb2b6c7dd5724d30)
+
+running 5 tests
+test units::tests::a_field_is_filled_with_what_reads_back_as_the_value ... ok
+test units::tests::lengths_show_in_the_project_units ... ok
+test units::tests::lengths_show_to_the_decimals_a_project_asks_for ... ok
+test units::tests::scales_are_named_and_read_as_the_units_draw_them ... ok
+test units::tests::typed_lengths_read_in_the_project_units_or_their_own ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 3469 filtered out; finished in 0.00s
+
+     Running tests/agent_docs.rs (/tmp/parameter-precision-target/debug/deps/agent_docs-155b91fba28c25dc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/bounds_cache.rs (/tmp/parameter-precision-target/debug/deps/bounds_cache-310e0da954044452)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/component_preparation.rs (/tmp/parameter-precision-target/debug/deps/component_preparation-ad88445bac80c5b0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/compound_corner.rs (/tmp/parameter-precision-target/debug/deps/compound_corner-6b8345cf8d0b3f09)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/drawing_lettering.rs (/tmp/parameter-precision-target/debug/deps/drawing_lettering-9c99190aa3f6baf8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/family_overwrite.rs (/tmp/parameter-precision-target/debug/deps/family_overwrite-f865b796b306e768)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 0.00s
+
+     Running tests/grid_types.rs (/tmp/parameter-precision-target/debug/deps/grid_types-1e775c8ef9e053ea)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.00s
+
+     Running tests/ifc_grids.rs (/tmp/parameter-precision-target/debug/deps/ifc_grids-980d45200f7106f0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/ifc_supplementary_quantities.rs (/tmp/parameter-precision-target/debug/deps/ifc_supplementary_quantities-531edf88039fa8a0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/ifc_wall_authoring.rs (/tmp/parameter-precision-target/debug/deps/ifc_wall_authoring-37b9c4b66d10a366)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/industrial_doors.rs (/tmp/parameter-precision-target/debug/deps/industrial_doors-dc43ba9c7a549db8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/memory_budget.rs (/tmp/parameter-precision-target/debug/deps/memory_budget-d4af67657ca5879a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/opening_elevation.rs (/tmp/parameter-precision-target/debug/deps/opening_elevation-2c7bd6149c0a9735)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/opening_level.rs (/tmp/parameter-precision-target/debug/deps/opening_level-f2376bb0be36f0d8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/primitive_fragments.rs (/tmp/parameter-precision-target/debug/deps/primitive_fragments-3220fff3511ede13)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/property.rs (/tmp/parameter-precision-target/debug/deps/property-4158a41e7483a982)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests/property_boundaries.rs (/tmp/parameter-precision-target/debug/deps/property_boundaries-b147893c17d1d883)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/revision_metadata.rs (/tmp/parameter-precision-target/debug/deps/revision_metadata-7f0480c524f1e493)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/roof_overhang.rs (/tmp/parameter-precision-target/debug/deps/roof_overhang-84d694d51f2b97ea)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/scan_framing.rs (/tmp/parameter-precision-target/debug/deps/scan_framing-f676be9a115f3aa6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/script_references.rs (/tmp/parameter-precision-target/debug/deps/script_references-3fb586d22e6e6de1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/select_instances.rs (/tmp/parameter-precision-target/debug/deps/select_instances-c6b77d022bcab571)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/separator_wall_end.rs (/tmp/parameter-precision-target/debug/deps/separator_wall_end-c904afd44e9803eb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/sheet_custom_paper.rs (/tmp/parameter-precision-target/debug/deps/sheet_custom_paper-1b14f5198e7853bd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/sheet_fit.rs (/tmp/parameter-precision-target/debug/deps/sheet_fit-4a16bff517d85012)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running tests/sheet_paper.rs (/tmp/parameter-precision-target/debug/deps/sheet_paper-00d0c2a103eaea9d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/sheet_title_block.rs (/tmp/parameter-precision-target/debug/deps/sheet_title_block-3b92f89d3ea989f7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/sheet_title_fitting.rs (/tmp/parameter-precision-target/debug/deps/sheet_title_fitting-f178164d74707695)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/spatial_cache.rs (/tmp/parameter-precision-target/debug/deps/spatial_cache-5351893aec693e7b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/steel_profiles.rs (/tmp/parameter-precision-target/debug/deps/steel_profiles-5e50985d884fb84c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running tests/timber_framing.rs (/tmp/parameter-precision-target/debug/deps/timber_framing-06a1dd91b1834b35)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/viewport_placement.rs (/tmp/parameter-precision-target/debug/deps/viewport_placement-fa2d83fceef06499)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+

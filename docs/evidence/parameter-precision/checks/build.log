@@ -1,0 +1,13 @@
+    Blocking waiting for file lock on build directory
+   Compiling bimcraft-core v0.12.0 (/private/tmp/parameter-precision-refresh/crates/core)
+   Compiling bimcraft-update v0.12.0 (/private/tmp/parameter-precision-refresh/crates/update)
+   Compiling bimcraft-pyaddins v0.12.0 (/private/tmp/parameter-precision-refresh/crates/pyaddins)
+   Compiling bimcraft-plugin v0.12.0 (/private/tmp/parameter-precision-refresh/crates/plugin)
+   Compiling bimcraft-dwg v0.12.0 (/private/tmp/parameter-precision-refresh/crates/dwg)
+   Compiling bimcraft-cowork v0.12.0 (/private/tmp/parameter-precision-refresh/crates/cowork)
+   Compiling bimcraft-rvt v0.12.0 (/private/tmp/parameter-precision-refresh/crates/rvt)
+   Compiling bimcraft-assistant v0.12.0 (/private/tmp/parameter-precision-refresh/crates/assistant)
+   Compiling bimcraft-ui-egui v0.12.0 (/private/tmp/parameter-precision-refresh/crates/ui-egui)
+   Compiling bimcraft-cli v0.12.0 (/private/tmp/parameter-precision-refresh/apps/bimcraft-cli)
+   Compiling bimcraft v0.12.0 (/private/tmp/parameter-precision-refresh/apps/bimcraft)
+    Finished `dev` profile [unoptimized] target(s) in 4m 40s

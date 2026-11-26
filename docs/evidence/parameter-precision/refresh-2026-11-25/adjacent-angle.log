@@ -1,0 +1,13 @@
+warning: linker stderr: ld: __eh_frame section too large (max 16MB) to encode dwarf unwind offsets in compact unwind table, performance of exception handling might be affected
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `bimcraft-ui-egui` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized] target(s) in 0.38s
+     Running unittests src/lib.rs (/tmp/parameter-precision-target/debug/deps/bimcraft_ui_egui-196caae9593b8ed0)
+
+running 1 test
+test tests::curtain::the_browser_lists_the_corner_mullion_family_and_its_rotation_is_typed_in_degrees ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2214 filtered out; finished in 0.43s
+

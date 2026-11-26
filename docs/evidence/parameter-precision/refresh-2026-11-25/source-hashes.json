@@ -1,0 +1,21 @@
+{
+  "Cargo.toml": "6e5f6ed3736ecce60e89f6452ed9188709343b8d1a3342da18121e3310101937",
+  "Cargo.lock": "a3208afac9b5e5361d5ecfb1b824e4d56740e0390008b13c6f5c08770bda1e06",
+  "crates/ui-egui/src/properties.rs": "c464da67445d074faad242fcb1698c764aae5e161382d2a02cb122f8a53f624c",
+  "crates/ui-egui/src/stairtype.rs": "ec7cec7373ba0a8c5f2fa4392a6e81de18bff1e6c000670849f4a2f079b56241",
+  "crates/ui-egui/src/typeprops.rs": "c4ba3fbcb267d9436b9c1a179c2ab8bd05c299fac68777538f5b648dbbf9c96b",
+  "crates/ui-egui/src/tests.rs": "beb1b07a85bc35743170fa9c3a1538c8c45ccc7803c6428db59c54e860196aec",
+  "crates/ui-egui/src/tests/parameter_precision.rs": "8ec7e7d928af4bb3ac759792ca09448baaa7bbd49efe5dc70252e166fe0896e6",
+  "translations/ui/bimcraft-ui.pot": "a861b36e8fb03d9ce757852ab4c4e45b9aebde6534227a0783db697d3311b229",
+  "translations/ui/cs.po": "b4d8480d1a0285c5410bc1baf15a574622d28be873ad91f10d4bffc462c4515b",
+  "translations/ui/de.po": "f61d6de910f9181137d43daf3f4bbc63a084e1fcfd7a8360b529571e95aa19e0",
+  "translations/ui/es.po": "9e0646470065d3f3847ccd37d5e3a358bb33afe1384930ea208e55b6182f0435",
+  "translations/ui/fr.po": "9e17fd8da2f0797783c262cdc181861599cb63f55b3c6d370c0c757f5abd94fc",
+  "translations/ui/it.po": "63e318c43408820bf174d2277c44a200582f4816239d31411ff150634e064de2",
+  "translations/ui/nl.po": "53ed67def6c5aa0d4b4cdfdf1a8e27318ddd967d2a93e155f1cb9c2e16a90893",
+  "translations/ui/pl.po": "5ceedd2fa596aa50aea41c1f3ca3bc6dd2ffd75922e1e452e9b22394cb79c535",
+  "translations/ui/pt.po": "e35ea81a31d42594fd966474b79fc2f06b0a2631267b8875b90cf9e1d0bce80b",
+  "translations/ui/vi.po": "0517e04417900839cd96a11168c9f9aa249664a2772515e1a63bf7a247ea6029",
+  "translations/ui/zh.po": "f086164a2b0908ac15e19e651a81bb87ab4c6fe0c445b4186c75c0c707b13b82",
+  "translations/ui/zh_TW.po": "423d1895a445717b375671f5982f027be1ab4294a95bf2741dccc08fb3097491"
+}

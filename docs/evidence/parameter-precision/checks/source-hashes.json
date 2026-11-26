@@ -1,0 +1,19 @@
+{
+  "crates/ui-egui/src/properties.rs": "04827a4255f381efe4008d876af6e4d3aec9607127c5dd180b3ccdde4bb3d86f",
+  "crates/ui-egui/src/stairtype.rs": "f62b9fc9d04817f105093df170aae6fbeebddaeb1fa5d2465fe464390cc33974",
+  "crates/ui-egui/src/tests.rs": "724cb8080d5ee0a7585b70f513e2c5c7258f5b8a2ba5469950188cb08ebb17b2",
+  "crates/ui-egui/src/typeprops.rs": "c4ba3fbcb267d9436b9c1a179c2ab8bd05c299fac68777538f5b648dbbf9c96b",
+  "translations/ui/bimcraft-ui.pot": "45dfab3385a1609c71f24e2332a550b0d433ebdc34127892acecf35b8eb6beb8",
+  "translations/ui/cs.po": "2bad0bbd7e3000afbedce2cbcd69dacc6d6f7a52fbcad35df5dbf69607748aa1",
+  "translations/ui/de.po": "c696d5f3f27e0cd7799577b7f92e298176aa0bd0c986dff7870973aa9d342e12",
+  "translations/ui/es.po": "8c44b05ec274379e6d1e9a7fd5bfede4210e4f092b36642667b2cb0710918760",
+  "translations/ui/fr.po": "7104f2f88b58c3bb5171daf437e4802b9695f845bae32a4be3d5077c47664248",
+  "translations/ui/it.po": "ddccefa81d96abf9c605a8c269ad25fa75d9e63d4aec2656029b06aeec70a69e",
+  "translations/ui/nl.po": "4c682cbcef1178a6da0f197a31a14d73968c25eda8a0d4c806799cfe93ec7d14",
+  "translations/ui/pl.po": "bfa643c53433fde2e0ab89236806191654816d2f23afdad497cff1fb7f228250",
+  "translations/ui/pt.po": "8c4702d557fbf08347f843fe1430011b66c3923adbfbfc2462fd91148240cae1",
+  "translations/ui/vi.po": "4810b8e243b417356f06a95187227ed020f0734b117700c105314cc49e060bd1",
+  "translations/ui/zh.po": "74ff478081b46e1fe2b4a9fbd1b0888e82ad76f872bf47c1a34b58f4c71dd6a6",
+  "translations/ui/zh_TW.po": "75abcf14dddec3d245dcb022baae8d49c7c9a821a4db01356d7419edb766fe3e",
+  "crates/ui-egui/src/tests/parameter_precision.rs": "d2bad83673a97b06489083e8b67e8b92af0ca8c43f0529c6cb25d054c89e24d7"
+}
