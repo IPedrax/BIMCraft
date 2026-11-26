@@ -22,6 +22,52 @@ fn in_browser<'a>(h: &'a Harness<BimApp>, label: &'a str) -> egui_kittest::Node<
 }
 
 #[test]
+fn browser_duplicates_an_elevation_and_opens_it_as_an_elevation() {
+    for ceiling in [false, true] {
+        let mut h = app(&format!("{HOUSE}\nelevation {{\"facing\": \"north\", \"name\": \"North Elevation\"}}"));
+        let source = h.state().session.model.view_named("North Elevation").unwrap();
+        let original = h.state().session.model.section(source).unwrap().clone();
+        if ceiling {
+            let level = h.state().session.model.levels()[0].0;
+            h.state_mut().open_sheet(Sheet::Ceiling(level));
+            h.run();
+        }
+        in_browser(&h, "North Elevation").scroll_to_me();
+        h.run();
+        in_browser(&h, "North Elevation").click_secondary();
+        h.run();
+        assert!(h.query_by_label("Duplicate").is_some());
+        assert!(h.query_by_label("Duplicate with Detailing").is_none());
+        assert!(h.query_by_label("Duplicate as Dependent").is_none());
+        assert_eq!(h.query_by_label("Show as Underlay").is_some(), !ceiling);
+        press(&mut h, "Duplicate");
+        let m = &h.state().session.model;
+        let copy = m.view_named("North Elevation Copy 1").unwrap();
+        assert_ne!(m.guid(copy), m.guid(source));
+        assert!(matches!(m.elements.get(copy), Some(Element::Elevation(_))));
+        assert_eq!(h.state().sheet, Sheet::Section(copy));
+        let mut expected = original.clone();
+        expected.name = "North Elevation Copy 1".into();
+        assert_eq!(m.section(copy), Some(&expected));
+        assert_eq!(m.section(source), Some(&original));
+        assert!(views(&h).is_empty());
+        assert!(h.get_all_by_label("North Elevation Copy 1").count() >= 2);
+        h.state_mut().run("scale", json!({"view": copy, "scale": 50})).unwrap();
+        h.run();
+        assert_eq!(h.state().session.model.section(source), Some(&original));
+        assert_eq!(h.state().session.model.section(copy).unwrap().graphics.scale, Some(50.0));
+        // Opening the Browser row again keeps its elevation type and independent settings.
+        h.state_mut().open_sheet(Sheet::Section(source));
+        h.run();
+        in_browser(&h, "North Elevation Copy 1").scroll_to_me();
+        h.run();
+        in_browser(&h, "North Elevation Copy 1").click();
+        h.run();
+        assert_eq!(h.state().sheet, Sheet::Section(copy));
+    }
+}
+
+#[test]
 fn duplicate_view_on_the_view_tab_makes_a_plan_view_and_opens_it() {
     let mut h = app(HOUSE);
     press(&mut h, "View");

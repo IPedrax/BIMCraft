@@ -5620,10 +5620,16 @@ impl BimApp {
         }
     }
 
-    /// A duplicate of plan `key`, opened as the kind of plan (floor or ceiling) on screen.
+    /// A duplicate of view `key`: elevations keep their type, plans the kind of plan (floor or ceiling) on screen.
     pub(crate) fn duplicate_view_of(&mut self, key: Id, mode: &'static str) {
         if let Some(id) = self.run("duplicate_view", json!({"view": key, "mode": mode})).and_then(|r| r["id"].as_u64()) {
-            self.open_sheet(if matches!(self.sheet, Sheet::Ceiling(_)) { Sheet::Ceiling(id) } else { Sheet::Plan(id) });
+            self.open_sheet(if matches!(self.session.model.elements.get(id), Some(Element::Elevation(_))) {
+                Sheet::Section(id)
+            } else if matches!(self.sheet, Sheet::Ceiling(_)) {
+                Sheet::Ceiling(id)
+            } else {
+                Sheet::Plan(id)
+            });
         }
     }
 

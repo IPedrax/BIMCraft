@@ -591,7 +591,7 @@ it needs (`needs_face`, by the tool's title). Floor and Ceiling sketch on the vi
 face picked on the model.
 
 A level's own plan is the level (its `view_range`, `crop` and `graphics` are the level's); every other plan of it is an `Element::PlanView`
-(Revit's Duplicate View: `duplicate_view`, which only plans take). A plan has a key: the level's id, or a plan view's. `Model::plan_level` says
+(Revit's Duplicate View: `duplicate_view`). A plan has a key: the level's id, or a plan view's. `Model::plan_level` says
 which level a key shows, and everything that draws or measures the model takes that level (`draw_plan`, `plan_shows`, the canvas's tools), while
 what is the view's own takes the key: its graphics (`graphics_of`), view range (`view_range_of`, which a template may control), crop (`crop_of`)
 and annotation. Annotation says which view it is in: a note or a spot elevation by `view`, a dimension or a tag by an optional `view` beside its
@@ -601,6 +601,16 @@ its parent's view range and graphics (`plan_source`; `graphics`, `scale`, `detai
 of its own and draws its parent's annotation as well as its own. Deleting a view deletes what is annotated in it and its dependents; a level
 takes its plan views with it. A project that has none writes the same file as before. A plan's own name, lettered at its bottom left, is in the drawings that make an image (`plan`, `ceiling_plan`: `titled`), not in the window's (`draw`, `draw_ceiling`) or a sheet's (`draw_at`), where the tab and the viewport's title say it. The desktop: View > Duplicate View, DP, and the Project
 Browser's right-click, which also has Delete for a plan view; `Sheet::Plan` and `Sheet::Ceiling` hold the key.
+
+Elevations support plain **Duplicate** from their Project Browser right-click menu, or `duplicate_view` with the elevation's
+name or id and `mode: "duplicate"` (the default). The copy opens as an elevation under Elevations, named `<view> Copy 1`
+(or the next unused number); the command also accepts `name`. It has a new id and GUID and retains the source's direction,
+line, reference, mark, far clip depth, crop, scale, detail level, graphics, assigned view template and underlay. Its name and
+view settings can be edited independently; template-controlled settings still follow the assigned template. Both views
+show the same building model, and the copy and its settings survive saving and reopening the project. Plain duplication
+leaves view-specific annotations, including text and detail lines, in the source. Elevation **Duplicate with Detailing**
+and **Duplicate as Dependent** are unsupported and are not offered. View > Duplicate View and DP remain plan-only.
+`Element::Elevation` holds its own `Section` settings and opens through `Sheet::Section`; the existing file format stores it.
 
 Fill patterns, filled region types and filled regions (`fills.rs`) follow line patterns and styles. A `FillPattern` is
 families of parallel lines as a PAT file has them (`HatchLine`: an angle, an origin, a spacing across, a shift along, and
