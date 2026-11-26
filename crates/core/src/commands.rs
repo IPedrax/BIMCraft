@@ -16261,8 +16261,8 @@ pub fn roof_footprint(m: &Model, level: impl Key, overhang: f64) -> Result<(Vec<
 fn section(s: &mut Session, p: &Value) -> R {
     let c = "section";
     let (start, end, near, depth) = (point_req(c, p, "start")?, point_req(c, p, "end")?, num(c, p, "near")?, num(c, p, "depth")?);
-    // 0 is its line, which a file leaves out: kept as none.
-    let near = near.filter(|n| *n > 0.0);
+    // 0 is its line, which a file leaves out: kept as none. A negative or NaN near is left for the model to refuse.
+    let near = near.filter(|n| *n != 0.0);
     let name = match string(c, p, "name")? {
         Some(n) => n,
         None => s.model.free_view_name(s.model.language.word("Section"), true),
@@ -16286,8 +16286,8 @@ fn elevation(s: &mut Session, p: &Value) -> R {
     let c = "elevation";
     let m = &s.model;
     let (near, depth, name, at) = (num(c, p, "near")?, num(c, p, "depth")?, string(c, p, "name")?, point_opt(c, p, "at")?);
-    // 0 is its line, which a file leaves out: kept as none.
-    let near = near.filter(|n| *n > 0.0);
+    // 0 is its line, which a file leaves out: kept as none. A negative or NaN near is left for the model to refuse.
+    let near = near.filter(|n| *n != 0.0);
     let facing = match string(c, p, "facing")? {
         Some(f) => Some(Facing::parse(&f).ok_or_else(|| bad(c, format!("`facing` is north, south, east or west, not `{f}`")))?),
         None => None,
@@ -20575,9 +20575,10 @@ fn modify(s: &mut Session, p: &Value) -> R {
             }
         }
         let mut e2 = serde_json::from_value::<Element>(v).map_err(|e| bad(c, format!("element {id}: {e}")))?;
-        // A near clip of 0 is the view's line, which a file leaves out: kept as none.
+        // A near clip of 0 is the view's line, which a file leaves out: kept as none. A negative or NaN one is left for
+        // the model to refuse.
         if let Element::Section(section) | Element::Elevation(section) = &mut e2 {
-            section.near = section.near.filter(|n| *n > 0.0);
+            section.near = section.near.filter(|n| *n != 0.0);
         }
         // A note's new text keeps its runs on what didn't change, unless it is given runs of its own.
         if let (Element::Text(old), Element::Text(n)) = (e, &mut e2)

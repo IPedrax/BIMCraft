@@ -149,6 +149,10 @@ mod tests {
             fails(&mut s, "section", p);
         }
         assert_eq!(run(&mut s, "elements", json!({"category": "section"}))["count"], json!(0), "no section was made");
+        // The same through modify: a negative near is refused, not quietly taken for the line.
+        let id = run(&mut s, "section", json!({"start": [-1000, -2000], "end": [9000, -2000]}))["id"].as_u64().unwrap();
+        fails(&mut s, "modify", json!({"id": id, "near": -1}));
+        assert_eq!(s.model.section(id).unwrap().near, None);
     }
 
     #[test]
@@ -178,7 +182,7 @@ mod tests {
     #[test]
     fn crop_does_not_change_either_clip() {
         let mut f = fixture(Some(500.0), Some(2150.0));
-        run(&mut f.s, "crop", json!({"view": f.section, "region": [[0, 0], [4000, 3000]]}));
+        run(&mut f.s, "crop", json!({"view": f.section, "region": [[0, 0], [9000, 3000]]}));
         let v = f.s.model.section(f.section).unwrap();
         assert_eq!((v.near, v.depth), (Some(500.0), Some(2150.0)));
         assert_eq!(v.crop, Some([0.0, 3000.0]));
