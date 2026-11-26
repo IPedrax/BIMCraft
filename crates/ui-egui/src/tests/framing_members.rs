@@ -2,6 +2,7 @@
 //! out and Reset Members brings it back; the wall type's layers mark the one framed; the Framing drop-down.
 
 use super::*;
+use egui_kittest::kittest::{By, NodeT};
 
 /// A framed 2x4 wall, 4 m east from the origin, 2700 tall, selected.
 const FRAMED: &str = r#"wall {"points": [[0, 0], [4000, 0]], "type": "Timber Frame - 114mm", "height": 2700}
