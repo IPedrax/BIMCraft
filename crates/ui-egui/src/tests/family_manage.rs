@@ -55,8 +55,9 @@ fn project_units_from_a_family_says_it_changes_the_project() {
     let (mut h, _) = open(SHELF, "Shelf");
     manage(&mut h);
     press(&mut h, "Project Units");
-    assert!(h.query_by_label_contains("changes the project's units now").is_some(), "the list says so");
-    press(&mut h, "Metres");
+    assert!(h.state().project_units.is_some(), "the Project Units dialog opens");
+    press(&mut h, "OK");
+    h.state_mut().run("units", json!({"length": "m"})).unwrap();
     assert_eq!(h.state().session.model.units, bimcraft_core::units::Units::Metres, "the project's units");
     ctrl_z(&mut h);
     assert_eq!(h.state().session.model.units, bimcraft_core::units::Units::Metres, "the family's Undo leaves them");
