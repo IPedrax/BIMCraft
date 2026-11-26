@@ -2178,7 +2178,7 @@ msgid "Block"
 msgstr "Blocco"
 
 #: crates/ui-egui/src/framing_diagram.rs:41
-#: crates/ui-egui/src/framing_diagram.rs:212
+#: crates/ui-egui/src/framing_diagram.rs:213
 #: crates/ui-egui/src/framing_members.rs:96
 msgid "Blocking"
 msgstr ""
@@ -2234,7 +2234,7 @@ msgid "Bottom"
 msgstr "Fondo"
 
 #: crates/ui-egui/src/framing_diagram.rs:35
-#: crates/ui-egui/src/framing_diagram.rs:206
+#: crates/ui-egui/src/framing_diagram.rs:207
 #: crates/ui-egui/src/framing_members.rs:88
 msgid "Bottom Plate"
 msgstr ""
@@ -3249,7 +3249,7 @@ msgstr "Clicca una linea, un muro o una griglia per disegnarci lungo."
 msgid "Click a linked model or a CAD drawing: this project takes its shared coordinates. Esc cancels."
 msgstr "Clicca un modello collegato o un disegno CAD: questo progetto ne acquisisce le coordinate condivise. Esc annulla."
 
-#: crates/ui-egui/src/framing_diagram.rs:369
+#: crates/ui-egui/src/framing_diagram.rs:370
 msgid "Click a member to see what sets it"
 msgstr ""
 
@@ -4985,7 +4985,7 @@ msgstr "Creato da"
 msgid "Creator"
 msgstr "Autore"
 
-#: crates/ui-egui/src/framing_diagram.rs:210
+#: crates/ui-egui/src/framing_diagram.rs:211
 #: crates/ui-egui/src/framing_members.rs:93
 msgid "Cripple"
 msgstr ""
@@ -8485,7 +8485,7 @@ msgid "Headboard Height"
 msgstr "Altezza testiera"
 
 #: crates/ui-egui/src/framing_diagram.rs:38
-#: crates/ui-egui/src/framing_diagram.rs:209
+#: crates/ui-egui/src/framing_diagram.rs:210
 #: crates/ui-egui/src/framing_members.rs:94
 msgid "Header"
 msgstr ""
@@ -9450,7 +9450,7 @@ msgstr "Il suo contorno è quello della sua zona: scollegalo nelle Proprietà pe
 msgid "JIS Z 8310 / JIS A 0150 Line Standards:"
 msgstr "Norme sulle linee JIS Z 8310 / JIS A 0150:"
 
-#: crates/ui-egui/src/framing_diagram.rs:208
+#: crates/ui-egui/src/framing_diagram.rs:209
 msgid "Jack"
 msgstr ""
 
@@ -9623,7 +9623,7 @@ msgstr "Nomi delle zone del tipo {}"
 msgid "Kinds of Room"
 msgstr "Tipi di zona"
 
-#: crates/ui-egui/src/framing_diagram.rs:207
+#: crates/ui-egui/src/framing_diagram.rs:208
 msgid "King"
 msgstr ""
 
@@ -17091,7 +17091,7 @@ msgstr "Contorni"
 #: crates/core/src/schedule.rs:314
 #: crates/ui-egui/src/editor.rs:1672
 #: crates/ui-egui/src/framing_diagram.rs:40
-#: crates/ui-egui/src/framing_diagram.rs:211
+#: crates/ui-egui/src/framing_diagram.rs:212
 #: crates/ui-egui/src/framing_members.rs:95
 msgid "Sill"
 msgstr "Davanzale"
@@ -17946,7 +17946,7 @@ msgid "Structure Material"
 msgstr "Materiale della struttura"
 
 #: crates/ui-egui/src/framing_diagram.rs:33
-#: crates/ui-egui/src/framing_diagram.rs:204
+#: crates/ui-egui/src/framing_diagram.rs:205
 #: crates/ui-egui/src/framing_members.rs:90
 msgid "Stud"
 msgstr ""
@@ -19789,7 +19789,7 @@ msgid "Top Outline"
 msgstr "Profilo superiore"
 
 #: crates/ui-egui/src/framing_diagram.rs:34
-#: crates/ui-egui/src/framing_diagram.rs:205
+#: crates/ui-egui/src/framing_diagram.rs:206
 #: crates/ui-egui/src/framing_members.rs:89
 msgid "Top Plate"
 msgstr ""

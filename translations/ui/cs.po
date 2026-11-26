@@ -2177,7 +2177,7 @@ msgid "Block"
 msgstr "Blok"
 
 #: crates/ui-egui/src/framing_diagram.rs:41
-#: crates/ui-egui/src/framing_diagram.rs:212
+#: crates/ui-egui/src/framing_diagram.rs:213
 #: crates/ui-egui/src/framing_members.rs:96
 msgid "Blocking"
 msgstr ""
@@ -2233,7 +2233,7 @@ msgid "Bottom"
 msgstr "Dolní"
 
 #: crates/ui-egui/src/framing_diagram.rs:35
-#: crates/ui-egui/src/framing_diagram.rs:206
+#: crates/ui-egui/src/framing_diagram.rs:207
 #: crates/ui-egui/src/framing_members.rs:88
 msgid "Bottom Plate"
 msgstr ""
@@ -3248,7 +3248,7 @@ msgstr "Klikněte na čáru, stěnu nebo osnovu a kreslete podél ní."
 msgid "Click a linked model or a CAD drawing: this project takes its shared coordinates. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/framing_diagram.rs:369
+#: crates/ui-egui/src/framing_diagram.rs:370
 msgid "Click a member to see what sets it"
 msgstr ""
 
@@ -4984,7 +4984,7 @@ msgstr ""
 msgid "Creator"
 msgstr ""
 
-#: crates/ui-egui/src/framing_diagram.rs:210
+#: crates/ui-egui/src/framing_diagram.rs:211
 #: crates/ui-egui/src/framing_members.rs:93
 msgid "Cripple"
 msgstr ""
@@ -8484,7 +8484,7 @@ msgid "Headboard Height"
 msgstr "Výška čela"
 
 #: crates/ui-egui/src/framing_diagram.rs:38
-#: crates/ui-egui/src/framing_diagram.rs:209
+#: crates/ui-egui/src/framing_diagram.rs:210
 #: crates/ui-egui/src/framing_members.rs:94
 msgid "Header"
 msgstr ""
@@ -9449,7 +9449,7 @@ msgstr ""
 msgid "JIS Z 8310 / JIS A 0150 Line Standards:"
 msgstr "Normy čar JIS Z 8310 / JIS A 0150:"
 
-#: crates/ui-egui/src/framing_diagram.rs:208
+#: crates/ui-egui/src/framing_diagram.rs:209
 msgid "Jack"
 msgstr ""
 
@@ -9622,7 +9622,7 @@ msgstr ""
 msgid "Kinds of Room"
 msgstr ""
 
-#: crates/ui-egui/src/framing_diagram.rs:207
+#: crates/ui-egui/src/framing_diagram.rs:208
 msgid "King"
 msgstr ""
 
@@ -17090,7 +17090,7 @@ msgstr "Siluety"
 #: crates/core/src/schedule.rs:314
 #: crates/ui-egui/src/editor.rs:1672
 #: crates/ui-egui/src/framing_diagram.rs:40
-#: crates/ui-egui/src/framing_diagram.rs:211
+#: crates/ui-egui/src/framing_diagram.rs:212
 #: crates/ui-egui/src/framing_members.rs:95
 msgid "Sill"
 msgstr "Parapet"
@@ -17945,7 +17945,7 @@ msgid "Structure Material"
 msgstr ""
 
 #: crates/ui-egui/src/framing_diagram.rs:33
-#: crates/ui-egui/src/framing_diagram.rs:204
+#: crates/ui-egui/src/framing_diagram.rs:205
 #: crates/ui-egui/src/framing_members.rs:90
 msgid "Stud"
 msgstr ""
@@ -19788,7 +19788,7 @@ msgid "Top Outline"
 msgstr "Horní obrys"
 
 #: crates/ui-egui/src/framing_diagram.rs:34
-#: crates/ui-egui/src/framing_diagram.rs:205
+#: crates/ui-egui/src/framing_diagram.rs:206
 #: crates/ui-egui/src/framing_members.rs:89
 msgid "Top Plate"
 msgstr ""
