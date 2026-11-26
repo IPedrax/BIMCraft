@@ -255,5 +255,6 @@ Neither has corner mullions or mitred horizontals with its neighbour yet, nor wa
 
 ## What it can't be yet
 
-`curtain::check` refuses an attached top or base, a location line other than the exterior or interior face, a
+`curtain::check` refuses an attached top or base, a location line other than the exterior or interior face (the desktop asks
+first which face to move the line to, the wall staying put, or Cancel: `curtain::modify_type` in `ui-egui`), a
 wall by face, a wall of over `MAX_CELLS` cells, and a door or window hosted directly in one.

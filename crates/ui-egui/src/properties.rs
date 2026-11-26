@@ -1449,6 +1449,13 @@ impl FramingRows {
     }
 
     /// The type as the `type` command takes it, every field of it, or why what was typed isn't a number.
+    /// The type as typed so far, for its picture: as it was where something typed isn't one yet.
+    fn current(&self, units: Units) -> bimcraft_core::framing::FramingType {
+        let mut p = json!({});
+        let typed = self.params(&mut p, units).ok().and_then(|_| serde_json::from_value(p).ok());
+        typed.or_else(|| serde_json::from_value(self.was.clone()).ok()).unwrap_or_default()
+    }
+
     fn params(&self, p: &mut Value, units: Units) -> Result<(), String> {
         let mut v = self.was.clone();
         for ((_, key, at, label, kind), (typed, shown)) in FRAMING_FIELDS.iter().zip(self.typed.iter().zip(&self.shown)) {
@@ -2219,6 +2226,8 @@ impl BimApp {
             p.extend(Shape::dashed_line(&line, Stroke::new(2.0, pal().accent_ink), 4.0, 3.0));
             ui.label(RichText::new(tf("Location line: {}", &[t(loc.label())])).color(pal().muted));
         }
+        // That the picture is one to click, said under it as well as on hover.
+        ui.label(RichText::new(t("Click to define location line")).small().color(pal().muted));
         let r = r.on_hover_text(t("Click where the location line should run"));
         if r.clicked()
             && let Some(at) = r.interact_pointer_pos()
@@ -2629,7 +2638,7 @@ impl BimApp {
                 if hosted.is_some() {
                     p["family"] = Value::Null;
                 }
-                self.run("modify", p);
+                self.modify_type(p);
             }
             (Some(n), Subject::New("region")) => {
                 if let Some(sk) = &mut self.sketch {
@@ -4097,9 +4106,10 @@ impl BimApp {
                 });
                 if let Some(f) = &mut d.framing {
                     f.seek = false;
+                    let now = f.current(model.units);
                     ui.vertical(|ui| {
                         ui.set_width(FRAMING_PICTURE);
-                        if crate::framing_diagram::show(ui, FRAMING_PICTURE, &mut f.part) {
+                        if crate::framing_diagram::show(ui, FRAMING_PICTURE, &now, &mut f.part) {
                             f.seek = true;
                         }
                     });
@@ -4208,7 +4218,7 @@ impl BimApp {
             if d.elements.is_empty() {
                 self.types.insert(d.category, d.name.clone());
             } else if self.elements_json(m, &d.elements).iter().any(|j| j[key].as_str() != Some(d.name.as_str())) {
-                self.run("modify", json!({"ids": d.elements, key: d.name}));
+                self.modify_type(json!({"ids": d.elements, key: d.name}));
             }
         }
         // Edit Framing Type beside a wall type's Framing: the wall type as picked first, then the framing type's dialog for it.

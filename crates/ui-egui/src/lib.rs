@@ -1228,6 +1228,8 @@ pub struct BimApp {
     pub(crate) asset_manager: Option<asset_manager::AssetManager>,
     /// Manage > Select by ID and IDs of Selection, while open.
     select_by_id: Option<inquiry::SelectById>,
+    /// A change of type that would make walls on a line inside them curtain walls, waiting on which face to put the line on.
+    pub(crate) curtain_location: Option<serde_json::Value>,
     /// Manage > Run Script, while open.
     run_script: Option<script::RunScript>,
     /// The Work Plane dialog's draft, while it's open or picking its points in the 3D view.
@@ -2189,6 +2191,7 @@ impl BimApp {
             manage_links: None,
             asset_manager: None,
             select_by_id: None,
+            curtain_location: None,
             run_script: None,
             work_plane: None,
             show_work_plane: false,
@@ -7835,6 +7838,7 @@ impl BimApp {
 
     fn dialogs(&mut self, ctx: &Context) {
         self.type_properties(ctx);
+        self.curtain_location_window(ctx);
         self.delete_rooms_window(ctx);
         self.group_conflict_window(ctx);
         self.group_split_window(ctx);

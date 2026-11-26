@@ -2537,6 +2537,22 @@ impl SectionOverlay {
 }
 
 /// [`section_at`], its pens the line weights' at 1 : `n`.
+/// Whether `look` hides some of the layers of element `id`, a wall: then it is drawn as the others.
+fn hides_layers_of(m: &Model, look: &Look, id: Id) -> bool {
+    look.hides_layers() && m.wall(id).is_some_and(|w| m.type_layers("wall", &w.type_name).iter().any(|l| look.hides_layer(l.function)))
+}
+
+/// The lines between a wall's layers `look` draws: those between two layers it shows, and a butt's seam where it shows them all.
+fn shown_interfaces<'a>(geometry: &'a walls::LayerGeometry, layers: &'a [Layer], look: &'a Look) -> impl Iterator<Item = &'a [P2]> + 'a {
+    let shown = move |k: usize| layers.get(k).is_none_or(|l| !look.hides_layer(l.function));
+    let all = (0..layers.len()).all(shown);
+    geometry
+        .interfaces()
+        .enumerate()
+        .filter(move |(i, _)| if *i + 1 < layers.len() { shown(*i) && shown(i + 1) } else { all })
+        .map(|(_, l)| l)
+}
+
 fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n: f64, picture: Option<&Image>) -> Drawing {
     let mut d = section_base(m, work, id, view, k, n);
     let Some(id) = m.elements.id(id) else { return d };
@@ -2575,6 +2591,14 @@ fn section_base_cancellable(
     // A framed floor's or roof's members where the line cuts them: filled with the rest, patterned in their own material.
     let mut joists: std::collections::BTreeMap<Id, Vec<Vec<P2>>> = std::collections::BTreeMap::new();
     let solids: Vec<&view3d::Solid> = work.shown(&look).collect();
+    // A wall with layers of a function the view hides (Walls > Finish) is cut as its other layers: its solids split into theirs.
+    let split: Vec<view3d::Solid> = solids
+        .iter()
+        .filter(|s| hides_layers_of(m, &look, s.owner()))
+        .flat_map(|s| view3d::layered_with(m, (*s).clone()))
+        .map(|(s, _)| s)
+        .collect();
+    let solids: Vec<&view3d::Solid> = solids.into_iter().filter(|s| !hides_layers_of(m, &look, s.owner())).chain(split.iter()).collect();
     d.part(Part::Cut);
     // A bar lies inside the concrete it reinforces, so its cuts are dots over that poché, not pieces of it.
     let mut dots: Vec<(Id, Vec<P2>)> = Vec::new();
@@ -2754,6 +2778,9 @@ fn section_base_cancellable(
         let framed = m.wall_framing(w).filter(|_| !look.unframed()).and_then(|_| crate::framing::structure(m, w)).map(|(k, _)| k);
         let timber = framed.and(crate::framing::material(m, w));
         for (k, (layer, spans)) in layers.iter().zip(intervals).enumerate() {
+            if look.hides_layer(layer.function) {
+                continue;
+            }
             let own;
             let layer = match timber.filter(|_| framed == Some(k)) {
                 Some(material) => {
@@ -2773,7 +2800,7 @@ fn section_base_cancellable(
                 }
             }
         }
-        for line in geometry.interfaces() {
+        for line in shown_interfaces(&geometry, layers, &look) {
             for seg in line.windows(2) {
                 let &[p, q] = seg else { continue };
                 let Some(x) = geom::line_intersection(v.start, v.end, p, q).filter(|x| geom::dist_to_segment(*x, p, q) < 1e-6) else {
@@ -4046,6 +4073,26 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     }
     d.part(Part::Cut);
     let outlines = cut_outlines(m, &elements, range.cut, &look, index);
+    // A wall with layers of a function the view hides (Walls > Finish) is cut as its other layers: their bands, where the
+    // whole wall's outline was.
+    let outlines: Vec<(Id, Vec<P2>)> = outlines
+        .into_iter()
+        .flat_map(|(id, o)| match m.wall(id).filter(|_| hides_layers_of(m, &look, id)) {
+            Some(w) => {
+                let geometry = walls::layer_geometry_at(m, id, index, Some(range.cut));
+                let layers = m.type_layers("wall", &w.type_name);
+                layers
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, l)| !look.hides_layer(l.function))
+                    .flat_map(|(k, _)| walls::profile::clip(w, range.cut - m.own_base(w), &geometry.band(k)))
+                    .filter(|r| r.len() >= 3 && geom::area(r).abs() > 1e-6)
+                    .map(|r| (id, r))
+                    .collect::<Vec<_>>()
+            }
+            None => vec![(id, o)],
+        })
+        .collect();
     // Poché first, then the outlines over it, but for where walls meet at their joins: only the edge
     // of their union is inked (`cut_edges`). The union is filled first, as one for each colour the
     // view fills them in, so no seam shows where two fills meet.
@@ -4121,9 +4168,16 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         for (k, layer) in layers.iter().enumerate() {
             let rings = walls::profile::clip(w, range.cut - m.own_base(w), &geometry.band(k));
             let room = layer.thickness * d.view.scale;
+            let hidden = look.hides_layer(layer.function);
             if let (Some(f), true) = (&framing, framed == Some(k)) {
-                d.fill(&outside_columns(rings, &columns), PAPER);
+                // Its members are Walls > Framing's, whether or not the view shows the layer they stand in.
+                if !hidden {
+                    d.fill(&outside_columns(rings, &columns), PAPER);
+                }
                 framed_walls.push((id, std::sync::Arc::clone(f), layer.clone()));
+                continue;
+            }
+            if hidden {
                 continue;
             }
             for piece in outside_columns(rings, &columns) {
@@ -4132,7 +4186,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         }
         // The lines between the layers are detail, as the hatching is: a cut's weight is its outline's.
         d.part(Part::Pattern);
-        for line in geometry.interfaces() {
+        for line in shown_interfaces(&geometry, layers, &look) {
             for part in lines_outside_columns(line, &columns) {
                 d.line(&part, Pen::PROJECTION, INK, false);
             }
@@ -4676,7 +4730,8 @@ fn boxes_meet(a: &[P2], b: &[P2]) -> bool {
 fn members_cut(d: &mut Drawing, m: &Model, f: &crate::framing::Framing, layer: &Layer, cut: f64, columns: &[&[P2]]) {
     let layer = Layer { material: f.material.clone(), ..layer.clone() };
     d.sub(Some("framing"));
-    for member in &f.members {
+    // Each ply cut on its own, outlined: a doubled stud shows as two.
+    for member in f.members.iter().flat_map(crate::framing::edit::plies) {
         let Some([s0, s1]) = member.cut_at(cut) else { continue };
         let [a0, a1] = member.across;
         let ring = vec![f.at(s0, a0), f.at(s1, a0), f.at(s1, a1), f.at(s0, a1)];

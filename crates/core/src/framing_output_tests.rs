@@ -389,3 +389,69 @@ fn a_framed_walls_json_names_its_framing_type_and_keeps_its_own_types_guid() {
     assert_eq!(s.model.types.wall["2x4"].framing.as_deref(), Some("Cabin"));
     assert!(matches!(s.model.elements.get(w), Some(Element::Wall(_))));
 }
+
+#[test]
+fn walls_layers_of_a_function_hidden_leave_the_wall_drawn_as_its_others_in_3d_sections_and_plans() {
+    let mut s = Session::new();
+    let w = cabin(&mut s, true);
+    let plaster = s.model.materials["Plaster"].color;
+    let plaster = Rgb(plaster[0], plaster[1], plaster[2]);
+    // 3D: Walls > Finish hidden, no plaster drawn; the studs still are.
+    let drawn = |s: &Session| {
+        let look = Look::of_3d(&s.model);
+        crate::view3d::shaded(&s.model)
+            .into_iter()
+            .filter(|x| x.owner() == w && look.forms_show(x.vis(), false))
+            .map(|x| x.color())
+            .collect::<Vec<_>>()
+    };
+    assert!(drawn(&s).contains(&plaster), "the finish, shown");
+    run(&mut s, "graphics", json!({"view": "{3D}", "hide": ["wallfinish"]}));
+    let colours = drawn(&s);
+    assert!(!colours.contains(&plaster) && !colours.is_empty(), "no finish, the members still: {}", colours.len());
+    // A section across: the plates, and no plaster either side.
+    let sec = section(&mut s, [GAP, -500.0], [GAP, 500.0]);
+    run(&mut s, "graphics", json!({"view": sec, "hide": ["wallfinish"]}));
+    let across = section_fills(&s, sec, w);
+    assert!(across(500.0, 19.0), "the bottom plate");
+    assert!(!across(500.0 - 51.0, 1200.0) && !across(500.0 + 51.0, 1200.0), "no plaster either side");
+    // Structure hidden too: the members are Walls > Framing's, still cut.
+    run(&mut s, "graphics", json!({"view": sec, "hide": ["wallfinish", "wallstructure"]}));
+    assert!(section_fills(&s, sec, w)(500.0, 19.0), "the plate, framing shown");
+    // A plan: the plaster gone, the studs cut.
+    run(&mut s, "detail", json!({"view": "Level 1", "detail": "medium"}));
+    // Clear of the section's line, which the plan draws at GAP, and of the heavy line the structure layer's face then is.
+    let plaster_box = ([GAP + 90.0, 50.0], [GAP + 110.0, 57.0]);
+    assert!(plan_ink(&mut s)(plaster_box.0, plaster_box.1) > 0, "the plaster, shown");
+    run(&mut s, "graphics", json!({"view": "Level 1", "hide": ["wallfinish"]}));
+    let ink = plan_ink(&mut s);
+    assert_eq!(ink(plaster_box.0, plaster_box.1), 0, "Walls > Finish hidden: no plaster in plan");
+    let stud = stud_box(STUD);
+    assert!(ink(stud.0, stud.1) > 100, "the stud, cut: {}", ink(stud.0, stud.1));
+}
+
+#[test]
+fn an_unframed_compound_walls_finish_hidden_leaves_its_core_cut_in_plan_and_section() {
+    let mut s = Session::new();
+    let w = first(&run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]], "type": "Exterior - 300mm", "height": 2700})));
+    // Exterior - 300mm, outside in: brick 100, insulation 50, block 140, plaster 10; its line in the middle of the 300.
+    run(&mut s, "graphics", json!({"view": "Level 1", "hide": ["wallfinish", "wallthermal"]}));
+    run(&mut s, "scale", json!({"view": "Level 1", "scale": 20}));
+    let view = View { angle: 0.0, scale: 0.5, cx: 2000.0, cy: 0.0, width: 800, height: 400 };
+    let d = render::draw(&s.model, 100000, view);
+    let pm = tiny_skia::Pixmap::decode_png(&render::png(&d).unwrap()).unwrap();
+    let ink_at = |x: f64, y: f64| {
+        let (u, v) = view.px(P2(x, y));
+        pm.pixel(u as u32, v as u32).is_some_and(|c| c.red() < 250)
+    };
+    // Its exterior to the north: the brick from 150 to 50 off its line, the insulation to 0, the block to -140, the plaster to -150.
+    assert!((0..20).any(|i| ink_at(2000.0 + f64::from(i), -70.0)), "the block");
+    assert!(!(0..20).any(|i| ink_at(2000.0 + f64::from(i), 100.0)), "no brick");
+    assert!(!(0..20).any(|i| ink_at(2000.0 + f64::from(i), 25.0)), "no insulation");
+    let sec = section(&mut s, [2000.0, -1000.0], [2000.0, 1000.0]);
+    run(&mut s, "graphics", json!({"view": sec, "hide": ["wallfinish", "wallthermal"]}));
+    let across = section_fills(&s, sec, w);
+    // Along the section, 1000 past the wall's line: the block at 930, the brick at 1100, the insulation at 1025, the plaster at 855.
+    assert!(across(930.0, 1200.0), "the block, cut");
+    assert!(!across(1100.0, 1200.0) && !across(1025.0, 1200.0) && !across(855.0, 1200.0), "no brick, insulation or plaster");
+}

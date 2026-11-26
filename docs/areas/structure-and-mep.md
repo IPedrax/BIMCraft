@@ -286,9 +286,9 @@ A new project has three framing types, all of the starter material Pine: `2x4 @ 
 `KVH 60x160 @ 625` (`FramingType::european`: German timber frame, Holzrahmenbau, KVH studs 60 mm thick at the 625 mm grid Baunetz
 Wissen gives as the usual one, so a 1250 mm board spans two bays; one sill and one top plate; headers of two 60 mm plies 200 deep up
 to a 1250 mm rough opening and 240 above; Rettenmeier's KVH stock lengths, 5 m and 13 m), and three wall types framed with them:
-`Timber Frame - 114mm` (2x4) and `Timber Frame - 185mm` (KVH), gypsum board 12.5 each side of a pine structure layer of 89 or 160
-marked framed, and `Timber Frame Exterior - 215mm` (2x6), outside in rigid insulation 50, OSB sheathing 12, pine studs 140 marked
-framed and gypsum board 13. An older project without them is given one when `frame` or `type` names it (`framing::preset`), and
+`Timber Frame - 134mm` (2x4) and `Timber Frame - 205mm` (KVH), siding 20 outside (the starter material Siding, lap boards), gypsum board 12.5 each side of a pine structure
+layer of 89 or 160 marked framed, and `Timber Frame Exterior - 235mm` (2x6), outside in siding 20, rigid insulation 50, OSB
+sheathing 12, pine studs 140 marked framed and gypsum board 13. An older project without them is given one when `frame` or `type` names it (`framing::preset`), and
 `frame` with no type in a project with none makes `2x4 @ 406`.
 
 The members stand in the wall type's structure layer marked `framed` (Layer's `framed`, the Framed column of a type's layers in
@@ -407,8 +407,13 @@ with the framing type shown, a copy made there included), where every field is t
 stock lengths as lengths parted by commas, layout, corner and tee, rough allowances, kings, jacks, sill plates and material) and
 Duplicate and Rename work as for any type. The headers are a table under Wall Openings (Up To, blank for any width; Header Depth;
 Plies; Flat), with Add Header and Delete. Beside the list stands the type's picture (`framing_diagram.rs`): a framed wall in
-elevation with a window and a door, each kind of member drawn where it stands; a click on one (or on an opening) lights the rows
-that build it in the list and scrolls to them (`typeprops::Table::light`). A floor's and a roof's Properties keep Framing under
+elevation with a window and a door, each kind of member drawn where it stands and as the settings typed so far lay it out
+(`framing_diagram::layout`: the grid's spacing and layout, the plates', kings', jacks' and sill plates' counts, the header for each
+rough opening's width, the rough allowances, the blocking heights) on a 6 m wall (`framing_diagram::SCALE`), its members 1.75
+times as thick as they are so a 2x is no hairline, a 60 mm stud still thicker than a 38; the bottom plates run under the door's
+jacks, cut across its rough opening. Each kind is named in small text outside the wall, over or under it, a thin leader to one of
+its members (`framing_diagram::labels`, picked so they spread along the wall). A click on one, or on its name (or on an opening),
+lights the rows that build it in the list and scrolls to them (`typeprops::Table::light`). A floor's and a roof's Properties keep Framing under
 Structural. The Project Browser lists framing types
 under Families, a click opens one's Type Properties and its right-click menu deletes one nothing uses.
 
@@ -422,6 +427,8 @@ plies. They're laid over the members whenever `framing::wall` works them out (`e
 view, plans, sections, the schedule, the cut list and IFC all take them. A member resized keeps its place (option A): an upright
 one stays centred where it stood, its plies side by side along the wall; a lying one stays centred across the wall and on what it
 lies on, a top plate and a sill under what they lie under; a header's plies stay side by side across it (a flat one's stacked).
+A member of several plies is drawn ply by ply (`edit::plies`) in 3D, sections and plans, so a doubled stud shows the joint
+between its two as the members beside it do; its triangles' faces are its own, a prism's top one face, no diagonal across it.
 Nothing round it moves: one deeper than the structure layer, or running into another member, is warned of. An edit whose member
 is gone (a window moved away, the studs laid out from the other end) sleeps, and wakes when the member is back; `reset` may name
 one asleep. `framing` lists a wall's `edits`. Floors' and roofs' members aren't edited this way yet.

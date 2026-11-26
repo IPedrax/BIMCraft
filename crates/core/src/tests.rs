@@ -4637,8 +4637,8 @@ fn walls_stand_on_their_location_line_with_their_exterior_to_the_left() {
         .unwrap();
     let y = |s: &Session, face: Face| s.model.reference_line(&Reference::line(s.model.guid(w), face)).unwrap().0.1;
     assert_eq!([y(&s, Face::Left), y(&s, Face::Centre), y(&s, Face::Right)], [0.0, -150.0, -300.0]);
-    // Put on its core's interior face, it stays where it is.
-    run(&mut s, "modify", json!({"id": w, "location": "interior-core"}));
+    // Put on its core's interior face, kept where it is (`keep: body`): its line moves across it.
+    run(&mut s, "modify", json!({"id": w, "location": "interior-core", "keep": "body"}));
     let e = element(&mut s, w);
     assert_eq!((&e["start"], &e["end"]), (&json!([0.0, -290.0]), &json!([5000.0, -290.0])));
     assert_eq!([y(&s, Face::Left), y(&s, Face::Right)], [0.0, -300.0]);

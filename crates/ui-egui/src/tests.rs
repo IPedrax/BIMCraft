@@ -3812,11 +3812,12 @@ fn a_selected_wall_attaches_flips_and_takes_another_location_line() {
     let mut h = app(&format!("{BOX}\nroof {{}}"));
     click(&mut h, P2(4000.0, 0.0));
     let wall = h.state().selection[0];
-    // Put on its interior face (going east, its exterior is to its left, north), it stays where it is.
+    // Put on its interior face (going east, its exterior is to its left, north), its line stays where it is and the wall moves
+    // north across it.
     h.get_by_role_and_label(Role::ComboBox, "Location Line").click();
     h.run();
     press(&mut h, "Finish Face: Interior");
-    assert_eq!((field(&h, wall, "location"), field(&h, wall, "start")), (json!("interior-finish"), json!([0.0, -100.0])));
+    assert_eq!((field(&h, wall, "location"), field(&h, wall, "start")), (json!("interior-finish"), json!([0.0, 0.0])));
     // Attach Top/Base, then the roof, by its edge seen overhead: the wall's top follows it. Beside the wall's Mode panel a 1280
     // ribbon lists it in the Modify Wall panel.
     wall_tool(&mut h, "Attach Top/Base");
@@ -3828,7 +3829,7 @@ fn a_selected_wall_attaches_flips_and_takes_another_location_line() {
     assert_eq!(attached, Some(egui::accesskit::Toggled::True));
     // Flipped from the same tab, it runs the other way; detached, its top is its own again.
     press(&mut h, "Flip");
-    assert_eq!(walls(&h)[0], (P2(8000.0, -100.0), P2(0.0, -100.0)));
+    assert_eq!(walls(&h)[0], (P2(8000.0, 0.0), P2(0.0, 0.0)));
     wall_tool(&mut h, "Detach Top/Base");
     assert_eq!(field(&h, wall, "attach_top"), Value::Null);
 }

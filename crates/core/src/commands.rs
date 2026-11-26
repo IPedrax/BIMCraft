@@ -2420,7 +2420,8 @@ other_files(
         &[],
         "{id | ids: [id,…], …fields} change fields as `elements` shows them, of one element or several; `level` and `top_level` may be names. \
          `join: false` on a wall or a run turns off its joins: its ends stay square and it neither stretches with its neighbours nor pulls \
-         them (Revit's Disallow Join). \
+         them (Revit's Disallow Join). A wall given another `location` keeps that line where it is and moves across it; with \
+         `keep: body` it stays where it is and its line moves across it instead. \
          A filled region's, a floor's or a toposolid's model pattern is set by `pattern_origin` [x, y], plan mm, where its lines start, and \
          `pattern_angle`, degrees counter-clockwise (both shown by `elements`); to put a pattern line of one on a reference \
          line, Model::align_pattern gives the `pattern_origin` that does. A floor's, a ceiling's, a roof's or a shaft's \
@@ -3397,7 +3398,9 @@ other_files(
          cross at each room's point, hidden unless shown, as Revit's Rooms > Reference) and `roomseparator` (room separation \
          lines); under doors and windows, `dooropening` and `windowopening` (a door's swing, a window's opening lines: the \
          family symbols that name the subcategory `Opening`); under walls, `framing` (a framed wall's studs, plates and \
-         headers: hidden, its structure layer is drawn whole, as an unframed wall's); under floors, `floorframing` (a framed \
+         headers: hidden, its structure layer is drawn whole, as an unframed wall's) and `wallstructure`, `wallsubstrate`, \
+         `wallthermal`, `wallmembrane`, `wallfinish` (a compound wall's layers of that function: hidden, plans, sections, \
+         elevations and 3D draw the wall as its other layers); under floors, `floorframing` (a framed \
          floor's joists, rims and trimmers in 3D and sections: hidden, its structure layer is drawn whole) and \
          `floorframingline` (their outlines in a plan, dashed under the floor's top: hidden unless the plan shows them, as a \
          framing plan does); under roofs, `roofframing` (a framed roof's rafters, ridge boards, rims, trimmers, headers and \
@@ -20556,6 +20559,11 @@ fn modify(s: &mut Session, p: &Value) -> R {
         for (k, val) in fields {
             let val = match k.as_str() {
                 "id" | "ids" => continue,
+                // A wall put on another of its lines: what stays where it is ([`modify`]'s notes).
+                "keep" if matches!(e, Element::Wall(_)) => match val.as_str() {
+                    Some("line" | "body") => continue,
+                    _ => return Err(bad(c, format!("wall {id}: `keep` is `line` (its location line stays, the wall moves) or `body`"))),
+                },
                 // An image's height, and a PDF's scale (1 : n, its paper's size n times), set its width: it keeps its aspect.
                 "height" | "scale" if matches!(e, Element::Image(_)) => {
                     let Element::Image(im) = e else { continue };
@@ -20640,9 +20648,11 @@ fn modify(s: &mut Session, p: &Value) -> R {
                 }
             }
         }
-        // A wall put on another of its lines stays where it is: its line moves across it instead.
+        // A wall put on another of its lines keeps its line where it is, and moves across it, as its joins keep their
+        // corners (`walls::ends_meet`); with `keep: body` the wall stays where it is and its line moves across it instead.
         if let (Element::Wall(old), Element::Wall(w)) = (e, &mut e2)
             && old.location != w.location
+            && fields.get("keep").and_then(Value::as_str) == Some("body")
             && !fields.contains_key("start")
             && !fields.contains_key("end")
         {
@@ -21382,7 +21392,8 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     // The walls whose ends may lie on a taken wall's line as it was, and those near a taken footing: its end
     // or span may meet a wall's end there, as the footing's own outline meets it.
     let boxes: Vec<_> = moved.iter().map(|(before, _)| (crate::derived::axis_box(before), m.base_z(before), m.top_z(before))).collect();
-    let mut near = if boxes.is_empty() { BTreeSet::new() } else { lookup.walls_near_at(&boxes, 2.0 * TOL) };
+    // As far off as the thickest wall: a wall on another location line ends across a taken one's end, its line's end apart.
+    let mut near = if boxes.is_empty() { BTreeSet::new() } else { lookup.walls_near_at(&boxes, thickest + 2.0 * TOL) };
     for (rid, (before, _)) in &taken {
         let Some(e) = m.elements.get(*rid) else { continue };
         let Some(g) = m.run_geom(e) else { continue };
@@ -21405,10 +21416,19 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             continue;
         }
         let mut n = w.clone();
-        for (end, at) in [(&mut n.start, w.start), (&mut n.end, w.end)] {
+        for (end, at, at_end) in [(&mut n.start, w.start, false), (&mut n.end, w.end, true)] {
             for (before, after) in moved.iter().filter(|(before, _)| before.join && stacked(m, w, before)) {
                 if at.dist(before.start) <= TOL || at.dist(before.end) <= TOL {
                     *end = if at.dist(before.start) <= TOL { after.start } else { after.end };
+                    break;
+                }
+                // Ends meeting across each other, of walls on different location lines: it goes as far as that end went.
+                if let Some((from, to)) = [(before.start, after.start, false), (before.end, after.end, true)]
+                    .into_iter()
+                    .find(|(_, _, its_end)| crate::walls::ends_meet(m, w, at_end, before, *its_end))
+                    .map(|(from, to, _)| (from, to))
+                {
+                    *end = micron(at + (to - from));
                     break;
                 }
                 if Axis::of(before).distance(at, 0.0) <= TOL {

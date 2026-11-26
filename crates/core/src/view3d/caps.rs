@@ -218,8 +218,11 @@ impl CapSource {
                 for (i, ring) in self.face(axis, at).iter() {
                     let Some(p) = self.pieces.get(*i) else { continue };
                     let owner = p.solid.owner();
-                    let member = crate::family::visibility::framing(p.solid.vis());
-                    if (!plain && !look.shows(owner)) || (member.is_some() && !look.forms_show(p.solid.vis(), true)) {
+                    // A framing member, or a wall's layer of a function the view hides (Walls > Finish), as the view shows it.
+                    let vis = p.solid.vis();
+                    let member = crate::family::visibility::framing(vis);
+                    let tagged = crate::family::visibility::framing(vis).is_some() || crate::family::visibility::layer(vis).is_some();
+                    if (!plain && !look.shows(owner)) || (tagged && !look.forms_show(vis, true)) {
                         continue;
                     }
                     let ring = [(P2(1.0, 0.0), lo[a]), (P2(-1.0, 0.0), -hi[a]), (P2(0.0, 1.0), lo[b]), (P2(0.0, -1.0), -hi[b])]

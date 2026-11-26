@@ -9,7 +9,7 @@ use bimcraft_core::curtain::{
     self, Address, Continuous, CurtainEdits, CurtainLayout, Direction, Fit, GridWay, Join, Justify, MullionPick, Way,
 };
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Element, Id, Model};
+use bimcraft_core::model::{Element, Id, Location, Model};
 use bimcraft_core::units::Units;
 use bimcraft_core::walls;
 use bimcraft_i18n::msg;
@@ -1024,6 +1024,57 @@ impl BimApp {
         }
         if remove || myself || r.should_close() {
             self.curtain_asking.clear();
+        }
+    }
+}
+
+/// Walls given a curtain wall type stand on a face: their location line is the exterior or the interior one. One on another
+/// line would be refused, so the change waits on the question which face, or Cancel.
+impl BimApp {
+    /// `modify` with `p`, a change of type: asked first, where it makes walls on a line inside them curtain walls.
+    pub(crate) fn modify_type(&mut self, p: serde_json::Value) {
+        let m = &self.session.model;
+        let curtain = p["type"].as_str().and_then(|n| m.types.wall.get(n)).is_some_and(|t| t.curtain.is_some());
+        let ids: Vec<Id> = p["ids"].as_array().map(|a| a.iter().filter_map(serde_json::Value::as_u64).collect()).unwrap_or_default();
+        let inside =
+            ids.iter().filter_map(|id| m.wall(*id)).any(|w| !matches!(w.location, Location::ExteriorFinish | Location::InteriorFinish));
+        if curtain && inside && p.get("location").is_none() {
+            self.curtain_location = Some(p);
+        } else {
+            self.run("modify", p);
+        }
+    }
+
+    /// The question: the location line moved to the exterior face or the interior one, the wall staying where it is, and its
+    /// type changed with it in one step; or Cancel, and nothing changes.
+    pub(crate) fn curtain_location_window(&mut self, ctx: &Context) {
+        let Some(p) = self.curtain_location.as_ref() else { return };
+        let mut picked: Option<Location> = None;
+        let mut cancel = false;
+        let r = Modal::new(UiId::new("curtain-location"), t("Curtain Wall Location Line")).width(440.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.add_space(6.0);
+                ui.label(t("A curtain wall's location line is its exterior or interior face. Move the location line to:"));
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                    cancel = ui.button(t("Cancel")).clicked();
+                    for loc in [Location::InteriorFinish, Location::ExteriorFinish] {
+                        if ui.button(t(loc.label())).clicked() {
+                            picked = Some(loc);
+                        }
+                    }
+                });
+            });
+        });
+        let mut p = p.clone();
+        if let Some(loc) = picked {
+            p["location"] = json!(loc.name());
+            p["keep"] = json!("body");
+            self.curtain_location = None;
+            self.run("modify", p);
+        } else if cancel || r.should_close() {
+            self.curtain_location = None;
         }
     }
 }

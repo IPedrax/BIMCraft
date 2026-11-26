@@ -1238,8 +1238,9 @@ fn framed(m: &Model, id: Id, body: Vec<Solid>) -> Vec<Solid> {
     }
     let color = m.materials.get(&f.material).map_or(WALL, |x| Rgb(x.color[0], x.color[1], x.color[2]));
     let tex = skin(m, &f.material);
-    out.extend(f.members.iter().map(|member| {
-        let p = f.prism(member);
+    // Each ply its own: a doubled stud is two, the joint between them seen.
+    out.extend(f.members.iter().flat_map(crate::framing::edit::plies).map(|ply| {
+        let p = f.prism(&ply);
         Solid::Prism { owner: id, color, tex, ring: p.ring, bottom: p.bottom, top: p.top, curve: None, part: 0, vis: MEMBER }
     }));
     out
@@ -2096,8 +2097,9 @@ struct PlaneTable {
     faces: HashMap<(Id, u32), usize>,
     /// The next number to give.
     next: usize,
-    /// The last triangle of a curtain wall's part, and its plane's number.
-    part: Option<([P3; 3], usize)>,
+    /// The last few triangles of a curtain wall's part or a framing member, each with its plane's number: a prism's top and
+    /// bottom come in turn, so a face's next triangle is two back.
+    part: Vec<([P3; 3], usize)>,
 }
 
 impl PlaneTable {
@@ -2106,22 +2108,28 @@ impl PlaneTable {
     fn assign(&mut self, t: &Tri) -> usize {
         // A curtain wall's pieces are each their own: the joint between two in one plane shows, as a mitre from a butt. So is
         // each framing member: a king and its jack, a stud on its plate, never run together. A piece's triangles come
-        // together, so a triangle goes with the one before if it lies on it and shares an edge.
+        // together, so a triangle goes with one of the few before it if it lies on it and shares an edge: a prism's top and
+        // bottom triangles come in turn, and a top's next is two back.
         if t.curtain_part().is_some() || crate::family::visibility::framing(t.vis) == Some(true) {
-            let same = self.part.filter(|(before, _)| {
+            let same = self.part.iter().rev().find(|(before, _)| {
                 let n = cross(sub(before[1], before[0]), sub(before[2], before[0]));
                 let shared = t.p.iter().filter(|p| before.contains(p)).count() >= 2;
                 let length = dot(n, n).sqrt();
-                shared && length > 0.0 && t.p.iter().all(|p| (dot(n, sub(*p, before[0])) / length).abs() <= 1e-6)
+                // Facing the same way: a thin piece's top and bottom share no edge, but its sides' ends might.
+                let m = cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0]));
+                shared && length > 0.0 && dot(n, m) > 0.0 && t.p.iter().all(|p| (dot(n, sub(*p, before[0])) / length).abs() <= 1e-6)
             });
             let number = same.map_or_else(
                 || {
                     self.next += 1;
                     self.next - 1
                 },
-                |(_, number)| number,
+                |(_, number)| *number,
             );
-            self.part = Some((t.p, number));
+            if self.part.len() >= 4 {
+                self.part.remove(0);
+            }
+            self.part.push((t.p, number));
             return number;
         }
         // A mesh's own face next: two faces in one plane are two.
@@ -2216,8 +2224,23 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
     layered_with(m, s).into_iter().map(|(s, _)| s).collect()
 }
 
-/// [`layered`], each piece with the place of its layer among its type's, none where it has no layers.
+/// [`layered`], each piece with the place of its layer among its type's, none where it has no layers. A wall's layer carries its
+/// function in its visibility bits ([`crate::family::visibility::with_layer`]): a view hiding Walls > Finish leaves it out. A
+/// framing member is no layer's: Walls > Framing shows and hides it.
 pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
+    let Some(Element::Wall(w)) = m.elements.get(s.owner()) else { return layers_of(m, s) };
+    let layers = m.type_layers("wall", &w.type_name);
+    let member = crate::family::visibility::framing(s.vis()) == Some(true);
+    let mut out = layers_of(m, s);
+    for (solid, k) in out.iter_mut().filter(|_| !member) {
+        if let (Some(l), Solid::Mesh { vis, .. } | Solid::Prism { vis, .. }) = (k.and_then(|k| layers.get(k)), solid) {
+            *vis = crate::family::visibility::with_layer(*vis, l.function);
+        }
+    }
+    out
+}
+
+fn layers_of(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
     let layers = match m.elements.get(s.owner()) {
         Some(Element::Wall(w)) => m.type_layers("wall", &w.type_name),
         Some(Element::Floor(f)) => m.type_layers("floor", &f.type_name),
@@ -2390,7 +2413,7 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
             let (lo, hi) = tri_box(&tris);
             let mut meter = crate::csg::Meter::default();
             let mut out = Vec::new();
-            for (layer, place) in slab_solids(m, owner, e).into_iter().flat_map(|whole| layered_with(m, whole)) {
+            for (layer, place) in slab_solids(m, owner, e).into_iter().flat_map(|whole| layers_of(m, whole)) {
                 let mut made = Vec::new();
                 layer.tris(&mut made);
                 let Some(first) = made.first() else { continue };
@@ -5561,6 +5584,36 @@ impl Scene {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_framing_members_top_and_bottom_are_one_face_each_and_two_members_never_share_one() {
+        use crate::family::visibility::MEMBER;
+        // A plate 2 m long and a stud standing on it: their triangles as a scene numbers their faces.
+        let member = |ring: Vec<P2>, z0: f64, z1: f64| Solid::Prism {
+            owner: 100002,
+            color: Rgb(0, 0, 0),
+            tex: 0,
+            ring,
+            bottom: Plane::flat(z0),
+            top: Plane::flat(z1),
+            curve: None,
+            part: 0,
+            vis: MEMBER,
+        };
+        let plate = member(vec![P2(0.0, 0.0), P2(2000.0, 0.0), P2(2000.0, 89.0), P2(0.0, 89.0)], 0.0, 38.0);
+        let stud = member(vec![P2(0.0, 0.0), P2(38.0, 0.0), P2(38.0, 89.0), P2(0.0, 89.0)], 38.0, 2400.0);
+        let mut tris = Vec::new();
+        plate.tris(&mut tris);
+        let n = tris.len();
+        stud.tris(&mut tris);
+        let planes = planes(&tris);
+        let face = |range: std::ops::Range<usize>, z: f64| -> BTreeSet<usize> {
+            range.filter(|i| tris[*i].p.iter().all(|p| (p[2] - z).abs() < 1e-9)).map(|i| planes[i]).collect()
+        };
+        assert_eq!(face(0..n, 38.0).len(), 1, "the plate's top is one face, no diagonal across it");
+        assert_eq!(face(0..n, 0.0).len(), 1, "and its bottom");
+        assert!(face(0..n, 38.0).is_disjoint(&face(n..tris.len(), 38.0)), "the stud's foot is no part of the plate's top");
+    }
 
     #[test]
     fn a_grounds_texture_lies_in_plan_so_one_paving_runs_over_its_folds() {

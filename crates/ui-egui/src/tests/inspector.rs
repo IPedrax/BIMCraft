@@ -10,6 +10,9 @@ fn a_walls_layers_are_drawn_and_a_click_on_them_sets_its_location_line_in_both_p
         let wall = ids(&h, "wall")[0];
         h.state_mut().selection = vec![wall];
         h.run();
+        // Under it, the line it's on and that a click there moves it.
+        assert!(h.query_by_label("Location line: Wall Centreline").is_some(), "rev {rev}");
+        assert!(h.query_by_label("Click to define location line").is_some(), "rev {rev}");
         // At its exterior face, the line the face is.
         let picture = h.get_by_label("Wall layers").rect();
         click_at(&mut h, picture.left_center() + vec2(1.0, 0.0));

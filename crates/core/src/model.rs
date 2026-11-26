@@ -47,6 +47,8 @@ pub const CUT_HEIGHT: f64 = 1200.0;
 pub const NOTE_SIZE: f64 = 2.5;
 /// Wall ends closer than this join, in mm.
 pub const TOL: f64 = 1.0;
+/// The starter framed wall types' lap siding, mm: their outside finish.
+const SIDING: f64 = 20.0;
 /// Coordinates and lengths beyond 1000 km are refused.
 pub const MAX_COORD: f64 = 1e9;
 /// Height of a wall or room with no level above it.
@@ -590,6 +592,11 @@ pub enum Function {
     Thermal,
     Membrane,
     Finish,
+}
+
+impl Function {
+    /// Every function, as the layer editor lists them.
+    pub const ALL: [Function; 5] = [Function::Structure, Function::Substrate, Function::Thermal, Function::Membrane, Function::Finish];
 }
 
 /// A layer of a compound type: of a wall, from its exterior in; of a floor, a roof or a ceiling,
@@ -4932,6 +4939,15 @@ impl Model {
             (msg!("Pine"), "pine", &include_bytes!("../assets/materials/pine.jpg")[..], [218, 203, 167], Pattern::Diagonal, [600.0, 423.0]),
             (msg!("OSB"), "osb", &include_bytes!("../assets/materials/osb.jpg")[..], [225, 193, 139], Pattern::Diagonal, [600.0, 732.0]),
             (msg!("MDF"), "mdf", &include_bytes!("../assets/materials/mdf.jpg")[..], [216, 164, 127], Pattern::Diagonal, [600.0, 600.0]),
+            // Lap siding, the framed wall types' outside: four boards of 175 mm showing to the picture.
+            (
+                msg!("Siding"),
+                "siding",
+                &include_bytes!("../assets/materials/siding.jpg")[..],
+                [209, 198, 188],
+                Pattern::Diagonal,
+                [730.0, 700.0],
+            ),
             (
                 msg!("Marble"),
                 "marble",
@@ -4970,20 +4986,24 @@ impl Model {
             layer(Function::Finish, "Plaster", 10.0),
         ];
         m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers, curtain: None, framing: None });
-        // Timber frame walls, gypsum board each side of a stud layer of pine, framed: 89 mm of 2x4s, 160 of KVH 60x160.
+        // Timber frame walls, siding outside, gypsum board each side of a stud layer of pine, framed: 89 mm of 2x4s, 160 of
+        // KVH 60x160.
         let pine = language.word(msg!("Pine")).to_string();
         for (name, studs, framing) in
-            [("Timber Frame - 114mm", 89.0, crate::framing::DEFAULT_TYPE), ("Timber Frame - 185mm", 160.0, crate::framing::EUROPEAN_TYPE)]
+            [("Timber Frame - 134mm", 89.0, crate::framing::DEFAULT_TYPE), ("Timber Frame - 205mm", 160.0, crate::framing::EUROPEAN_TYPE)]
         {
             let layers = vec![
+                layer(Function::Finish, msg!("Siding"), SIDING),
                 layer(Function::Finish, msg!("Gypsum board"), 12.5),
                 Layer { framed: true, ..layer(Function::Structure, msg!("Pine"), studs) },
                 layer(Function::Finish, msg!("Gypsum board"), 12.5),
             ];
-            m.types.wall.insert(name.into(), WallType { thickness: studs + 25.0, layers, curtain: None, framing: Some(framing.into()) });
+            let thickness = SIDING + studs + 25.0;
+            m.types.wall.insert(name.into(), WallType { thickness, layers, curtain: None, framing: Some(framing.into()) });
         }
-        // A framed exterior wall, outside in: rigid insulation over OSB sheathing on 2x6 studs, gypsum board inside.
+        // A framed exterior wall, outside in: siding on rigid insulation over OSB sheathing on 2x6 studs, gypsum board inside.
         let exterior = vec![
+            layer(Function::Finish, msg!("Siding"), SIDING),
             layer(Function::Thermal, "Insulation", 50.0),
             layer(Function::Substrate, msg!("OSB"), 12.0),
             Layer { framed: true, ..layer(Function::Structure, msg!("Pine"), 140.0) },
@@ -4992,7 +5012,7 @@ impl Model {
         let framing = Some(crate::framing::EXTERIOR_TYPE.into());
         m.types
             .wall
-            .insert("Timber Frame Exterior - 215mm".into(), WallType { thickness: 215.0, layers: exterior, curtain: None, framing });
+            .insert("Timber Frame Exterior - 235mm".into(), WallType { thickness: 235.0, layers: exterior, curtain: None, framing });
         // The framing types a new project starts with: North American 2x4s and 2x6s 16" on centre, and German KVH 60x160 at 625.
         m.types.framing.insert(crate::framing::DEFAULT_TYPE.into(), crate::framing::FramingType::american(Some(pine.clone())));
         m.types.framing.insert(crate::framing::EXTERIOR_TYPE.into(), crate::framing::FramingType::exterior(Some(pine.clone())));

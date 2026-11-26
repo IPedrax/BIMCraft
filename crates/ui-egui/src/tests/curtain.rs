@@ -773,3 +773,32 @@ fn add_remove_segments_clicked_in_a_section_merges_the_panels_and_a_second_click
     assert_eq!(h.state().tool, crate::Tool::Modify);
     assert_eq!(h.state().selection, [id]);
 }
+
+#[test]
+fn a_wall_on_its_centre_line_made_a_curtain_wall_asks_which_face_its_line_goes_to() {
+    let mut h = app(r#"wall {"points": [[0, 0], [6000, 0]]}"#);
+    let wall = walls(&h)[0].0;
+    h.state_mut().selection = vec![wall];
+    h.run();
+    // Cancel: nothing changes, and no error.
+    press(&mut h, "Type Selector");
+    press(&mut h, "Curtain Wall");
+    assert!(h.query_by_label("Curtain Wall Location Line").is_some(), "asked, not refused: {}", h.state().status.text);
+    assert_eq!(walls(&h)[0].1.type_name, "Generic - 200mm");
+    press(&mut h, "Cancel");
+    assert!(h.state().curtain_location.is_none());
+    assert_eq!(walls(&h)[0].1.type_name, "Generic - 200mm");
+    // The exterior face: a curtain wall on it, its line moved there, the wall where it was, in one step.
+    press(&mut h, "Type Selector");
+    press(&mut h, "Curtain Wall");
+    press(&mut h, "Finish Face: Exterior");
+    let w = walls(&h)[0].1.clone();
+    assert_eq!(
+        (w.type_name.as_str(), w.location),
+        ("Curtain Wall", bimcraft_core::model::Location::ExteriorFinish),
+        "{}",
+        h.state().status.text
+    );
+    h.state_mut().session.execute("undo", &json!({})).unwrap();
+    assert_eq!(walls(&h)[0].1.type_name, "Generic - 200mm", "one step");
+}
