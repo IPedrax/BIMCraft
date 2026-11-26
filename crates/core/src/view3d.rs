@@ -2766,6 +2766,74 @@ pub fn scene_kept_in(before: &Model, after: &Model, view: Option<Id>) -> bool {
         && Look::of_3d_view(before, view).with_section_box(None) == Look::of_3d_view(after, view).with_section_box(None)
 }
 
+/// A point's nearness as a number whose order is the nearness's, the nearest the least.
+fn near_key(z: f32) -> u32 {
+    let b = z.to_bits();
+    let ordered = if b >> 31 == 1 { !b } else { b | 0x8000_0000 };
+    !ordered
+}
+
+/// The nearness a [`near_key`] was made of.
+fn from_near_key(k: u32) -> f32 {
+    let ordered = !k;
+    f32::from_bits(if ordered >> 31 == 1 { ordered & 0x7FFF_FFFF } else { !ordered })
+}
+
+/// What [`raster_points`] kept at a pixel: the point's nearness, colour and scan's slot; none where no point was.
+fn unkey(key: u64) -> Option<(f32, Rgb, usize)> {
+    (key != u64::MAX).then(|| {
+        let c = (key >> 8) as u32;
+        (from_near_key((key >> 32) as u32), Rgb((c >> 16) as u8, (c >> 8) as u8, c as u8), (key & 0xFF) as usize)
+    })
+}
+
+/// The points of `scans` (each with its slot among the scene's scans and its step) a picture of `(w, h)` from `cam` keeps, as
+/// one number at each pixel: the nearest point's nearness, colour and slot ([`unkey`]), drawn side by side on every thread
+/// with an atomic least. Scans past the 256th slot are drawn by the last one's.
+fn raster_points(
+    scans: &[(usize, &Scan, usize)],
+    (cam, clip, cut): (&Camera, Option<&Clip>, Option<&Boxed>),
+    (w, h): (usize, usize),
+    (plain, look): (bool, &Look),
+) -> Vec<u64> {
+    use rayon::prelude::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    const CHUNK: usize = 1 << 15;
+    let pixels: Vec<AtomicU64> = (0..w * h).map(|_| AtomicU64::new(u64::MAX)).collect();
+    let k = cam.projector();
+    let jobs: Vec<(usize, &Scan, usize, usize)> = scans
+        .iter()
+        .flat_map(|&(n, scan, step)| (0..scan.points.len()).step_by(CHUNK * step.max(1)).map(move |from| (n, scan, step.max(1), from)))
+        .collect();
+    jobs.par_iter().for_each(|&(n, scan, step, from)| {
+        let paint = scan.paint(plain, look);
+        let slot = n.min(255) as u64;
+        for i in (from..(from + CHUNK * step).min(scan.points.len())).step_by(step) {
+            let Some(p) = scan.points.get(i) else { break };
+            let at = scan.place(*p);
+            if cut.is_some_and(|b| !b.holds(at)) {
+                continue;
+            }
+            let (x, y, z) = k.at(at);
+            if clip.is_some_and(|c| z > c.near || c.far.is_some_and(|f| z < c.near - f) || x < c.x.0 || x > c.x.1 || y < c.y.0 || y > c.y.1)
+            {
+                continue;
+            }
+            let Some((x0, y0)) = dot_at((x, y, z), (w, h)) else { continue };
+            let Rgb(r, g, b) = paint.colour(i, at);
+            let key = u64::from(near_key(z as f32)) << 32 | u64::from(u32::from(r) << 16 | u32::from(g) << 8 | u32::from(b)) << 8 | slot;
+            for py in y0.max(0)..(y0 + DOT as i64).min(h as i64) {
+                for px in x0.max(0)..(x0 + DOT as i64).min(w as i64) {
+                    if let Some(cell) = pixels.get(py as usize * w + px as usize) {
+                        cell.fetch_min(key, Ordering::Relaxed);
+                    }
+                }
+            }
+        }
+    });
+    pixels.into_iter().map(AtomicU64::into_inner).collect()
+}
+
 /// How much eye-dome lighting darkens: Potree's 300 at a strength of 1.
 const DOME: f64 = 300.0;
 
@@ -4266,33 +4334,17 @@ impl Scene {
         let step = every(kept.iter().map(|(_, s)| s.points.len()).sum());
         // The points read of the scans' indexes, each as its scan's: all of them, the selection having kept them few enough.
         let more = more.iter().filter_map(|m| kept.iter().find(|(_, s)| s.owner == m.owner).map(|(n, _)| (*n, m, 1)));
-        for (n, scan, step) in kept.iter().map(|(n, s)| (*n, *s, step)).chain(more) {
-            let slot = (self.tris.len() + n) as u32;
-            let paint = scan.paint(plain, look);
-            for (i, p) in scan.points.iter().enumerate().step_by(step) {
-                let at = scan.place(*p);
-                if cut.is_some_and(|k| !k.holds(at)) {
-                    continue;
-                }
-                let (x, y, z) = cam.project(at);
-                if clip.is_some_and(|k| {
-                    z > k.near || k.far.is_some_and(|f| z < k.near - f) || x < k.x.0 || x > k.x.1 || y < k.y.0 || y > k.y.1
-                }) {
-                    continue;
-                }
-                let Some((x0, y0)) = dot_at((x, y, z), (w, h)) else { continue };
-                let colour = paint.colour(i, at);
-                let z = z as f32;
-                for py in y0.max(0)..(y0 + DOT as i64).min(h as i64) {
-                    for px in x0.max(0)..(x0 + DOT as i64).min(w as i64) {
-                        let k = py as usize * w + px as usize;
-                        if let (Some(d), Some(s), Some(c)) = (depth.get_mut(k), hit.get_mut(k), dots.get_mut(k))
-                            && z > *d
-                        {
-                            (*d, *s, *c) = (z, slot, colour);
-                        }
-                    }
-                }
+        let all: Vec<(usize, &Scan, usize)> = kept.iter().map(|(n, s)| (*n, *s, step)).chain(more).collect();
+        // Every point at once, on every thread, as a compute shader draws them (Schütz, Kerbl and Wimmer, 2022): each writes
+        // its nearness, its colour and its scan's slot into one 64-bit number at each pixel of its dot, and the least number
+        // (the nearest point; between two as near, the same one every time) stays. Then the points nearer than the surfaces.
+        let nearest = raster_points(&all, (cam, clip, cut), (w, h), (plain, look));
+        for (k, key) in nearest.into_iter().enumerate() {
+            let Some((z, colour, n)) = unkey(key) else { continue };
+            if let (Some(d), Some(s), Some(c)) = (depth.get_mut(k), hit.get_mut(k), dots.get_mut(k))
+                && z > *d
+            {
+                (*d, *s, *c) = (z, (self.tris.len() + n) as u32, colour);
             }
         }
         dots

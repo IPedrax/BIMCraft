@@ -1120,3 +1120,28 @@ fn a_section_draws_the_points_of_a_scan_s_index_it_shows() {
     let full = render::section_image(&s.model, &Scene::new(&s.model), v, view, &[]).unwrap();
     assert!(missing > 0 && pixels(&full, red) > pixels(&top, red) + 1000, "{missing} {} {}", pixels(&full, red), pixels(&top, red));
 }
+
+// ---------- Points drawn all at once ----------
+
+#[test]
+fn points_drawn_side_by_side_keep_the_nearest_at_each_pixel_the_same_every_time() {
+    // A face and, half a metre in front of it, another in another colour over part of it: what shows is what's nearest, and
+    // drawing it again on all threads gives the same picture to the pixel.
+    let mut s = Session::new();
+    let mut text = sheet(Some([255, 0, 0]));
+    for line in sheet(Some([0, 0, 255])).lines().step_by(2) {
+        let v: Vec<f64> = line.split(' ').map(|x| x.parse().unwrap()).collect();
+        text += &format!("{} -0.5 {} 0 0 255\n", v[0] * 0.5, v[2] * 0.5);
+    }
+    let id = run(&mut s, "point_cloud", json!({"path": scan("atomic", "two.xyz", &text)}))["id"].as_u64().unwrap();
+    let scene = Scene::new(&s.model);
+    let cam = scene.fit(AZIMUTH, ELEVATION, 320, 240);
+    let a = scene.render(&cam, &[]);
+    let b = scene.render(&cam, &[]);
+    assert_eq!(a.rgba, b.rgba);
+    assert!(pixels(&a, blue) > 500 && pixels(&a, red) > 500, "{} {}", pixels(&a, blue), pixels(&a, red));
+    // Every pixel a point shows picks its scan.
+    let at =
+        (0..240).flat_map(|y| (0..320).map(move |x| (f64::from(x) + 0.5, f64::from(y) + 0.5))).find(|&(x, y)| blue(a.color(x, y))).unwrap();
+    assert_eq!(a.pick(at.0, at.1), Some(id));
+}
