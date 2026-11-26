@@ -277,7 +277,7 @@ msgstr "Instalacja elektryczna – zasilanie"
 
 #: crates/core/src/commands.rs:16337
 #: crates/core/src/commands.rs:16354
-#: crates/core/src/commands.rs:21730
+#: crates/core/src/commands.rs:21731
 msgid "Elevation"
 msgstr "Widok elewacji"
 
@@ -788,7 +788,7 @@ msgid "Seat Height"
 msgstr "Wysokość siedziska"
 
 #: crates/core/src/commands.rs:16268
-#: crates/core/src/commands.rs:21729
+#: crates/core/src/commands.rs:21730
 #: crates/core/src/schedule.rs:704
 msgid "Section"
 msgstr "Przekrój"
