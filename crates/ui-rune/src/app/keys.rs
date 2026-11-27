@@ -98,6 +98,43 @@ impl App {
                 self.delete_selection();
                 true
             }
+            // The group commands take the selection, as the menu's items do, and not a form of ids.
+            "create_group" => {
+                self.create_group();
+                true
+            }
+            "ungroup" => {
+                self.ungroup();
+                true
+            }
+            "edit_group" => {
+                self.edit_group();
+                true
+            }
+            "finish_group" => {
+                self.finish_group();
+                true
+            }
+            "cancel_group" => {
+                self.cancel_group();
+                true
+            }
+            "add_to_group" => {
+                self.add_to_group();
+                true
+            }
+            "remove_from_group" => {
+                self.remove_from_group();
+                true
+            }
+            "exclude_member" => {
+                self.exclude_selected();
+                true
+            }
+            "restore_excluded" => {
+                self.restore_excluded();
+                true
+            }
             _ => {
                 if let Some(tool) = tools::id_of(id) {
                     // The shortcut picks the tool: typing it again leaves it in hand, as Find does.

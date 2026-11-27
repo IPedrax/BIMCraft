@@ -28,6 +28,7 @@ mod browser;
 mod clip;
 pub mod dialogs;
 mod export;
+mod groups;
 mod keys;
 mod open;
 mod orbit;

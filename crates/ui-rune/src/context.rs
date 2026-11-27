@@ -1,7 +1,7 @@
 //! The right-click menu of the plan, as data: which items the moment offers (`items`) and what each is (`Action`); `App::act` does it.
 //! After the egui window's `context.rs` (`context_items` and `Action`), which is the reference and stays as it is: this is a copy of
 //! the part that is about the plan and the selection, to fold into the core when egui adopts it. Not here yet from that menu: Edit
-//! Family and Type, Select All Instances, the groups' items, Hide and Override Graphics (a view's) and Reload CAD.
+//! Family and Type, Select All Instances, Hide and Override Graphics (a view's) and Reload CAD.
 
 use bimcraft_core::ids::Id;
 use bimcraft_core::model::{Element, Model};
@@ -34,6 +34,17 @@ pub enum Action {
     PasteCurrentView,
     PasteSelectedLevels,
     PasteSelectedViews,
+    /// Groups (`app/groups.rs`): the selection made one, a group's members plain again, one edited and what Edit Group does, a member
+    /// left out of its group and put back.
+    CreateGroup,
+    Ungroup,
+    EditGroup,
+    AddToGroup,
+    RemoveFromGroup,
+    FinishGroup,
+    CancelGroup,
+    ExcludeMember,
+    RestoreExcluded,
     // The Project Browser's menu (`browser_items`): what a right click over a row, a group, a type or a linked model offers.
     /// A copy of a plan view, a copy with the annotation of the plan, a view that follows it (`duplicate_view`).
     Duplicate,
@@ -97,6 +108,15 @@ impl Action {
             Action::PasteCurrentView => "Paste Aligned to Current View",
             Action::PasteSelectedLevels => "Paste Aligned to Selected Levels\u{2026}",
             Action::PasteSelectedViews => "Paste Aligned to Selected Views\u{2026}",
+            Action::CreateGroup => "Create Group",
+            Action::Ungroup => "Ungroup",
+            Action::EditGroup => "Edit Group",
+            Action::AddToGroup => "Add to Group",
+            Action::RemoveFromGroup => "Remove from Group",
+            Action::FinishGroup => "Finish Edit Group",
+            Action::CancelGroup => "Cancel Edit Group",
+            Action::ExcludeMember => "Exclude",
+            Action::RestoreExcluded => "Restore All Excluded",
             Action::Duplicate => "Duplicate",
             Action::DuplicateDetailing => "Duplicate with Detailing",
             Action::DuplicateDependent => "Duplicate as Dependent",

@@ -23,7 +23,14 @@ impl App {
 
     /// What the menu offers now, in groups: a tool in hand with points picked can be finished.
     pub fn menu_items(&self) -> Vec<Vec<Item>> {
-        context::items(&self.session.model, &self.selection, self.tool.is_some(), self.tool.is_some() && !self.picked.is_empty())
+        let mut groups =
+            context::items(&self.session.model, &self.selection, self.tool.is_some(), self.tool.is_some() && !self.picked.is_empty());
+        // What the selection can be as a group (or what Edit Group does) goes before the clipboard's items and the zoom.
+        let mine = self.group_items();
+        if !mine.is_empty() {
+            groups.insert(groups.len().saturating_sub(2), mine);
+        }
+        groups
     }
 
     /// Does what an item of the menu says, and closes the menu.
@@ -61,6 +68,33 @@ impl App {
             Action::PasteCurrentView => self.paste_request(Mode::CurrentView),
             Action::PasteSelectedLevels => self.paste_request(Mode::SelectedLevels),
             Action::PasteSelectedViews => self.paste_request(Mode::SelectedViews),
+            Action::CreateGroup => {
+                self.create_group();
+            }
+            Action::Ungroup => {
+                self.ungroup();
+            }
+            Action::EditGroup => {
+                self.edit_group();
+            }
+            Action::AddToGroup => {
+                self.add_to_group();
+            }
+            Action::RemoveFromGroup => {
+                self.remove_from_group();
+            }
+            Action::FinishGroup => {
+                self.finish_group();
+            }
+            Action::CancelGroup => {
+                self.cancel_group();
+            }
+            Action::ExcludeMember => {
+                self.exclude_selected();
+            }
+            Action::RestoreExcluded => {
+                self.restore_excluded();
+            }
             // The browser's items were done above.
             _ => {}
         }
