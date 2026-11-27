@@ -5529,7 +5529,7 @@ msgstr "Demolido"
 msgid "Demolition"
 msgstr "Demolição"
 
-#: crates/core/src/commands.rs:16944
+#: crates/core/src/commands.rs:17000
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -5606,7 +5606,7 @@ msgstr "Desanexar topo/base"
 msgid "Detach Top/Base: the tops and bases of the walls and columns their own again"
 msgstr ""
 
-#: crates/core/src/commands.rs:16734
+#: crates/core/src/commands.rs:16790
 #: crates/ui-egui/src/draw.rs:693
 #: crates/ui-egui/src/editor/document.rs:645
 #: crates/ui-egui/src/structure.rs:111
@@ -10787,7 +10787,7 @@ msgid "Measured from the level of each plan: Associated Level is its own. Top �
 msgstr "Medido a partir do nível de cada planta: Nível associado é o dela. Superior ≥ Plano de corte ≥ Inferior ≥ Profundidade da vista."
 
 #: crates/core/src/cloud/index.rs:624
-#: crates/core/src/cloud.rs:764
+#: crates/core/src/cloud.rs:766
 msgid "Measuring the scan"
 msgstr ""
 
@@ -14501,7 +14501,7 @@ msgid "Properties over the Project Browser on the left, every panel and tool sho
 msgstr ""
 
 #: crates/core/src/commands.rs:864
-#: crates/core/src/commands.rs:11511
+#: crates/core/src/commands.rs:11567
 msgid "Property Line"
 msgstr ""
 
@@ -14732,8 +14732,8 @@ msgstr ""
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/cloud.rs:763
-#: crates/core/src/cloud.rs:800
+#: crates/core/src/cloud.rs:765
+#: crates/core/src/cloud.rs:802
 msgid "Reading the points"
 msgstr ""
 
@@ -19758,7 +19758,7 @@ msgid "Topology: {} ({} triangles)"
 msgstr ""
 
 #: crates/core/src/commands.rs:876
-#: crates/core/src/commands.rs:11553
+#: crates/core/src/commands.rs:11609
 msgid "Toposolid"
 msgstr ""
 
@@ -20313,7 +20313,7 @@ msgstr "Desbloquear"
 msgid "Unlock alignment"
 msgstr "Desbloquear alinhamento"
 
-#: crates/core/src/commands.rs:17292
+#: crates/core/src/commands.rs:17348
 msgid "Unnamed"
 msgstr "Sem nome"
 
