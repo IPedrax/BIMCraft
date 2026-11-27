@@ -29,6 +29,10 @@ pub enum Source {
     Locations,
     /// The classification tables the project holds (Uniclass, OmniClass, a table of the user's own), loaded from the user's files.
     Classification,
+    /// The project's own title blocks, which a sheet names to be drawn with (Revit's title block families).
+    TitleBlocks,
+    /// The Publisher's presets: where a set is written and the print sets in its folders, each as a format.
+    PublishSets,
 }
 
 /// How the command takes an entry.
@@ -49,7 +53,7 @@ pub struct Info {
     pub shape: Shape,
 }
 
-pub static ALL: [Info; 13] = [
+pub static ALL: [Info; 15] = [
     Info { source: Source::Materials, title: "Materials", command: "material", shape: Shape::Named },
     Info { source: Source::LineStyles, title: "Line Styles", command: "line_style", shape: Shape::Named },
     Info { source: Source::LinePatterns, title: "Line Patterns", command: "line_pattern", shape: Shape::Named },
@@ -63,6 +67,8 @@ pub static ALL: [Info; 13] = [
     Info { source: Source::ObjectStyles, title: "Object Styles", command: "object_styles", shape: Shape::Categories },
     Info { source: Source::Locations, title: "Locations", command: "location", shape: Shape::Named },
     Info { source: Source::Classification, title: "Classification", command: "classification_table", shape: Shape::Named },
+    Info { source: Source::TitleBlocks, title: "Title Blocks", command: "title_block", shape: Shape::Named },
+    Info { source: Source::PublishSets, title: "Publisher", command: "publish_set", shape: Shape::Named },
 ];
 
 impl Source {
@@ -83,6 +89,8 @@ impl Source {
                 "classification_brief",
                 "classification_answer",
             ],
+            Source::TitleBlocks => &["title_values"],
+            Source::PublishSets => &["publish", "print_set", "export_formats"],
             _ => &[],
         }
     }
@@ -116,6 +124,8 @@ pub fn entries(model: &Model, source: Source) -> Vec<(String, Value)> {
         Source::TextTypes => table!(model.text_types),
         Source::Parameters => table!(model.parameters),
         Source::ObjectStyles => table!(model.object_styles),
+        Source::TitleBlocks => table!(model.title_blocks),
+        Source::PublishSets => table!(model.publish_sets),
         Source::Classification => model
             .classification
             .tables

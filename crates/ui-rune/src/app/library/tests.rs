@@ -141,3 +141,24 @@ fn a_loaded_classification_table_is_an_entry_shown_and_taken_out_through_its_com
     assert!(app.library_delete(), "{:?}", app.dialogs.library.as_ref().map(|d| &d.error));
     assert!(app.session.model.classification.tables.is_empty());
 }
+
+#[test]
+fn a_title_block_and_a_publishing_set_are_changed_through_their_commands() {
+    let mut app = App::sample();
+    app.execute("title_block", &json!({"name": "Rune TB", "width": 180.0, "height": 90.0})).expect("a title block");
+    app.execute("publish_set", &json!({"name": "Rune Set"})).expect("a publishing set");
+
+    app.open_library(Source::TitleBlocks);
+    app.library_select("Rune TB");
+    typed(&mut app, "width", "200");
+    assert!(app.library_apply(), "{:?}", app.dialogs.library.as_ref().map(|d| &d.error));
+    assert_eq!(app.session.model.title_blocks["Rune TB"].width, 200.0);
+
+    app.open_library(Source::PublishSets);
+    app.library_select("Rune Set");
+    typed(&mut app, "folder", "out");
+    assert!(app.library_apply(), "{:?}", app.dialogs.library.as_ref().map(|d| &d.error));
+    assert_eq!(app.session.model.publish_sets["Rune Set"].folder, "out");
+    assert!(app.library_delete(), "a set is deleted");
+    assert!(!app.session.model.publish_sets.contains_key("Rune Set"));
+}
