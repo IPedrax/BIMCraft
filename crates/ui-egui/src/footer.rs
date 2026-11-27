@@ -361,8 +361,10 @@ impl BimApp {
             // The card as it stood last frame takes the presses and drags over it before its buttons take their clicks: a
             // button senses clicks only, so a press on it, or between them, would otherwise go to the view under the card as
             // a drag, and its release be a click on the view, which clears the selection the bar's menus act on.
+            // Per layer: a view floated in a window of its own draws its bar there. Not a tab stop: it is no control.
+            let held = held.with(ui.layer_id());
             if let Some(r) = ui.ctx().data(|d| d.get_temp::<Rect>(held)) {
-                let _ = ui.interact(r, held.with("over"), egui::Sense::click_and_drag());
+                let _ = ui.interact(r, held.with("over"), egui::Sense::CLICK | egui::Sense::DRAG);
             }
             let shown = card
                 .show(ui, |ui| {
