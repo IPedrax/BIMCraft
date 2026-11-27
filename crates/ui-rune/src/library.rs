@@ -203,14 +203,20 @@ pub fn changes(info: &Info, name: &str, original: &Value, typed: &[(String, Kind
     }))
 }
 
-/// Whether the source's command takes an entry away: `delete`, or `remove` (a classification table).
+/// The parameter that takes an entry away: `delete`, or `remove` for a classification table (its doc names `remove` after the leading
+/// group of parameters, where the form does not read it), none where the command has neither.
+fn removal(info: &Info) -> Option<&'static str> {
+    if info.source == Source::Classification { Some("remove") } else { takes(info, "delete").then_some("delete") }
+}
+
+/// Whether the source's command takes an entry away.
 pub fn deletes(info: &Info) -> bool {
-    ["delete", "remove"].iter().any(|k| takes(info, k))
+    removal(info).is_some()
 }
 
 /// The command's parameters that delete the entry, when its command can.
 pub fn deletion(info: &Info, name: &str) -> Option<Value> {
-    let key: &str = ["delete", "remove"].into_iter().find(|k| takes(info, k))?;
+    let key = removal(info)?;
     Some(json!({"name": name, key: true}))
 }
 

@@ -9,8 +9,9 @@ fn folder(name: &str) -> PathBuf {
     dir
 }
 
+/// What is built in the project: its elements but the levels, which a new project has.
 fn built(app: &App) -> usize {
-    app.session.model.elements.iter().count()
+    app.session.model.elements.iter().filter(|(_, e)| !matches!(e, bimcraft_core::model::Element::Level(_))).count()
 }
 
 #[test]

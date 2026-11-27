@@ -69,10 +69,8 @@ pub fn dialog(s: &App, k: &Kit, layer: &mut Vec<El>) {
                 .key("start-sample"),
         );
     let mut rows = col().key("start-rows").w_full().padding(16.0).gap(14.0).child(actions);
-    for lists in [list(k, t("Recent"), "recent", &d.recent), list(k, t("Templates"), "template", &d.templates)] {
-        if let Some(lists) = lists {
-            rows = rows.child(lists);
-        }
+    for lists in [list(k, t("Recent"), "recent", &d.recent), list(k, t("Templates"), "template", &d.templates)].into_iter().flatten() {
+        rows = rows.child(lists);
     }
     let mut status = col().key("start-status").w_full().px(16.0).gap(8.0);
     if let Some(why) = &d.error {

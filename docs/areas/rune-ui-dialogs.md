@@ -193,7 +193,7 @@ Find lists them under the word Manage, and by name.
 | Start (and templates) | `start.rs`, `project_templates.rs` | `app/start.rs`, `ui/start.rs`, `recent.rs`: New (`new`), Open (the system's dialog), the sample house, the recent files and the templates; the dialog is opened by Find (Start). View Templates, egui's `templates.rs`, is the View Templates manager of round 2. |
 
 **`library.rs` additions.** `Source::also` names the other commands a manager's dialog opens the forms of, as buttons under the rows (`lib-also-{i}`).
-`library::deletes` and `deletion` take `remove` where a command has it instead of `delete` (a classification table). A table whose entries a
+`library::deletes` and `deletion` use `remove` for a classification table (its doc names it after the leading group, where the form does not read it) and `delete` elsewhere. A table whose entries a
 file writes as a list is `{"value": [..]}`, so every entry is an object. The Classification entries are never typed field by field (a table
 is loaded again from its file), and **Make active** shows where the command has `activate` and the entry is not the active one.
 

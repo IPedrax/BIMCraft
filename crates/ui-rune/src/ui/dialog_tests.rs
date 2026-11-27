@@ -314,8 +314,10 @@ fn find_opens_the_start_dialog_and_new_empties_the_project() {
     let hit = rt.state.found().iter().position(|h| h.found == crate::finder::Found::Start).expect("Start is found");
     tap(&mut rt, &format!("hit-{hit}"));
     assert!(rt.state.dialogs.start.is_some() && rt.find("start-new").is_some() && rt.find("start-open").is_some());
-    assert!(rt.state.session.model.elements.iter().count() > 0);
+    let built =
+        |app: &App| app.session.model.elements.iter().filter(|(_, e)| !matches!(e, bimcraft_core::model::Element::Level(_))).count();
+    assert!(built(&rt.state) > 0);
     tap(&mut rt, "start-new");
     assert!(rt.state.dialogs.start.is_none(), "New closes the dialog");
-    assert_eq!(rt.state.session.model.elements.iter().count(), 0, "and the project is a new one");
+    assert_eq!(built(&rt.state), 0, "and the project is a new one");
 }
