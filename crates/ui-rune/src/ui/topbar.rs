@@ -33,6 +33,38 @@ fn project_files(title: &str) -> FileDialogOptions {
     FileDialogOptions { title: title.to_string(), ..Default::default() }.filter("BIMCraft", &["bimc", "bimcraft", "bimt", "ifc"])
 }
 
+/// Open: the system's dialog asks which project, and the method the answer runs opens it.
+pub(super) fn open(tx: &mut Tx) {
+    tx.open_file(project_files(t("Open")), |s: &mut App, answer, _| match answer {
+        Ok(Some(path)) => {
+            s.open_path(path);
+        }
+        Ok(None) => {}
+        Err(why) => s.message = Some(why.to_string()),
+    });
+}
+
+/// Save: a project with a file saves to it, without asking; another asks where.
+pub(super) fn save(s: &mut App, tx: &mut Tx) {
+    if s.has_file() {
+        s.save();
+    } else {
+        save_as(tx);
+    }
+}
+
+/// Save As: the system's dialog asks where, and the method the answer runs saves there.
+pub(super) fn save_as(tx: &mut Tx) {
+    let options = FileDialogOptions { file_name: Some("Project.bimc".into()), ..project_files(t("Save")) };
+    tx.save_file(options, |s: &mut App, answer, _| match answer {
+        Ok(Some(path)) => {
+            s.save_as(path);
+        }
+        Ok(None) => {}
+        Err(why) => s.message = Some(why.to_string()),
+    });
+}
+
 pub fn bar(s: &App, th: &Theme) -> El {
     let name =
         s.session.path.as_ref().and_then(|p| p.file_name()).map_or_else(|| t("Untitled").to_string(), |n| n.to_string_lossy().into_owned());
@@ -46,29 +78,8 @@ pub fn bar(s: &App, th: &Theme) -> El {
         .gap(8.0)
         .center_y()
         .fill(th.card)
-        .child(button("open", t("Open"), th, |_: &mut App, tx: &mut Tx| {
-            tx.open_file(project_files(t("Open")), |s: &mut App, answer, _| match answer {
-                Ok(Some(path)) => {
-                    s.open_path(path);
-                }
-                Ok(None) => {}
-                Err(why) => s.message = Some(why.to_string()),
-            });
-        }))
-        .child(button("save", t("Save"), th, |s: &mut App, tx: &mut Tx| {
-            if s.has_file() {
-                s.save();
-                return;
-            }
-            let options = FileDialogOptions { file_name: Some("Project.bimc".into()), ..project_files(t("Save")) };
-            tx.save_file(options, |s: &mut App, answer, _| match answer {
-                Ok(Some(path)) => {
-                    s.save_as(path);
-                }
-                Ok(None) => {}
-                Err(why) => s.message = Some(why.to_string()),
-            });
-        }))
+        .child(button("open", t("Open"), th, |_: &mut App, tx: &mut Tx| open(tx)))
+        .child(button("save", t("Save"), th, |s: &mut App, tx: &mut Tx| save(s, tx)))
         .child(button("undo", t("Undo"), th, |s: &mut App, _: &mut Tx| {
             s.undo();
         }))

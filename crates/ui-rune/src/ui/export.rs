@@ -19,19 +19,20 @@ pub fn button(format: &'static str, th: &Theme) -> El {
         .radius(6.0)
         .fill(th.control_track)
         .child(text(label.clone()).font(type_::LABEL).color(th.text))
-        .on_press_tx(move |s: &mut App, tx: &mut Tx| {
-            let options = FileDialogOptions {
-                title: tf("Export as {}", &[&label]),
-                file_name: Some(s.export_file_name(format)),
-                ..Default::default()
-            }
+        .on_press_tx(move |s: &mut App, tx: &mut Tx| ask(s, tx, format))
+}
+
+/// Exports the view shown as `format`: the system's dialog asks where, and the method the answer runs writes the file there.
+pub(super) fn ask(s: &mut App, tx: &mut Tx, format: &'static str) {
+    let label = format.to_uppercase();
+    let options =
+        FileDialogOptions { title: tf("Export as {}", &[&label]), file_name: Some(s.export_file_name(format)), ..Default::default() }
             .filter(label.as_str(), &[format]);
-            tx.save_file(options, move |s: &mut App, answer, _| match answer {
-                Ok(Some(path)) => {
-                    s.export_view(format, path);
-                }
-                Ok(None) => {}
-                Err(why) => s.message = Some(why.to_string()),
-            });
-        })
+    tx.save_file(options, move |s: &mut App, answer, _| match answer {
+        Ok(Some(path)) => {
+            s.export_view(format, path);
+        }
+        Ok(None) => {}
+        Err(why) => s.message = Some(why.to_string()),
+    });
 }

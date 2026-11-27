@@ -11,6 +11,7 @@ use rune::{Live, Pixels};
 use serde_json::{Value, json};
 
 use crate::camera::Camera;
+use crate::keys::Typed;
 use crate::orbit::Orbit;
 use crate::paper::Paper;
 use crate::profile::Profile;
@@ -25,6 +26,7 @@ use crate::views::{self, ViewKind, Views};
 
 pub mod dialogs;
 mod export;
+mod keys;
 mod open;
 mod orbit;
 mod paper;
@@ -110,6 +112,8 @@ pub struct App {
     pub views: Views,
     /// The section or elevation shown, with the thread that makes its picture (`section.rs`).
     pub cut: Cut,
+    /// The letters of a shortcut typed and waiting for the next (`keys.rs`).
+    pub typed: Typed,
     /// The 3D view shown, with the thread that makes its picture (`orbit.rs`).
     pub orbit: Orbit,
     /// The sheet shown, with the thread that paints it (`paper.rs`).
@@ -193,6 +197,7 @@ impl App {
             view: ViewKind::default(),
             views: Views::default(),
             cut: Cut::new(),
+            typed: Typed::default(),
             orbit: Orbit::new(),
             paper: Paper::new(),
             grid: Grid::default(),
@@ -722,6 +727,12 @@ impl App {
 
     /// The status bar's line.
     pub fn status(&self) -> String {
+        let line = self.status_line();
+        // The letters of a shortcut waiting for the next come first.
+        if self.typed.is_empty() { line } else { format!("{}   |   {line}", self.typed.text()) }
+    }
+
+    fn status_line(&self) -> String {
         let hovered = self.hovered.and_then(|id| self.session.model.elements.get(id).map(|e| (e.category(), id)));
         status::line(&status::Facts {
             level: &self.views.title,

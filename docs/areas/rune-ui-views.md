@@ -174,3 +174,46 @@ does what it does to a plan: idle, the pointer moving over it, a wheel notch, a 
 figures include what the view's own thread makes of each notch: the picture of the section, the sheet's paint, the 3D view's render; the
 interface's thread costs a state update and a live offset. Linux only: the Windows script (`measure-ui.ps1`) has none, so the views have not
 been measured on WARP. The numbers go in `rune-ui.md`'s table when a run has them.
+
+## 6. Revit shortcuts (`crates/core/src/shortcuts.rs`, `keys.rs`, `app/keys.rs`, `ui/mod.rs`)
+
+**The table is the core's.** The two-letter shortcuts were the egui window's alone: the commands' own aliases (`WA` Wall, `CR` Section) are
+in `commands::ALL`, and the desktop's other 70 (`ZF`, `3D`, `MD`, the snaps), 27 more the command catalog names, the MEP fixtures' 13 letters
+and the 26 default chords (`Ctrl+Z`, `F3`) sat in egui's `lib.rs`, `shortcuts.rs` and `mep.rs`. `shortcuts.rs` in the core holds them as data
+(`DESKTOP`, `EXTRA`, `FIXTURES`, `CHORDS`) and answers `target(code)` (a core command by id, or one of the desktop's own by its English
+label), `begins(prefix)` and `chord(written)`. A code is claimed by the first of the commands' aliases (in the command table's order), the
+codes the lists give a command's label, then the desktop's own. **A test reads the egui sources** (`include_str!`, so it costs nothing at
+run time) and fails when a list differs from egui's, so neither front end can have a shortcut the other lacks: a shortcut is added to
+egui's list and the core's in one change. `crates/ui-egui` is untouched. egui's own registry on top of the table (profiles, user bindings,
+the Keyboard Shortcuts dialog, `settings.json`) is not here: the table is the BIMCraft profile's starting set, and the window has no way
+to change a binding yet.
+
+**The matcher.** `keys::Typed` is the typed letters and when the last came (the window's clock). A plain letter or digit, Shift allowed and
+no other key held, that begins a shortcut waits two seconds for the next (`WAIT`); the second completes one and it runs, or it does not and
+the first is dropped and the second waits in its place (`QWA` is `WA`); a letter that begins none is the window's. Escape drops what waits,
+time drops it (`ui::poll`, which asks for a frame when it is due), and the status bar shows the letters waiting before its line. With a dialog
+open the keys are the dialog's, so Find or a command's form takes `WA` as text. A chord is written the way the table writes it (`Ctrl+Shift+Z`,
+`F3`, `Delete`: `keys::written`) and looked up the same.
+
+**What a shortcut does** is done by the methods the buttons use (`app/keys.rs`): a command that is a tool of the palette puts it in hand
+(typing it again leaves it there, as Find does), `undo`, `redo` and `delete` act at once, any other command opens the command's form
+(`open_command`, the dialogs' generic form of the core's table); of the desktop's own, `3D` opens the 3D view, `MD` puts the tool down, `ZF` (and
+`ZE`, `ZA`) is Zoom to Fit, `CS` Create Similar (the tool of the selected element's category) and `SA` Select All Instances (its category and
+type). Any other says `<name>: not in this window yet` in the status bar and changes nothing, so a shortcut is never silent. They work in
+every view: the plan, a section, a sheet, a schedule and the 3D view (Zoom to Fit hands over to the view shown, as the button does). Chords:
+`F3` the 3D view, `F2` the plan, `Ctrl+0` Zoom to Fit, `Ctrl+R`, `Ctrl+M`, `Ctrl+T` and the rest of Modify's tools, `Ctrl+Z`, `Ctrl+Y`,
+`Delete`, `Ctrl+K`, and the three that ask for a file, `Ctrl+S`, `Ctrl+Shift+S`, `Ctrl+O` and `Ctrl+P` (PDF), which call the top bar's own
+functions (`topbar::open`, `save`, `save_as`, `export::ask`). `Ctrl+N` (a new project needs the unsaved-changes guard) and the palette and
+home chords wait.
+
+**Tested:** the core table (the egui parity, two letters, one owner, every alias resolves, every chord names a command or a `ui.` action);
+the matcher (`keys/tests.rs`: waiting, the second that makes nothing, the wait that ran out, a clock that is no number); the actions
+(`app/keys/tests.rs`: tools, Zoom to Fit, the dialog's letters, every kind of view, and a test that walks **the whole table** and asserts that each entry does
+what it names or says it cannot, and that every command's shortcut puts its tool in hand or opens its form); and the window
+(`ui/keys_tests.rs`: typed through Rune's `Runtime`, the status bar, the timeout, the chords, `Ctrl+S` and `Ctrl+O` through the file dialogs).
+
+**Not done:** the desktop's own that need what this window lacks (the snaps' one-shot overrides, the Hide and Isolate family, Thin Lines and the
+visual styles, Properties and Project Browser toggles, Keyboard Shortcuts, Settings pages): each says so. Letters are read as typed, not as
+the physical key (egui reads the key's place, so `WA` works on a Russian layout): on a layout whose letters are not Latin, a shortcut is
+typed with the Latin ones, until Rune's key events say which key it was. A tool that takes a typed length (digits and a unit) has no
+such typing here, so digits are only ever `3D`'s.

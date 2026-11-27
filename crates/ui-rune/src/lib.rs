@@ -15,6 +15,7 @@ pub mod context;
 pub mod finder;
 pub mod forms;
 pub mod grips;
+pub mod keys;
 pub mod lang;
 pub mod orbit;
 pub mod paint;

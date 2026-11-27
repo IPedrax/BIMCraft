@@ -6,7 +6,10 @@ use std::time::Duration;
 use rune::tok;
 use rune::{Cx, El, Key, KeyEvent, Tx, col, row};
 
+use bimcraft_core::shortcuts;
+
 use crate::app::App;
+use crate::keys;
 use crate::profile::Profile;
 
 mod browser;
@@ -88,14 +91,21 @@ pub fn poll(s: &mut App, clock: f64, tx: &mut Tx) -> bool {
     if busy {
         tx.wake_after(Duration::from_millis(16));
     }
-    drawn || made
+    // The letters of a shortcut that waited too long are dropped, and the status bar stops showing them.
+    let typed = s.expire_typed();
+    if let Some(due) = s.typed_in() {
+        tx.wake_after(Duration::from_secs_f64(due));
+    }
+    drawn || made || typed
 }
 
 /// Ctrl+K opens Find (or closes it) and Ctrl+, the settings. Delete deletes the selection; Ctrl+Z undoes, Ctrl+Shift+Z and Ctrl+Y do again
-/// (Cmd on a Mac); Tab and Shift+Tab step through what lies under the pointer; Escape puts the tool down, then clears the selection; with a
-/// tool in hand Enter finishes what it has picked and Backspace gives the last point back. With a dialog open the keys are its. A key none
-/// of these takes goes on to the window.
-pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
+/// (Cmd on a Mac); Tab and Shift+Tab step through what lies under the pointer; Escape drops the letters of a shortcut that wait, then puts
+/// the tool down, then clears the selection; with a tool in hand Enter finishes what it has picked and Backspace gives the last point back.
+/// With a dialog open the keys are its. Then Revit's two-letter shortcuts, typed plainly (`WA`), and the chords the core's table names
+/// (`Ctrl+0`, `F3`, `Ctrl+S`), in every view. A key none of these takes goes on to the window.
+pub fn on_key(s: &mut App, key: &KeyEvent, tx: &mut Tx) -> bool {
+    s.tick(tx.clock());
     if key.mods.cmd && matches!(key.key, Key::Command('k')) {
         s.toggle_find();
         return true;
@@ -110,7 +120,7 @@ pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
     }
     match (&key.key, key.mods.cmd, key.mods.shift) {
         (Key::Tab, false, back) => return s.step(back),
-        (Key::Escape, false, _) => return s.escape(),
+        (Key::Escape, false, _) => return s.drop_typed() || s.escape(),
         (Key::Enter, false, _) => return s.finish_tool(),
         (Key::Backspace, false, _) => return s.back_point(),
         (Key::Delete, false, _) => {
@@ -122,13 +132,37 @@ pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
         (Key::Command('z'), true, true) | (Key::Command('y'), true, _) => {
             s.redo();
         }
-        _ => return false,
+        // A letter or digit typed plainly, with no key held but Shift, is a shortcut's.
+        (Key::Text(text), false, _) if !key.mods.alt && !key.mods.ctrl && !key.mods.logo => {
+            return match (text.chars().next(), text.chars().count()) {
+                (Some(c), 1) => s.type_key(c),
+                _ => false,
+            };
+        }
+        _ => return chord(s, key, tx),
+    }
+    true
+}
+
+/// A chord the core's table names: the ones that ask for a file are the top bar's and the export's, the rest the app's own.
+fn chord(s: &mut App, key: &KeyEvent, tx: &mut Tx) -> bool {
+    let Some(action) = keys::written(&key.key, key.mods).and_then(|w| shortcuts::chord(&w)) else { return false };
+    match action {
+        "cmd.save" => topbar::save(s, tx),
+        "cmd.open" => topbar::open(tx),
+        "ui.file.save_as" => topbar::save_as(tx),
+        "ui.file.export_pdf" => export::ask(s, tx, "pdf"),
+        other => {
+            s.run_action(other);
+        }
     }
     true
 }
 
 #[cfg(test)]
 mod dialog_tests;
+#[cfg(test)]
+mod keys_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

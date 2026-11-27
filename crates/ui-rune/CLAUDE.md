@@ -108,3 +108,6 @@ One line per module. A new module adds its line here, not to the root.
   [the views](../../docs/areas/rune-ui-views.md).
 - `app/export.rs`: `App::export_view`, the view shown written through the core's `export` command (and `export_target`, `export_file_name`); `ui/export.rs`: the top bar's PDF and PNG
   buttons, which ask the system's dialog for the file. The form for the command's other parameters is the dialogs' generic command form. Detail: [the views](../../docs/areas/rune-ui-views.md).
+- `keys.rs`: Revit's two-letter shortcuts typed (`Typed`: the letters waiting, the two seconds, the second that makes nothing) and a chord written as the core's table writes it; the table is the core's
+  (`crates/core/src/shortcuts.rs`, which a test holds to egui's). `app/keys.rs`: what a code or a chord does, through the buttons' own methods, and the status bar's "not in this window yet". `ui/mod.rs`
+  `on_key` reads the typed letters and the chords in every view. Detail: [the views](../../docs/areas/rune-ui-views.md#6-revit-shortcuts-cratescoresrcshortcutsrs-keysrs-appkeysrs-uimodrs).
