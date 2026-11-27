@@ -45,7 +45,7 @@ pub struct Info {
     pub shape: Shape,
 }
 
-pub const ALL: [Info; 11] = [
+pub static ALL: [Info; 11] = [
     Info { source: Source::Materials, title: "Materials", command: "material", shape: Shape::Named },
     Info { source: Source::LineStyles, title: "Line Styles", command: "line_style", shape: Shape::Named },
     Info { source: Source::LinePatterns, title: "Line Patterns", command: "line_pattern", shape: Shape::Named },

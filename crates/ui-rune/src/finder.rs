@@ -74,11 +74,9 @@ fn ranked(query: &str, levels: &[(Id, String)]) -> Vec<Hit> {
     for info in &library::ALL {
         let label = t(info.title);
         if matches(&format!("{label} manage {}", info.command), query) {
-            rows.push((
-                rank(label, &first),
-                0,
-                Hit { label: label.to_string(), note: t("Manage").to_string(), found: Found::Manage(info.source) },
-            ));
+            // The word Manage lists the managers first, before the commands whose own label has it (Manage Links).
+            let r = if first == "manage" { 0 } else { rank(label, &first) };
+            rows.push((r, 0, Hit { label: label.to_string(), note: t("Manage").to_string(), found: Found::Manage(info.source) }));
         }
     }
     let every = tools::TOOLS.iter().flat_map(|(_, list)| list.iter()).chain(tools::MODIFY.iter());
@@ -161,6 +159,11 @@ mod tests {
         for info in &library::ALL {
             assert!(manage.iter().any(|h| h.found == Found::Manage(info.source)), "{} is listed under Manage", info.title);
         }
+        assert!(
+            manage.iter().take(library::ALL.len()).all(|h| matches!(h.found, Found::Manage(_))),
+            "and they come first, before Manage Links"
+        );
+        assert_eq!(manage.first().map(|h| &h.found), Some(&Found::Manage(Source::Materials)));
     }
 
     #[test]
