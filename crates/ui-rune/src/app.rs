@@ -24,6 +24,7 @@ use crate::status;
 use crate::tooling::Tooling;
 use crate::views::{self, ViewKind, Views};
 
+mod browser;
 pub mod dialogs;
 mod export;
 mod keys;
@@ -110,6 +111,8 @@ pub struct App {
     pub view: ViewKind,
     /// What the Project Browser lists, and the name of the view shown.
     pub views: Views,
+    /// The text typed in the Project Browser's search.
+    pub views_find: TextEdit,
     /// The section or elevation shown, with the thread that makes its picture (`section.rs`).
     pub cut: Cut,
     /// The letters of a shortcut typed and waiting for the next (`keys.rs`).
@@ -196,6 +199,7 @@ impl App {
             pixels: Pixels::new(),
             view: ViewKind::default(),
             views: Views::default(),
+            views_find: TextEdit::new(""),
             cut: Cut::new(),
             typed: Typed::default(),
             orbit: Orbit::new(),

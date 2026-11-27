@@ -6,6 +6,8 @@
 use bimcraft_core::ids::Id;
 use bimcraft_core::model::{Element, Model};
 
+use crate::views::{Target, ViewKind};
+
 /// What an item of the menu does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -23,9 +25,44 @@ pub enum Action {
     ZoomToFit,
     ZoomIn,
     ZoomOut,
+    // The Project Browser's menu (`browser_items`): what a right click over a row, a group, a type or a linked model offers.
+    /// A copy of a plan view, a copy with the annotation of the plan, a view that follows it (`duplicate_view`).
+    Duplicate,
+    DuplicateDetailing,
+    DuplicateDependent,
+    /// Takes the view (a plan view, a 3D view, a callout, a schedule) out of the project.
+    DeleteView,
+    /// A print set of the views picked together, or of the one the click was over.
+    CreatePrintSet,
+    ExpandAll,
+    CollapseAll,
+    /// Type Properties of the type the row is.
+    EditType,
+    /// Takes the type out of the project, which refuses while an element uses it.
+    DeleteType,
+    ReloadLink,
+    RemoveLink,
 }
 
 impl Action {
+    /// Whether it is an item of the Project Browser's menu: what it does is `App::act_browser`'s.
+    pub fn is_browser(self) -> bool {
+        matches!(
+            self,
+            Action::Duplicate
+                | Action::DuplicateDetailing
+                | Action::DuplicateDependent
+                | Action::DeleteView
+                | Action::CreatePrintSet
+                | Action::ExpandAll
+                | Action::CollapseAll
+                | Action::EditType
+                | Action::DeleteType
+                | Action::ReloadLink
+                | Action::RemoveLink
+        )
+    }
+
     /// Its label, in English: the menu translates it.
     pub fn label(self) -> &'static str {
         match self {
@@ -39,6 +76,16 @@ impl Action {
             Action::ZoomToFit => "Zoom to Fit",
             Action::ZoomIn => "Zoom In",
             Action::ZoomOut => "Zoom Out",
+            Action::Duplicate => "Duplicate",
+            Action::DuplicateDetailing => "Duplicate with Detailing",
+            Action::DuplicateDependent => "Duplicate as Dependent",
+            Action::DeleteView | Action::DeleteType => "Delete",
+            Action::CreatePrintSet => "Create Print Set\u{2026}",
+            Action::ExpandAll => "Expand All",
+            Action::CollapseAll => "Collapse All",
+            Action::EditType => "Edit Type",
+            Action::ReloadLink => "Reload",
+            Action::RemoveLink => "Remove",
         }
     }
 
@@ -97,6 +144,43 @@ pub fn items(m: &Model, selection: &[Id], tool: bool, finishable: bool) -> Vec<V
         }
     }
     groups.push(vec![Item::new(Action::ZoomToFit, true), Item::new(Action::ZoomIn, true), Item::new(Action::ZoomOut, true)]);
+    groups
+}
+
+/// What the Project Browser's menu offers over `target`, in groups, as egui's browser has them: a plan (a level's or a plan view's) can be
+/// duplicated three ways, a plan view, a 3D view other than `{3D}`, a callout, a schedule of the project's and a reinforcement detail
+/// can be deleted, a view can go in a print set, a type can be edited or deleted, a linked model reloaded or removed; folding is
+/// always there.
+pub fn browser_items(m: &Model, target: &Target) -> Vec<Vec<Item>> {
+    let on = |a| Item::new(a, true);
+    let mut groups: Vec<Vec<Item>> = Vec::new();
+    match target {
+        Target::View(kind) => {
+            let plan = match *kind {
+                ViewKind::Plan(id) | ViewKind::Ceiling(id) => matches!(m.elements.get(id), Some(Element::Level(_) | Element::PlanView(_))),
+                _ => false,
+            };
+            if plan {
+                groups.push(vec![on(Action::Duplicate), on(Action::DuplicateDetailing), on(Action::DuplicateDependent)]);
+            }
+            let deletable = match *kind {
+                ViewKind::Plan(id) | ViewKind::Section(id) | ViewKind::Ceiling(id) => {
+                    matches!(m.elements.get(id), Some(Element::PlanView(_) | Element::DetailView(_)))
+                }
+                ViewKind::View3D(Some(id)) => matches!(m.elements.get(id), Some(Element::View3D(v)) if v.name != "{3D}"),
+                ViewKind::Table(id) => matches!(m.elements.get(id), Some(Element::Schedule(_) | Element::RebarDetail(_))),
+                _ => false,
+            };
+            if deletable {
+                groups.push(vec![on(Action::DeleteView)]);
+            }
+            groups.push(vec![Item::new(Action::CreatePrintSet, crate::views::element_id(m, *kind).is_some())]);
+        }
+        Target::Type(..) => groups.push(vec![on(Action::EditType), on(Action::DeleteType)]),
+        Target::Link(_) => groups.push(vec![on(Action::ReloadLink), on(Action::RemoveLink)]),
+        Target::Group(_) => {}
+    }
+    groups.push(vec![on(Action::ExpandAll), on(Action::CollapseAll)]);
     groups
 }
 

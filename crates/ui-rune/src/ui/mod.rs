@@ -38,10 +38,10 @@ pub const PANEL_WIDTH: f32 = 300.0;
 
 pub fn view(s: &App, _: &mut Cx<App>) -> El {
     let th = tok::theme(s.dark());
-    // The right-hand column both profiles share: the selected element's properties over the project's levels.
-    let side = col().w(PANEL_WIDTH).h_full().child(properties::panel(s, &th)).child(browser::panel(s, &th));
-    // The plan's right-click menu, when it is open, puts its elements in `layer`, which go over the whole window.
+    // The plan's right-click menu, and the Project Browser's, when one is open, put their elements in `layer`, which go over the whole window.
     let mut layer = Vec::new();
+    // The right-hand column both profiles share: the selected element's properties over the project's views.
+    let side = col().w(PANEL_WIDTH).h_full().child(properties::panel(s, &th)).child(browser::panel(s, &th, &mut layer));
     let canvas = menu::with_menu(s, canvas::canvas(s, &th), &mut layer);
     let middle = match s.profile {
         Profile::Bimcraft => row().grow(1.0).min_h(0.0).child(tools::palette(s, &th)).child(canvas).child(side),

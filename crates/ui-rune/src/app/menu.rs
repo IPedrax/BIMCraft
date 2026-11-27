@@ -27,6 +27,10 @@ impl App {
 
     /// Does what an item of the menu says, and closes the menu.
     pub fn act(&mut self, action: Action) {
+        // The Project Browser's menu is another menu: its items are `act_browser`'s, and it reads what the click was over first.
+        if action.is_browser() {
+            return self.act_browser(action);
+        }
         self.tooling.menu = None;
         match action {
             Action::Finish => {
@@ -45,6 +49,8 @@ impl App {
             Action::ZoomToFit => self.zoom_fit(),
             Action::ZoomIn => self.zoom_by(1.25),
             Action::ZoomOut => self.zoom_by(0.8),
+            // The browser's items were done above.
+            _ => {}
         }
     }
 

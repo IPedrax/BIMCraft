@@ -111,3 +111,5 @@ One line per module. A new module adds its line here, not to the root.
 - `keys.rs`: Revit's two-letter shortcuts typed (`Typed`: the letters waiting, the two seconds, the second that makes nothing) and a chord written as the core's table writes it; the table is the core's
   (`crates/core/src/shortcuts.rs`, which a test holds to egui's). `app/keys.rs`: what a code or a chord does, through the buttons' own methods, and the status bar's "not in this window yet". `ui/mod.rs`
   `on_key` reads the typed letters and the chords in every view. Detail: [the views](../../docs/areas/rune-ui-views.md#6-revit-shortcuts-cratescoresrcshortcutsrs-keysrs-appkeysrs-uimodrs).
+- `views/find.rs`: the browser's search (egui's wildcards). `app/browser.rs`: a press on a row (open, pick together with Ctrl or Shift, a type's Type Properties, select a link), the tab, and what the browser's menu items do; the
+  menu's items are `context::browser_items`, the same `Action` and `App::act` as the plan's menu. Detail: [the views](../../docs/areas/rune-ui-views.md#7-the-project-browsers-leftovers-viewsrs-viewsfindrs-appbrowserrs-uibrowserrs-contextrs).

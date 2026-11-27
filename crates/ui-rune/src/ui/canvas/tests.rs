@@ -39,7 +39,13 @@ fn open(rt: &mut Runtime<App>, kind: ViewKind) {
 #[test]
 fn the_browser_has_a_row_for_every_view_and_a_press_on_a_group_folds_it() {
     let mut rt = window();
-    let keys: Vec<String> = rt.state.views.groups.iter().flat_map(|g| g.entries.iter().map(|e| e.key.clone())).collect();
+    let keys: Vec<String> = rt
+        .state
+        .views
+        .groups
+        .iter()
+        .flat_map(|g| g.entries.iter().filter(|e| e.kind != ViewKind::Nothing).map(|e| e.key.clone()))
+        .collect();
     assert!(keys.len() > 10);
     for key in &keys {
         assert!(rt.find(key).is_some(), "a row for {key}");
@@ -58,7 +64,7 @@ fn the_browser_has_a_row_for_every_view_and_a_press_on_a_group_folds_it() {
     assert!(rt.find(&format!("ceiling-{level}")).is_some(), "the other groups stay");
     let head = rt.find("group-Floor Plans").expect("the header stays");
     tap(&mut rt, head);
-    assert!(rt.state.views.folded.is_empty() && rt.find(&row).is_some(), "opened again: its rows are back");
+    assert!(!rt.state.views.folded.contains("Floor Plans") && rt.find(&row).is_some(), "opened again: its rows are back");
 }
 
 #[test]

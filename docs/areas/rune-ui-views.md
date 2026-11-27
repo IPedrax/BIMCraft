@@ -217,3 +217,36 @@ visual styles, Properties and Project Browser toggles, Keyboard Shortcuts, Setti
 the physical key (egui reads the key's place, so `WA` works on a Russian layout): on a layout whose letters are not Latin, a shortcut is
 typed with the Latin ones, until Rune's key events say which key it was. A tool that takes a typed length (digits and a unit) has no
 such typing here, so digits are only ever `3D`'s.
+
+## 7. The Project Browser's leftovers (`views.rs`, `views/find.rs`, `app/browser.rs`, `ui/browser.rs`, `context.rs`)
+
+**Tabs.** All, Views, Schedules, Sheets and Families, as egui's (its Legends tab has nothing to list and is left out). Each group knows its
+tab (`Group::tab`); a tab keeps to its groups, All lists every one, and a tab that keeps to a single group shows its rows without the group's
+name, as egui's does. Linked Models is listed under All only.
+
+**Families and Linked Models.** The Families group lists every type of the project as a row `Wall: Exterior - 300mm`, by category and name,
+from the same table Type Properties reads (`typeprops::all`); it starts folded, being the longest list. A press on a type opens its Type
+Properties (the window has no Type Selector, which is what a press does in egui). Component families as such are not listed apart from
+their types. Linked Models lists each link (`name`, or `name (not loaded)`); a press selects it. These rows are `Pick::Type` and
+`Pick::Select`; a view's row is `Pick::Open`.
+
+**Search.** The words typed, split at spaces, at most 64 characters of them; each must match a row's name or its group's name (a word the
+group's name matches is spent, so `ceiling 2` finds Level 2's ceiling plan), with egui's wildcards, `*` for any run of characters and `?` for any
+one, case aside (`views/find.rs`, a copy of egui's `spans`, tested the same). A search opens every group it finds something in and lists no
+group with nothing in it. Not here: egui's marks on the letters that matched, and a search kept across projects.
+
+**Picking views together.** A plain press opens the view and is the one picked; **Ctrl** toggles one without opening (the view on screen counts
+as picked first), **Shift** picks the run from the last one picked to the one pressed in the order the browser lists them now (the tab and the search
+apply, folds do not), Shift and Ctrl add the run (`Views::pick`). With more than one picked, the picked rows are lit instead of the view shown.
+What is picked is let go of when the model no longer has the view.
+
+**The right-click menu**, by `context::browser_items` and `App::act`, the plan's menu's own mechanism: the same `Action` type, `rune_kit`'s `Menu` at the
+point the click came from, one open at a time with the plan's. Over a level's or a plan view's plan: Duplicate, Duplicate with Detailing, Duplicate as
+Dependent (`duplicate_view`, the copy opens); Delete over a plan view, a callout, a 3D view other than `{3D}`, a schedule of the project's and a reinforcement
+detail (`delete`); Create Print Set over a view (`print_set`, named `Print Set n`, of the views picked together when the click was over one of them, else of the one
+clicked; a ceiling plan, which is no element, cannot be in one yet, and the item says so); over a type: Edit Type and Delete (`delete_type`, which the
+project refuses while an element uses the type); over a linked model: Reload and Remove (`reload`, `delete`); and Expand All and Collapse All over anything.
+Not here, from egui's menu: Show as Underlay (the underlay's own tool state), Publisher (a dialog), Select All Instances over a type, the Delete over a
+family's whole group, and the Create Print Set dialog that names the set (the name is made).
+
+**Not done in this slice:** the minimap and the 3D card path, which the brief left out.

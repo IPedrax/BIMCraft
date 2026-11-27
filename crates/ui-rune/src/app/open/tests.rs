@@ -2,6 +2,7 @@ use bimcraft_core::geom::P2;
 use serde_json::json;
 
 use super::*;
+use crate::views::Pick;
 
 /// The first view of a group of the browser.
 fn first_of(app: &App, label: &str) -> ViewKind {
@@ -59,7 +60,8 @@ fn a_view_with_no_canvas_yet_has_no_drawing_and_the_plan_comes_back_framed() {
 #[test]
 fn every_kind_the_browser_lists_opens_and_a_stale_one_changes_nothing() {
     let mut app = App::sample();
-    let kinds: Vec<ViewKind> = app.views.groups.iter().flat_map(|g| g.entries.iter().map(|e| e.kind)).collect();
+    let kinds: Vec<ViewKind> =
+        app.views.groups.iter().flat_map(|g| g.entries.iter().filter(|e| e.pick == Pick::Open).map(|e| e.kind)).collect();
     assert!(kinds.len() > 10);
     for kind in kinds {
         app.open_view(kind);

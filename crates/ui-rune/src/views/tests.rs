@@ -31,9 +31,10 @@ fn the_browser_lists_every_view_of_the_sample_house_in_egui_groups() {
             "Elevations (Building Elevation)",
             "Sections (Building Section)",
             "Schedules/Quantities (all)",
-            "Sheets (all)"
+            "Sheets (all)",
+            "Families"
         ],
-        "the groups a project has, in egui's order: no empty callouts, panel schedules or reinforcement details"
+        "the groups a project has, in egui's order: no empty callouts, panel schedules or reinforcement details, and the families"
     );
 
     let floors = group(&groups, "Floor Plans");
@@ -67,7 +68,7 @@ fn nothing_the_tree_lists_is_missing_from_the_model_and_every_row_has_a_key_of_i
     let m = &app.session.model;
     let groups = tree(m);
     let entries: Vec<&Entry> = groups.iter().flat_map(|g| &g.entries).collect();
-    assert!(entries.iter().all(|e| exists(m, e.kind)), "every row opens something the model has");
+    assert!(entries.iter().filter(|e| e.pick == Pick::Open).all(|e| exists(m, e.kind)), "every view row opens something the model has");
     let keys: HashSet<&str> = entries.iter().map(|e| e.key.as_str()).collect();
     assert_eq!(keys.len(), entries.len(), "a key finds one row");
     assert!(entries.iter().all(|e| !e.label.is_empty()));
@@ -173,11 +174,109 @@ fn folding_a_group_changes_the_browser_and_opening_it_again_changes_it_back() {
     let before = v.rev;
     v.rebuild(&app.session.model, ViewKind::Nothing);
     assert_eq!(v.rev, before, "a model that has not changed leaves the browser as it was");
+    assert!(v.folded.contains(FAMILIES) && !v.folded.contains("Floor Plans"), "the families start folded: the longest list");
     v.toggle("Floor Plans");
     assert!(v.folded.contains("Floor Plans") && v.rev > before);
     v.toggle("Floor Plans");
-    assert!(v.folded.is_empty());
+    assert!(!v.folded.contains("Floor Plans"));
     let shown = v.rev;
     v.rebuild(&app.session.model, ViewKind::Ceiling(app.levels[0].0));
     assert!(v.rev > shown, "a view with another title is a change");
+}
+
+fn built(app: &App) -> Views {
+    let mut v = Views::default();
+    v.rebuild(&app.session.model, ViewKind::Nothing);
+    v
+}
+
+#[test]
+fn a_tab_keeps_to_one_kind_of_group_and_all_has_every_one() {
+    let app = App::sample();
+    let mut v = built(&app);
+    let all: Vec<&str> = v.rows("").iter().map(|(g, _)| g.label).collect();
+    assert_eq!(all.len(), v.groups.len(), "All lists every group");
+    for (tab, only) in [
+        (Tab::Sheets, &["Sheets (all)"][..]),
+        (Tab::Families, &["Families"][..]),
+        (Tab::Schedules, &["Schedules/Quantities (all)"][..]),
+        (Tab::Views, &["Floor Plans", "Ceiling Plans", "3D Views", "Elevations (Building Elevation)", "Sections (Building Section)"][..]),
+    ] {
+        v.set_tab(tab);
+        let got: Vec<&str> = v.rows("").iter().map(|(g, _)| g.label).collect();
+        assert_eq!(got, only, "{tab:?}");
+    }
+    let rev = v.rev;
+    v.set_tab(Tab::Views);
+    assert_eq!(v.rev, rev, "the tab that is in force is no change");
+    assert_eq!(Tab::ALL.len(), 5);
+    assert!(Tab::ALL.iter().all(|t| t.key().starts_with("tab-") && !t.name().is_empty()));
+}
+
+#[test]
+fn the_families_are_every_type_of_the_project_and_a_press_on_one_is_its_type_properties() {
+    let app = App::sample();
+    let v = built(&app);
+    let families = group(&v.groups, "Families");
+    assert!(families.entries.len() > 5, "the system's types: {}", families.entries.len());
+    assert!(families.entries.iter().all(|e| e.kind == ViewKind::Nothing && matches!(e.pick, Pick::Type(..))));
+    let wall = families.entries.iter().find(|e| e.label.starts_with("Wall: ")).expect("a wall type");
+    assert!(matches!(&wall.pick, Pick::Type(c, n) if c == "wall" && wall.label == format!("Wall: {n}")), "{wall:?}");
+    let by = |e: &Entry| e.label.split_once(": ").map(|(c, n)| (c.to_lowercase(), n.to_lowercase())).unwrap_or_default();
+    let keys: Vec<(String, String)> = families.entries.iter().map(by).collect();
+    let mut sorted = keys.clone();
+    sorted.sort();
+    assert_eq!(keys, sorted, "by category and name");
+}
+
+#[test]
+fn a_search_finds_what_has_every_word_in_its_name_or_its_groups_and_nothing_typed_is_all() {
+    let app = App::sample();
+    let mut v = built(&app);
+    let level = app.levels[0].1.clone();
+    let rows = v.rows(&format!("ceiling {}", level.to_lowercase()));
+    assert_eq!(rows.len(), 1, "only the ceiling plans' group has something");
+    assert_eq!(rows[0].0.label, "Ceiling Plans");
+    assert_eq!(rows[0].1.iter().map(|e| e.label.as_str()).collect::<Vec<_>>(), [level.as_str()]);
+    assert!(v.rows("sec* 1").iter().any(|(g, e)| g.label == "Sections (Building Section)" && !e.is_empty()), "a wildcard");
+    assert!(v.rows("zzz").is_empty() && v.rows("   ").len() == v.groups.len());
+    assert_eq!(
+        v.rows("sheets").iter().find(|(g, _)| g.label == "Sheets (all)").map(|(_, e)| e.len()),
+        Some(3),
+        "a group's name takes all its rows"
+    );
+    v.set_tab(Tab::Sheets);
+    assert!(v.rows("a10*").iter().all(|(g, _)| g.label == "Sheets (all)"), "a tab and a search together");
+    assert_eq!(v.order("a101").len(), 1);
+}
+
+#[test]
+fn views_are_picked_together_as_a_list_does_and_folding_all_goes_through_every_group() {
+    let app = App::sample();
+    let mut v = built(&app);
+    let order = v.order("");
+    assert!(order.len() > 8 && order.iter().all(|k| *k != ViewKind::Nothing), "the views, in the order the browser shows them");
+    let (a, b, c, d) = (order[0], order[1], order[2], order[3]);
+    v.pick_one(a);
+    assert_eq!(v.picked, [a]);
+    v.pick(c, false, true, &order, a);
+    assert_eq!(v.picked, [a, c], "Ctrl adds one");
+    v.pick(c, false, true, &order, a);
+    assert_eq!(v.picked, [a], "and takes it away again");
+    v.pick_one(a);
+    v.pick(d, true, false, &order, a);
+    assert_eq!(v.picked, [a, b, c, d], "Shift picks the run from the last one picked");
+    v.pick_one(a);
+    v.pick(ViewKind::Section(7), true, false, &order, a);
+    assert_eq!(v.picked, [a, ViewKind::Section(7)], "a view that is not listed is toggled, as Ctrl would");
+    let mut w = built(&app);
+    w.pick(c, false, true, &order, a);
+    assert_eq!(w.picked, [a, c], "Ctrl with nothing picked counts the view on screen first");
+    w.pick(d, true, true, &order, a);
+    assert_eq!(w.picked, [a, c, d], "Shift and Ctrl add the run from the last one picked, to the one pressed");
+
+    v.fold_all(true);
+    assert!(v.groups.iter().all(|g| v.folded.contains(g.label)));
+    v.fold_all(false);
+    assert!(v.folded.is_empty());
 }
