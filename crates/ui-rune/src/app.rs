@@ -24,6 +24,7 @@ use crate::tooling::Tooling;
 use crate::views::{self, ViewKind, Views};
 
 pub mod dialogs;
+pub mod discipline;
 mod export;
 mod open;
 mod orbit;

@@ -254,3 +254,41 @@ fn edit_type_with_nothing_selected_says_so_in_the_status_bar() {
     assert!(rt.state.dialogs.types.is_none());
     assert!(rt.state.message.is_some());
 }
+
+#[test]
+fn a_discipline_dialog_is_drawn_from_what_it_says_a_list_is_chosen_from_and_close_closes_it() {
+    use crate::discipline::Kind;
+    let mut rt = window();
+    assert!(rt.find("discipline-body").is_none(), "nothing is drawn until one is open");
+    rt.update(|s, _| {
+        s.open_discipline(Kind::Materials);
+    });
+    rt.frame(0.0);
+    rt.frame(0.0);
+    settle(&mut rt);
+    for key in [
+        "discipline-body",
+        "discipline-tabs",
+        "discipline-footer",
+        "discipline-foot-calculate",
+        "discipline-foot-close",
+        "discipline-selected",
+    ] {
+        assert!(rt.find(key).is_some(), "{key} is in the dialog");
+    }
+    // The Level list opens over the dialog, and a row of it is the level the dialog asks about.
+    tap(&mut rt, "discipline-pick-0-trigger");
+    assert_eq!(rt.state.dialogs.discipline.as_ref().and_then(|o| o.open), Some(0), "its list opens");
+    settle(&mut rt);
+    tap(&mut rt, "option1");
+    assert_eq!(rt.state.dialogs.discipline.as_ref().and_then(|o| o.open), None);
+    let choice = rt.state.dialogs.discipline.as_ref().and_then(|o| o.dialog.choice(0)).expect("the level list");
+    let asked = choice.current.and_then(|i| choice.options.get(i).cloned());
+    assert!(
+        choice.options.len() > 1 && asked.as_ref() == choice.options.get(1),
+        "the second row is the first level: {asked:?} of {:?}",
+        choice.options
+    );
+    tap(&mut rt, "discipline-foot-close");
+    assert!(rt.state.dialogs.discipline.is_none() && rt.find("discipline-body").is_none(), "Close closes it");
+}

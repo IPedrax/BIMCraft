@@ -51,6 +51,8 @@ pub struct Dialogs {
     pub settings: Option<super::settings::SettingsDialog>,
     /// Type Properties (`app/types.rs`).
     pub types: Option<super::types::TypeDialog>,
+    /// A discipline dialog: Reinforce, Quantities and the rest (`app/discipline.rs`).
+    pub discipline: Option<super::discipline::Open>,
     /// Where an edit goes when its field is gone (a stale handler): never read.
     pub scratch: TextEdit,
 }
@@ -58,18 +60,26 @@ pub struct Dialogs {
 impl Dialogs {
     /// A dialog is open: the keys and pointer are its, not the plan's.
     pub fn any(&self) -> bool {
-        self.form.is_some() || self.find.is_some() || self.settings.is_some() || self.types.is_some()
+        self.form.is_some() || self.find.is_some() || self.settings.is_some() || self.types.is_some() || self.discipline.is_some()
     }
 
     /// Closes every dialog: they are open one at a time.
     pub fn clear(&mut self) {
-        (self.form, self.find, self.settings, self.types) = (None, None, None, None);
+        (self.form, self.find, self.settings, self.types, self.discipline) = (None, None, None, None, None);
     }
 
     /// The box of field `i` of the open Type Properties.
     pub fn type_edit(&mut self, i: usize) -> &mut TextEdit {
         match self.types.as_mut().and_then(|d| d.fields.get_mut(i)) {
             Some(f) => &mut f.edit,
+            None => &mut self.scratch,
+        }
+    }
+
+    /// The box of field `i` of the open discipline dialog.
+    pub fn discipline_edit(&mut self, i: usize) -> &mut TextEdit {
+        match self.discipline.as_mut().and_then(|o| o.dialog.edit_mut(i)) {
+            Some(e) => e,
             None => &mut self.scratch,
         }
     }
@@ -136,6 +146,9 @@ impl App {
             Found::Settings => self.toggle_settings(),
             Found::TypeProperties => {
                 self.open_type_of_selection();
+            }
+            Found::Discipline(kind) => {
+                self.open_discipline(kind);
             }
         }
     }

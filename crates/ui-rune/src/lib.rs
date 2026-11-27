@@ -12,6 +12,7 @@
 pub mod app;
 pub mod camera;
 pub mod context;
+pub mod discipline;
 pub mod finder;
 pub mod forms;
 pub mod grips;

@@ -230,3 +230,23 @@ the pointer when no length is (egui's `typed_length` and `drawing.other`).
   has no ghost. Not here: a structural column's, a footing's, a beam's and a component's ghost, and the dimensions egui writes beside them.
 - **The shape bar** is two rows now (eleven buttons side by side are wider than the plan), and the Options Bar sits under it.
 
+## Round 3: the discipline dialogs
+
+egui has Reinforce, Quantities, Electrical Settings, a stair type's page and a curtain wall's Edit Pattern as windows of their own. Here each is a
+`Discipline` (`discipline.rs`): the dialog described as data (sections of rows of cells: words, boxes, lists, check boxes, buttons; tabs; a foot of
+buttons), with the text typed kept in `TextEdit`s, and one widget (`ui/discipline.rs`) draws every one. A dialog does what a button asks through a
+`Host` (the model, the selection, `execute`, `batch` as one undo step, `say` for the status bar), which `App` is, so each dialog is tested with no window:
+press, read the commands it made, read what it says. A refusal is the core's words, kept in the dialog (`error()`) and drawn inside it. The pure logic egui
+keeps in its window crate is copied into each dialog's module (`ui-egui` is untouched).
+
+- **Opening**: `App::open_discipline(Kind)`, from Find (rows of the same name come before the generic command's form, so Reinforce, Materials, Steel List and Cut Plan open
+  their dialog), `Discipline::opened` asks the project for what the dialog shows at once. The dialog is taken out of `Dialogs` while it works, so it may run commands, and put
+  back unless it asked to close (`Outcome`). A button that asks for a file (`Foot::file`, Export) opens the system's dialog first and `Discipline::saved` is told where.
+- **Reinforce** (`discipline/reinforce.rs`, RF): egui's groups of fields for a beam, a column, a round column, a footing and a floor as data, the cover, the steel, and the
+  standard to check against (NBR 6118's aggressiveness class, EN 1992's exposure class and fyk). The fields filled become the `reinforce` command's parameters (a number that is none
+  is refused naming its group and what was typed); presets are the core's `reinforcement_preset` (save under a name, load into the fields, delete); the check's notes keep the dialog open
+  with the bars made, and Remove Bars deletes what the command made for the host. Not kept: what was typed for the next host of the same kind (egui keeps it).
+- **Quantities** (`discipline/quantities.rs`, QT, BL and CU): Materials, Steel List and Cut Plan as three tabs over `quantities`, `steel_list` and `cut_plan`, each result as tables (300 rows
+  at most, the rest are in the file), Calculate, Export (CSV or Excel through the command's own `path`), and Create Schedules as one undo step. A cut plan waits for the stock length typed.
+  Not here: the schedule made is not opened as a view.
+

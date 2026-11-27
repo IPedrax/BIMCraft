@@ -24,6 +24,8 @@ pub enum Found {
     Settings,
     /// Opens Type Properties on the selected element's type.
     TypeProperties,
+    /// Opens a discipline dialog (Reinforce, Quantities and the rest).
+    Discipline(crate::discipline::Kind),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -73,6 +75,15 @@ fn ranked(query: &str, levels: &[(Id, String)]) -> Vec<Hit> {
         let label = t(english);
         if matches(&format!("{label} {id}"), query) {
             rows.push((rank(label, &first), 0, Hit { label: label.to_string(), note: t("Tool").to_string(), found: Found::Tool(id) }));
+        }
+    }
+    // Before the commands: a dialog of its own is what a row of the same name should open, not the generic form.
+    for kind in crate::discipline::Kind::ALL {
+        let label = t(kind.label());
+        let shortcut = kind.shortcut();
+        if matches(&format!("{label} {shortcut}"), query) {
+            let note = if shortcut.is_empty() { t("Dialog").to_string() } else { shortcut.to_string() };
+            rows.push((rank(label, &first), 1, Hit { label: label.to_string(), note, found: Found::Discipline(kind) }));
         }
     }
     for cmd in engine::commands() {

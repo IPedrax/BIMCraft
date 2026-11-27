@@ -12,6 +12,7 @@ use crate::profile::Profile;
 mod browser;
 mod canvas;
 mod dialog;
+mod discipline;
 mod draw_bar;
 mod export;
 mod find;
