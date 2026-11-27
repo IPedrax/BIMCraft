@@ -406,7 +406,7 @@ other_files(
         ui_msg!("Point Cloud"),
         &[],
         "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?} brings in a laser scan (`path`: \
-         PTS, XYZ, PLY, LAS or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
+         PTS, XYZ, PLY, LAS, LAZ (COPC too) or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
          cm, m (the default), in or ft; one point kept in each cube `spacing` mm wide) or places one the project holds again \
          (`cloud`, its name), as an element: its middle on `at` (the origin) and its foot on the level, or with `origin: file` \
          where its file's coordinates put it, or with `origin: shared` where they put it as the map's, by the active location \
@@ -3363,7 +3363,7 @@ other_files(
         &[],
         "{view?: a level's, section's or elevation's name or id, or {3D} (the lowest level's plan unless given), hide?: [category, \
          …], show?: […], hide_elements?: [id, …], show_elements?: […], categories?: {category: override | null, …}, elements?: \
-         {id: override | null, …}, filters?: [{filter, hidden?, projection?, cut?, halftone?, transparency?}, …], phase?: name \
+         {id: override | null, …}, filters?: [{filter, hidden?, projection?, cut?, halftone?, transparency?, scan?}, …], phase?: name \
          | null, phase_filter?: name | null, options?: {set: option | null, …}, layers?: {drawing: [layer, …] | null, …}, template?: name | null, \
          background_grid?: {visible?, main?: {enabled?, color?: [r,g,b], pen?: 0..16}, sub?: {enabled?, color?, pen?}, \
          spacing?: [X,Y] (mm), divisions?: [X,Y] (1..1000), rotation?: degrees (-360..360)} | null, \
@@ -3382,7 +3382,7 @@ other_files(
          framing plan does); under roofs, `roofframing` (a framed roof's rafters, ridge boards, rims, trimmers, headers and \
          blocking in 3D and sections: hidden, its structure layer is drawn whole) and `roofframingline` (their outlines, \
          dashed, in a plan of the roof's level: hidden unless the plan shows them). An \
-         override is {hidden?, projection?: style, cut?: style, halftone?, transparency?}, a style {color?, weight? (a pen, \
+         override is {hidden?, projection?: style, cut?: style, halftone?, transparency?, scan?}, a style {color?, weight? (a pen, \
          0 to 16: 0 a hairline, the thinnest line the screen or printer draws at any scale; 1 to 16 widths on paper from 0.10 to \
          4 mm, 4 being 0.18 mm and 10 0.35 mm, a cut wall's outline), dash? (solid, dashed, dotted), fill?, foreground?, background?}, a colour [r, g, b] or \"#rrggbb\". \
          Foreground and background override independent pattern layers: {pattern: a fill pattern's name | null, color?: [r,g,b]}; \
@@ -3391,7 +3391,12 @@ other_files(
          Projection is what a plan sees below its cut plane, a section beyond its line and the annotation; cut is what the view \
          cuts; `fill` is the cut's poché, or a 3D view's surface; in a 3D view, and in what a section sees beyond its line, a \
          projection's `color` is the colour of the edges (weight and dash draw lines, and those are vectors). Halftone draws it \
-         halfway to the paper; transparency (percent) sees through it in a 3D view. Halftone and transparency only add: a \
+         halfway to the paper; transparency (percent) sees through it in a 3D view. `scan` is what a point cloud's points are \
+         coloured by (Revit's Color Mode): {by: normal | elevation | intensity, low?, high?}, `normal` their own colours, \
+         `elevation` their height from blue through green to red between `low` and `high` (mm in the model; the scan's own foot \
+         and head where not given), `intensity` through the same colours by each point's rank among the scan's intensities, \
+         weakest blue and strongest red (a scan whose file had none keeps its colours); a projection `fill` still colours them \
+         all one colour over it. Halftone and transparency only add: a \
          filter or an element can lighten what its category doesn't, not take its category's away. Overrides merge into the last (null takes a field or the override away); an element's own \
          beats the filters applied (the first prevailing), which beat the category's. `filters` replaces the list applied; \
          `template` follows a view template; `reset` takes away all of the view's own settings. `phase` is the phase the view \
@@ -10274,6 +10279,42 @@ fn level(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": id, "name": name}))
 }
 
+/// The scan `point_cloud` reads from `paths`, each of its `formats`, with `options`: its files read a piece at a time, held to
+/// the memory the machine has free for the `cap` points the project leaves, and several stations merged at `spacing`. The outer
+/// error is a file's; the inner, the scan's.
+fn read_scan(
+    s: &Session,
+    c: &str,
+    paths: &[PathBuf],
+    formats: Vec<cloud::Format>,
+    options: &cloud::Options,
+    cap: usize,
+    spacing: f64,
+) -> Result<Result<Cloud, String>, String> {
+    // A file is read a piece at a time, so what it takes is the points kept: held to what the machine has free.
+    let budget = match memory::Budget::start(cap as u64, cloud::KEPT_BYTES) {
+        Ok(b) => b.unwrap_or_else(memory::Budget::none),
+        Err(e) => return Err(bad(c, e)),
+    }
+    .watched(s.progress.clone());
+    let mut scans = Vec::with_capacity(paths.len());
+    for (path, format) in paths.iter().zip(formats) {
+        let len = std::fs::metadata(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+        if len > cloud::MAX_BYTES {
+            return Err(bad(c, format!("{} is too large ({len} bytes; up to {})", path.display(), cloud::MAX_BYTES)));
+        }
+        // Not buffered here: each reader buffers what it reads in a row, and LAS steps over what it doesn't keep.
+        let mut file = std::fs::File::open(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let read = cloud::read_from(&mut file, format, options, Some(&budget)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let source = path.file_name().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+        scans.push((source, read));
+    }
+    Ok(match <[_; 1]>::try_from(scans) {
+        Ok([(source, read)]) => Cloud::new(&source, read),
+        Err(scans) => cloud::merge(scans, spacing).and_then(|(read, stations)| Cloud::of_stations(read, stations)),
+    })
+}
+
 /// A scan brought in from a file, or one the project holds, placed: its middle on `at` and its foot on the level, or where the
 /// file's coordinates put it.
 fn point_cloud(s: &mut Session, p: &Value) -> R {
@@ -10301,7 +10342,7 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         (None, None) => {
             return Err(bad(
                 c,
-                "give `path`, a scan file (PTS, XYZ, PLY, LAS or E57) to bring in, or `cloud`, the name of a scan the project holds",
+                "give `path`, a scan file (PTS, XYZ, PLY, LAS, LAZ or E57) to bring in, or `cloud`, the name of a scan the project holds",
             ));
         }
         (None, Some(n)) => {
@@ -10354,21 +10395,18 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("the project's scans hold {held} points, all it may; delete the point clouds of one first")));
             }
             let options = cloud::Options { scale, spacing, cap: (cap / paths.len()).max(1) };
-            let mut scans = Vec::with_capacity(paths.len());
-            for (path, format) in paths.iter().zip(formats) {
-                let len = std::fs::metadata(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
-                if len > cloud::MAX_BYTES as u64 {
-                    return Err(bad(c, format!("{} is too large ({len} bytes; up to {})", path.display(), cloud::MAX_BYTES)));
-                }
-                let bytes = std::fs::read(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-                let read = cloud::read(&bytes, format, &options).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-                let source = path.file_name().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
-                scans.push((source, read));
-            }
-            let scan = match <[_; 1]>::try_from(scans) {
-                Ok([(source, read)]) => Cloud::new(&source, read),
-                Err(scans) => cloud::merge(scans, spacing).and_then(|(read, stations)| Cloud::of_stations(read, stations)),
+            let key = cloud::ScanKey { paths: paths.clone(), scale, spacing, cap };
+            // A scan read ahead for these files and options is what reading them would give (`Session::read_scan_ahead`).
+            let ahead = s.scan_read.take().filter(|r| r.key == key).map(|r| r.cloud);
+            let scan = match ahead {
+                Some(cloud) => Ok(cloud),
+                None => read_scan(s, c, &paths, formats, &options, cap, spacing)?,
             };
+            if s.keep_scan
+                && let Ok(cloud) = &scan
+            {
+                s.scan_read = Some(cloud::ScanRead { key, cloud: cloud.clone() });
+            }
             (name, scan.map_err(|e| bad(c, e))?, true)
         }
     };

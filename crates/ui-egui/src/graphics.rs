@@ -393,6 +393,9 @@ impl BimApp {
                             let names: Vec<&str> =
                                 if d.tab == 0 { MODEL.iter().chain(&SCANS).copied().collect() } else { ANNOTATION.to_vec() };
                             styles = categories(ui, &mut d, &model, &shown, &names, !followed.contains(&Group::Categories));
+                            if d.tab == 0 && !model.clouds.is_empty() {
+                                scan_colours(ui, &mut d, &model, &shown, !followed.contains(&Group::Categories));
+                            }
                         }
                         2 => {
                             styles = categories(ui, &mut d, &model, &shown, &IMPORTED, !followed.contains(&Group::Categories));
@@ -1271,6 +1274,24 @@ fn filters(ui: &mut Ui, d: &mut VgDialog, model: &Model, shown: &Graphics, enabl
 
 /// The Elements tab: the elements hidden or overridden in this view, each a row of the table, and Add Selected for
 /// what's selected.
+/// The Model Categories tab's Point Cloud Colours: what the view colours its point clouds by (the category's override; a scan's
+/// own, on the Elements tab, prevails).
+fn scan_colours(ui: &mut Ui, d: &mut VgDialog, model: &Model, shown: &Graphics, editable: bool) {
+    ui.add_space(8.0);
+    ui.label(RichText::new(t("Point Cloud Colours")).strong());
+    let now = shown.categories.get(SCANS[0]).and_then(|o| o.scan);
+    let changed = Grid::new("vg-scan-colours")
+        .num_columns(2)
+        .spacing(vec2(16.0, 6.0))
+        .show(ui, |ui| crate::clouds::scan_colour_rows(ui, "vg-category", now, model.units, editable))
+        .inner;
+    if let Some(scan) = changed {
+        let mut o = d.draft.categories.get(SCANS[0]).cloned().unwrap_or_default();
+        o.scan = scan;
+        put_category(d, SCANS[0], o);
+    }
+}
+
 fn elements(ui: &mut Ui, d: &mut VgDialog, model: &Model, selection: &[Id]) {
     let rows: Vec<Row> = (d.listed.iter())
         .filter_map(|id| model.elements.get(id).map(|e| (*id, e.category())))
@@ -1288,6 +1309,25 @@ fn elements(ui: &mut Ui, d: &mut VgDialog, model: &Model, selection: &[Id]) {
     }
     if rows.is_empty() {
         ui.label(RichText::new(t("No element is hidden or overridden here: select some and Add Selected.")).color(pal().muted));
+    }
+    // A point cloud picked: its own colours in this view.
+    if let Some(Pick::Element(id)) = d.pick
+        && model.elements.get(id).is_some_and(|e| matches!(e, bimcraft_core::model::Element::PointCloud(_)))
+    {
+        ui.add_space(8.0);
+        ui.label(RichText::new(t("Point Cloud Colours")).strong());
+        let guid = model.guid(id);
+        let now = d.draft.elements.get(&guid).and_then(|o| o.scan);
+        let changed = Grid::new("vg-scan-colours-element")
+            .num_columns(2)
+            .spacing(vec2(16.0, 6.0))
+            .show(ui, |ui| crate::clouds::scan_colour_rows(ui, "vg-element", now, model.units, true))
+            .inner;
+        if let Some(scan) = changed {
+            let mut o = d.draft.elements.get(&guid).cloned().unwrap_or_default();
+            o.scan = scan;
+            put(d, model, &Pick::Element(id), o);
+        }
     }
     ui.add_space(6.0);
     ui.horizontal(|ui| {

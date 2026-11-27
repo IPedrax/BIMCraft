@@ -3471,8 +3471,17 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
     for (id, pc, cloud) in placed {
         let place = m.cloud_place(pc);
         let colours = cloud.colours();
+        let stretch = cloud.intensity_levels();
+        let paint = look.scan_colour(id);
+        // The heights a ramp runs between: those the view gives, or the scan's own foot and head in the model.
+        let (low, high) = match (paint.low, paint.high, m.cloud_box(id)) {
+            (Some(lo), Some(hi), _) => (lo, hi),
+            (lo, hi, Some((foot, head))) => (lo.unwrap_or(foot[2]), hi.unwrap_or(head[2])),
+            (lo, hi, None) => (lo.unwrap_or(0.0), hi.unwrap_or(0.0)),
+        };
         // Each point it sees: its dot's corner, px, its height and its colour.
         let mut seen: Vec<(i64, i64, f64, Rgb)> = Vec::new();
+        let intensity = cloud.intensity();
         for (i, p) in cloud.points().iter().enumerate().step_by(step) {
             let [x, y, z] = place(*p);
             if !(range.depth - TOL..=range.cut).contains(&z) {
@@ -3483,7 +3492,15 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
             if !(x0 > -(dot as f64) && y0 > -(dot as f64) && x0 < w as f64 && y0 < h as f64) {
                 continue;
             }
-            let base = colours.and_then(|c| c.get(i)).map_or(grey, |c| Rgb(c[0], c[1], c[2]));
+            let own = || colours.and_then(|c| c.get(i)).map_or(grey, |c| Rgb(c[0], c[1], c[2]));
+            let base = match paint.by {
+                crate::graphics::ScanBy::Elevation if high > low => crate::graphics::ramp((z - low) / (high - low)),
+                crate::graphics::ScanBy::Elevation => crate::graphics::ramp(0.5),
+                crate::graphics::ScanBy::Intensity => {
+                    intensity.and_then(|l| l.get(i)).map_or_else(own, |&v| crate::graphics::intensity_colour(v, &stretch))
+                }
+                crate::graphics::ScanBy::Normal => own(),
+            };
             seen.push((x0 as i64, y0 as i64, z, look.surface(id, base)));
         }
         let Some((lo, hi)) = seen.iter().fold(None, |b: Option<((i64, i64), (i64, i64))>, &(x, y, ..)| {

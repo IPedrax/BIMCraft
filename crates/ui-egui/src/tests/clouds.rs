@@ -50,12 +50,12 @@ fn insert_point_cloud_brings_the_files_picked_in_as_one_scan_and_selects_it() {
 #[test]
 fn a_scan_that_cant_come_in_says_why_in_its_box() {
     let mut h = app(BOX);
-    let bad = face("bad", "scan.laz", 0.0);
+    let bad = face("bad", "scan.rcp", 0.0);
     h.state_mut().point_cloud_paths(vec![bad]);
     h.run();
     press(&mut h, "OK");
     assert!(scans(&h).is_empty());
-    assert!(h.query_by_label_contains("decompress it to LAS").is_some(), "the reason shows in the box, which stays open");
+    assert!(h.query_by_label_contains("export the scan from ReCap").is_some(), "the reason shows in the box, which stays open");
     press(&mut h, "Cancel");
     assert!(h.query_by_label("OK").is_none());
 }
@@ -417,4 +417,101 @@ fn a_scan_with_a_colour_of_its_own_keeps_it_and_the_buttons_tip_says_so() {
     }
     let said = painted_text(&h).into_iter().find(|t| t.starts_with("High Contrast Point Clouds:")).unwrap_or_default();
     assert!(said.contains("a colour of its own in Visibility/Graphics keeps it"), "{said:?}");
+}
+
+/// A scan file big enough to be read on a thread of its own: a wall face like [`face`]'s, its points 1 cm apart.
+fn big_face(test: &str, name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-clouds-{}-{test}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(name);
+    let text: String =
+        (0..=200).flat_map(|i| (0..=200).map(move |k| format!("{} 0 {}\n", f64::from(i) * 0.01, f64::from(k) * 0.01))).collect();
+    std::fs::write(&path, text).unwrap();
+    assert!(std::fs::metadata(&path).unwrap().len() >= crate::clouds::IN_BACKGROUND, "the test's file is read in the frame");
+    path
+}
+
+#[test]
+fn a_big_scan_is_read_on_a_thread_of_its_own_with_its_progress_and_comes_in_as_one_undo_step() {
+    let mut h = app(BOX);
+    let before = h.state().session.history().len();
+    h.state_mut().point_cloud_paths(vec![big_face("big", "survey.xyz")]);
+    h.run();
+    press(&mut h, "OK");
+    // The window goes on drawing while the file is read, and the box says so, until the scan comes in.
+    let mut frames = 0;
+    while h.state().cloud_reading.is_some() {
+        assert!(h.query_by_label_contains("Reading survey.xyz").is_some(), "the progress box shows while it's read");
+        h.run();
+        frames += 1;
+        assert!(frames < 2000, "it was never read");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let placed = scans(&h);
+    assert_eq!(placed.len(), 1, "{}", h.state().status.text);
+    assert_eq!(h.state().session.model.clouds.get("survey").map(|c| c.read()), Some(201 * 201));
+    assert_eq!(h.state().selection, placed, "what was brought in is selected");
+    assert_eq!(h.state().session.history().len(), before + 1, "one undo step");
+    assert!(h.query_by_label_contains("Reading survey.xyz").is_none() && h.query_by_label("OK").is_none(), "both boxes closed");
+}
+
+#[test]
+fn a_big_scan_that_cant_come_in_says_why_in_its_box_once_read() {
+    let mut h = app(BOX);
+    h.state_mut().point_cloud_paths(vec![big_face("big-bad", "survey.xyz")]);
+    h.run();
+    type_into(&mut h, "Spacing (mm)", "-5");
+    press(&mut h, "OK");
+    for _ in 0..2000 {
+        if h.state().cloud_reading.is_none() {
+            break;
+        }
+        h.run();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    h.run();
+    assert!(scans(&h).is_empty());
+    assert!(h.query_by_label_contains("spacing").is_some(), "the reason shows in the box, which stays open");
+    press(&mut h, "Cancel");
+    assert!(h.query_by_label("OK").is_none());
+}
+
+/// What the view colours its point clouds by, as the category's override says.
+fn scan_mode(h: &Harness<BimApp>) -> Option<bimcraft_core::graphics::ScanColour> {
+    h.state().graphics_shown().categories.get("pointcloud").and_then(|o| o.scan)
+}
+
+#[test]
+fn the_view_control_bar_colours_a_views_point_clouds_by_height_or_intensity() {
+    use bimcraft_core::graphics::{ScanBy, ScanColour};
+    let h = app(BOX);
+    assert!(h.query_by_label("Point Cloud Colours").is_none(), "with no scan there is nothing to colour");
+    let mut h = app(&format!("point_cloud {}", json!({"path": face("modes", "face.xyz", 0.0)})));
+    press(&mut h, "Point Cloud Colours");
+    press(&mut h, "Elevation");
+    assert_eq!(scan_mode(&h), Some(ScanColour { by: ScanBy::Elevation, ..ScanColour::default() }));
+    press(&mut h, "Point Cloud Colours");
+    press(&mut h, "Intensity");
+    assert_eq!(scan_mode(&h).map(|c| c.by), Some(ScanBy::Intensity));
+    // Normal takes the mode away: the scans' own colours.
+    press(&mut h, "Point Cloud Colours");
+    press(&mut h, "Normal");
+    assert_eq!(scan_mode(&h), None);
+    // One step each.
+    h.state_mut().run("undo", json!({}));
+    h.run();
+    assert_eq!(scan_mode(&h).map(|c| c.by), Some(ScanBy::Intensity));
+}
+
+#[test]
+fn visibility_graphics_sets_the_point_clouds_colours_and_the_heights_their_ramp_runs_between() {
+    use bimcraft_core::graphics::{ScanBy, ScanColour};
+    let mut h = app(&format!("point_cloud {}", json!({"path": face("vg-modes", "face.xyz", 0.0)})));
+    shortcut(&mut h, "VG");
+    assert!(h.query_by_role_and_label(Role::ComboBox, "Color Mode").is_some(), "the Model Categories tab has the scans' colours");
+    choose(&mut h, "Color Mode", "Elevation");
+    type_into(&mut h, "Low", "500");
+    type_into(&mut h, "High", "1500");
+    press(&mut h, "OK");
+    assert_eq!(scan_mode(&h), Some(ScanColour { by: ScanBy::Elevation, low: Some(500.0), high: Some(1500.0) }));
 }

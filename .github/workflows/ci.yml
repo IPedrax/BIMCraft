@@ -84,6 +84,13 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # The core builds and reads point clouds without LAZ, whose crate is Apache-2.0 only.
+      - name: Core without LAZ
+        if: matrix.name == 'Linux'
+        run: |
+          cargo clippy -p bimcraft-core --no-default-features --all-targets -- -D warnings
+          cargo test -p bimcraft-core --no-default-features cloud
+
       # The test fixture of the guest SDK is built with it for WebAssembly: the module the plugin tests load. It is
       # not in the repository, and `cargo test` fails without it here (the tests skip only outside CI). The plugin and
       # window tests run on every runner, so this step does too.

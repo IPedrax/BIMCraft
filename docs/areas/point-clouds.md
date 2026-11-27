@@ -4,9 +4,36 @@ On the roadmap under 0.9 Interoperability. A project holds scans and places them
 plans snap to them, and the desktop brings them in (Insert > Point Cloud). IFC leaves them out, as Revit's export does: IFC4 has
 no point cloud, and `ifc_leaves_scans_out_as_revit_does` keeps the file what it was without them.
 
-Point clouds (`cloud.rs`) come from public specifications: PTS and XYZ text, PLY (text or either byte order) and ASPRS LAS 1.0
-to 1.4 uncompressed, and ASTM E57 (`Format::from_extension` says why LAZ and ReCap's RCP/RCS don't). `cloud::read` parses a file twice,
-once to measure it (`Stats`: the count, the bounds, the ranges of intensity and colour) and once to keep it: every `stride`th
+Point clouds (`cloud.rs`) come from public specifications: PTS and XYZ text, PLY (text or either byte order), ASPRS LAS 1.0
+to 1.4, LAZ and COPC, and ASTM E57 (`Format::from_extension` says why ReCap's RCP/RCS don't). LAZ (`cloud/laz.rs`) is LAS whose
+points LASzip compressed, and COPC (`.copc.laz`) is LAZ 1.4 with its chunks indexed, so both are `Format::Laz`: the header is
+LAS's (`LasHead`, shared with `las`), LASzip's record of its own ("laszip encoded", 22204) is found among the file's records,
+and the laz crate (Apache-2.0, without its `parallel` feature, whose decompressor trusts the table) gives back the records LAS
+would hold. The crate is Apache-2.0 only, so it sits behind `bimcraft-core`'s `laz` feature, on by default (as `crates/rvt`
+keeps its licence apart): a build without it refuses LAZ and says so, and a binary built with it is Apache-2.0. A file whose point format has LASzip's bit is read as LAZ whatever its name. A chunked file's table of chunks is read
+and checked before anything is held (`chunks`): no more chunks than the points and the file could fill, their points adding up
+to the header's, their bytes fitting between the points and the table. Its chunks are then decompressed side by side
+(`side_by_side`): twice as many at a time as rayon has threads, no more than `PAR_BATCH` of points, each by a decompressor of
+its own over its bytes (`decompressor`, the items' version choosing point by point or layered), and handed on in the file's
+order. A file with no table, or a chunk that decompresses past `MAX_CHUNK`, is decompressed as one stream, a megabyte at a
+time. LASzip can't step within a chunk, so a LAZ file is read once, not twice (`once`): its header says how many points it
+holds, so every `stride`th is held as it was in the file (`Held`, its shades in `f32`, which holds sixteen bits exactly) while
+the bounds and shades are measured, and kept (`Keep`) once they are known, which is what two passes keep.
+
+A file is never held whole, so its size takes no memory and isn't what limits it (`MAX_BYTES` is a terabyte, a sanity cap).
+`cloud::read_from` reads a `Source` (anything that reads and seeks: the file itself in `point_cloud`, unbuffered, or bytes in
+memory through `cloud::read`) a piece at a time: text a line at a time (none longer than `MAX_LINE`), PLY's header from its
+first megabyte and its body after it, LAS's records a megabyte at a time, or, thinned hard, one by one by seeking to every
+`stride`th (`records`), so the second pass reads only what it keeps. Each reader hands a point with its place among the file's
+points, which is how a reader that steps over records and one that doesn't thin the same. What a read takes is the points it
+keeps: `point_cloud` asks `memory::Budget` for `KEPT_BYTES` a point of what the project leaves before reading, and the read
+looks at the budget every `LOOK` points, so on a machine without the memory it stops with the budget's message instead of
+running out. The budget carries the command's progress: "Measuring the scan" (uncounted), then "Reading the points" (counted;
+a LAZ file, read once, has this stage alone), and Cancel stops it there. The reference survey (1.01 billion points, 5 million
+kept) reads from a 17 GB E57 in four and a half minutes in under 140 MB, and from an 8.8 GB LAZ in 72 seconds in about 400 MB
+(nine and a half minutes when it was decompressed twice, one chunk after another; 32 seconds natively on Windows).
+
+`cloud::read_from` parses a file twice, once to measure it (`Stats`: the count, the bounds, the ranges of intensity and colour) and once to keep it: every `stride`th
 point so `Options::cap` is never passed, then one in each cube of `spacing`, the same every time. A `Scan` keeps its points as
 `f32` about `origin`, the middle of its bounds, so a survey's coordinates far off keep their millimetres within `MAX_SPAN`;
 colour comes in eight bits whether the file has eight, sixteen or nought to one, and intensity alone is grey.
@@ -14,13 +41,15 @@ colour comes in eight bits whether the file has eight, sixteen or nought to one,
 E57 (ASTM E2807, `cloud/e57.rs`) is read from the standard with no library: the 48-byte header, pages of 1024 bytes whose last
 four are a CRC-32C (`Paged` reads the 1020 logical bytes of each; the checksums aren't checked, so a page that lies reads as
 points that lie, never a crash), and the XML section, read by a small parser of its own (elements, attributes, text, CDATA;
-capped in depth and size). Every `data3D` scan comes in, placed by its `pose` (a quaternion and a translation), as one `Scan`
+capped in depth and size, and up to 256 MiB of it held). The file is never held: `Paged` reads it through `Seek`, a window of
+1 MiB at a time, and serves the pages from that window until a read falls outside it; reading on keeps what's left of the
+window and never seeks, so a pass reads each byte about once, and a file of hundreds of gigabytes takes the memory of a small one. Every `data3D` scan comes in, placed by its `pose` (a quaternion and a translation), as one `Scan`
 whose `read` is the sum of their `recordCount`s. Each scan's points are a CompressedVector: a section header, then data packets
 whose bytestreams, one for each field of the `prototype`, are bit-packed and run on from packet to packet; `Pack` decodes
 Float (single or double), Integer and ScaledInteger, and only bit-packing, the one codec E57 writes, is read. Cartesian or
 spherical coordinates both come in, a point marked invalid doesn't, and colour is scaled from `colorLimits` (or its field's
-range) to eight bits. `images2D` is passed over. A file is held to `Caps` before anything is unpacked: up to 4096 scans, 100 million
-points in all of them, 32 fields to a point, no two scans on one section, a section with room for the bits its count asks for (a
+range) to eight bits. `images2D` is passed over. A file is held to `Caps` before anything is unpacked: up to 4096 scans, 100 billion
+points in all of them (a sanity cap that keeps a lying count from hours of unpacking; what's kept is the cloud's to thin), 32 fields to a point, no two scans on one section, a section with room for the bits its count asks for (a
 field of no bits is legal, so eight points can share a byte), and no stream more than 4 MiB ahead of the others. The tests write E57 files of their own (`e57` in the module's tests), with
 values that cross packets and pages; the reference survey's 177 MB file reads its 6.6 million points in under two seconds.
 
@@ -87,6 +116,20 @@ category's, then each view filter's, then the element's own, the last prevailing
 Visibility/Graphics (or picked out by a filter that fills) keeps it whatever the button does. The button is lit for the category
 and can't tell, since what the scans come to is the whole `Look` for every frame of the bar; its tooltip says so instead.
 
+A view colours a scan's points by what its override's `scan` says (`graphics::ScanColour`, Revit's Color Mode): `normal`, their
+own colours; `elevation`, their height in the model through `graphics::RAMP` (blue, cyan, green, yellow, red) from `low` to `high`
+(mm; the scan's own foot and head where not given, so each scan runs the whole ramp); or `intensity`, through the same ramp from the
+weakest return (blue) to the strongest (red), as a surveyor's viewer shows it, each by its rank among the scan's intensities
+(`Cloud::intensity_levels`, histogram equalization: however the returns crowd, the colours spread over the whole ramp;
+`graphics::intensity_colour`). A scan keeps each point's intensity for that (`Cloud::intensity`, a byte over the file's range, in the project
+file as `intensity` beside the colours; an older file has none, and a scan whose file had none, or all alike, keeps its own
+colours). It resolves as any override does, the category's, then each view filter's, then the scan's own, and a projection `fill`
+(High Contrast's) still colours them one colour over it. The 3D view, the graphics card and sections colour through
+`view3d::Paint`, worked out once a scan for each picture; a plan through `render::scans`. The view control bar has Point Cloud
+Colours beside High Contrast (Normal takes the category's mode away); Visibility/Graphics has a Point Cloud Colours group on the
+Model Categories tab (the mode, and an elevation's Low and High, typed in the project's units) and the same for a scan picked on
+its Elements tab (`clouds::scan_colour_rows`).
+
 A plan snaps to a scan where its cut plane cuts it, to trace what was measured: of the points within `snap::CUT_BAND` of the cut,
 the nearest to the cursor seen from above (`Kind::Point`, "Point Cloud", switched by `Snaps::cloud` in Manage > Snaps). It comes
 after what the model has to snap to (ends, middles, centres, crossings), so a wall's end beats a point nearer the cursor, and
@@ -99,5 +142,11 @@ In the desktop (`clouds.rs`), Insert > Point Cloud, in the Insert tab's Link pan
 file or several (`BimApp::ask_files`: a dialog's answer is a list of paths now) and opens `CloudBox`: its name (the first file's),
 the units of its coordinates, a spacing, and Revit's positioning, Auto - Center to Center or Auto - Origin to Origin. OK runs
 `point_cloud` on the level of the plan on screen and selects what it placed; a refusal stays in the box with its reason
-(`point_cloud_paths` opens the box, what a test hands the files to). The Properties palette shows a point cloud's level and offset
+(`point_cloud_paths` opens the box, what a test hands the files to). Files of `IN_BACKGROUND` (16 MB) or more together are read
+first on a thread of their own: `Session::read_scan_ahead` runs `point_cloud` on a session of its own sharing the project, which
+keeps the scan it read (`ScanRead`, for the files, their unit, the spacing and the room the project left), while the window draws
+on and a box shows the read's stage, a bar and Cancel (`cloud_reading_box`). When it's read, `Session::give_scan` hands it to the
+window's session, and `point_cloud` there takes it instead of reading the files again: what it places is one undo step, as a
+small file's is. A read for other files or options, or before the project's other scans took some of its room, isn't taken, and
+it's taken once. A refusal, or Cancel, comes back to the box with its reason. The Properties palette shows a point cloud's level and offset
 (edited), its scan, file and points, its origin and angle; Visibility/Graphics lists `pointcloud` after the model's categories.
