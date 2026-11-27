@@ -108,3 +108,5 @@ One line per module. A new module adds its line here, not to the root.
   [the views](../../docs/areas/rune-ui-views.md).
 - `app/export.rs`: `App::export_view`, the view shown written through the core's `export` command (and `export_target`, `export_file_name`); `ui/export.rs`: the top bar's PDF and PNG
   buttons, which ask the system's dialog for the file. The form for the command's other parameters is the dialogs' generic command form. Detail: [the views](../../docs/areas/rune-ui-views.md).
+- `library.rs`: the library managers, pure: Materials, Line Styles and Patterns, Fill Patterns, Phases and Phase Filters, View Filters and Templates, Text Types, Project Parameters and Object Styles, each a table of `Model` as JSON and one command; what can be typed is what the command's doc names. `app/library.rs`: the dialog's state and
+  handlers (Apply, Delete, New through `Session::execute`). `ui/library.rs`: the dialog. `forms.rs` also has the pickers (`Kind::Pick`: a level, a material, a type, a family, a phase, a line style). Detail: [dialogs](../../docs/areas/rune-ui-dialogs.md).
