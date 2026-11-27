@@ -395,3 +395,86 @@ fn random_edits_of_the_other_kinds_check_sync_and_draw_the_same_by_what_changed_
         assert!(kinds.contains(cmd), "no `{cmd}` was taken: {kinds:?}");
     }
 }
+
+/// The kinds of element the random edits above don't reach: neither in the projects they start from nor made by them. A
+/// cache kept from one command to the next ([the plan](../../docs/spatial-core-plan.md), piece 6) is only held to the full
+/// computation for the kinds the oracles edit, so a kind named here needs its own oracle before such a cache reads it.
+const NOT_EDITED_AT_RANDOM: &[&str] = &[
+    "cable",
+    "cadimport",
+    "circuit",
+    "column",
+    "detail",
+    "detailgroup",
+    "downconductor",
+    "duct",
+    "elevation",
+    "footing",
+    "grid",
+    "groundconductor",
+    "image",
+    "link",
+    "mass",
+    "modelgroup",
+    "panelschedule",
+    "planview",
+    "pointcloud",
+    "project",
+    "propertyline",
+    "railing",
+    "ramp",
+    "rebardetail",
+    "refplane",
+    "repeatingdetail",
+    "roomseparator",
+    "section",
+    "sheet",
+    "stair",
+    "stripfooting",
+    "toposolid",
+    "viewport",
+    "wire",
+];
+
+/// Every kind of element is either edited at random by an oracle above or named in [`NOT_EDITED_AT_RANDOM`]: a new kind
+/// fails here until whoever adds it decides which, so a cache never reads a kind no oracle holds it to unnoticed.
+#[test]
+fn every_kind_of_element_is_edited_at_random_or_named_as_not() {
+    // serde names every variant when it meets one it doesn't know.
+    let e = serde_json::from_value::<Element>(json!({"category": "nothing"})).unwrap_err().to_string();
+    let kinds: std::collections::BTreeSet<&str> = e.split('`').skip(3).step_by(2).collect();
+    assert!(kinds.len() > 30, "{e}");
+    // What the oracles start from, and what their edits make.
+    let mut framed = Session::new();
+    framed.reset(tower_on(Plate::SMALL, 1).unwrap_or_else(|e| panic!("{e}")), None);
+    frame_some(&mut framed);
+    let annotated = crate::sample::tower::annotated(Plate::SMALL, 1).unwrap_or_else(|e| panic!("{e}"));
+    let two = tower_on(Plate::SMALL, 2).unwrap_or_else(|e| panic!("{e}"));
+    let made = [
+        "wall",
+        "door",
+        "room",
+        "line",
+        "text",
+        "region",
+        "dimension",
+        "dimension3d",
+        "view3d",
+        "roof",
+        "rebar",
+        "spot",
+        "component",
+        "schedule",
+    ];
+    let mut edited: std::collections::BTreeSet<String> = made.iter().map(|k| k.to_string()).collect();
+    for m in [&framed.model, &annotated, &two] {
+        for e in m.elements.values() {
+            let v = serde_json::to_value(e).unwrap_or_else(|e| panic!("{e}"));
+            edited.extend(v["category"].as_str().map(str::to_string));
+        }
+    }
+    let missing: Vec<&str> = kinds.iter().copied().filter(|k| !edited.contains(*k) && !NOT_EDITED_AT_RANDOM.contains(k)).collect();
+    assert!(missing.is_empty(), "no oracle edits these kinds; add them to one, or to NOT_EDITED_AT_RANDOM: {missing:?}");
+    let stale: Vec<&&str> = NOT_EDITED_AT_RANDOM.iter().filter(|k| edited.contains(**k) || !kinds.contains(**k)).collect();
+    assert!(stale.is_empty(), "these are edited at random now, or are no kind: take them out of NOT_EDITED_AT_RANDOM: {stale:?}");
+}

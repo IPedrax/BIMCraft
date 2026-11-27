@@ -113,6 +113,8 @@ A new element kind or field reaches it in three places: its rules in `Model::che
 references in `visit_refs!` (the lookup follows them both ways), and anything a cache reads that the element's own change doesn't
 say (a type, a level, a neighbour) as a dependency of that cache. A new part of an element (`HasPart`) goes in `library.rs`'s
 `element_parts` too, so a command's library is synced by what it changed.
+A new kind is also edited at random by one of the oracles, or named in `oracle_tests.rs`'s `NOT_EDITED_AT_RANDOM`:
+`every_kind_of_element_is_edited_at_random_or_named_as_not` fails until one or the other is done.
 
 ## Shared geometry definitions
 
