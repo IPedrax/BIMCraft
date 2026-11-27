@@ -23,6 +23,9 @@ pub mod clipboard;
 pub mod constraints;
 pub mod forms;
 pub mod handles;
+mod kernel;
+#[cfg(test)]
+mod kernel_tests;
 pub mod nested;
 mod options;
 mod origin;
@@ -34,6 +37,7 @@ mod validate;
 pub mod views;
 pub mod visibility;
 
+use kernel::{FormKernel, MeshKernel};
 pub(crate) use validate::check_family_edits;
 
 pub use constraints::{
@@ -2371,12 +2375,12 @@ impl Family {
                     // Its dimensions solved for the type: what they hold built where they put it.
                     let mut pieces = match self.flexed_with(&v, &mut solving).map_err(|e| e.to_string())? {
                         Cow::Borrowed(_) => {
-                            let mut p = self.build(&v, &mut read, &mut cuts)?;
+                            let mut p = self.build(&MeshKernel, &v, &mut read, &mut cuts)?;
                             p.extend(self.nested_pieces(&v, &mut meter)?);
                             p
                         }
                         Cow::Owned(f) => {
-                            let mut p = f.build(&v, &mut HashMap::new(), &mut cuts)?;
+                            let mut p = f.build(&MeshKernel, &v, &mut HashMap::new(), &mut cuts)?;
                             p.extend(f.nested_pieces(&v, &mut meter)?);
                             p
                         }
@@ -2583,7 +2587,7 @@ impl Family {
         meter: &mut nested::Meter,
     ) -> Result<Vec<Piece>, String> {
         let flexed = self.flexed(values).map_err(|e| e.to_string())?;
-        let mut pieces = flexed.build(values, &mut HashMap::new(), &mut csg::Meter::default())?;
+        let mut pieces = flexed.build(&MeshKernel, values, &mut HashMap::new(), &mut csg::Meter::default())?;
         pieces.extend(flexed.nested_pieces(values, meter)?);
         if let Some(definition) = &self.adaptive {
             pieces.extend(definition.evaluate(values, placement.unwrap_or(&definition.preview)).pieces());
@@ -2711,48 +2715,29 @@ impl Family {
     /// read already, and `cuts`, what the cutting may still cost.
     fn build<'a>(
         &'a self,
+        kernel: &impl FormKernel,
         values: &BTreeMap<String, Val>,
         read: &mut HashMap<&'a str, Result<Node, String>>,
         cuts: &mut csg::Meter,
     ) -> Result<Vec<Piece>, String> {
-        let (mut out, mut voids) = (Vec::new(), Vec::new());
-        for i in 0..self.forms.len() {
-            let what = format!("form {}", i + 1);
-            let Some(piece) = self.solid(i, values, read).map_err(|e| format!("{what}: {e}"))? else {
+        let (mut solids, mut voids) = (Vec::new(), Vec::new());
+        for (i, form) in self.forms.iter().enumerate() {
+            let Some(solid) = kernel.form(self, form, values, read).map_err(|e| format!("form {}: {e}", i + 1))? else {
                 continue;
             };
-            if self.forms[i].void {
-                // A void that cuts its host alone (F10d) cuts none of its forms.
-                if self.forms[i].cuts().forms() {
-                    voids.push((i, out.len(), piece.tris));
-                }
-            } else {
-                out.push(piece);
+            if !form.void {
+                solids.push(solid);
+            } else if form.cuts().forms() {
+                voids.push((i, solids.len(), kernel.cutter(solid)));
             }
         }
-        // Each void cut from the solids listed before it that it reaches. A cut solid is no longer one round surface,
-        // and its outline seen from above is as it was. ponytail: a notch or a hole doesn't show in plan; trace it if it must.
+        // Each void cuts only the solids that precede it. A host-only void never enters this list.
         for (i, before, void) in &voids {
-            for piece in out.iter_mut().take(*before) {
-                let tris = csg::subtract(&piece.tris, void, cuts).map_err(|e| format!("form {}: {e}", i + 1))?;
-                if tris != piece.tris {
-                    let (bottom, top) = heights(&tris);
-                    *piece = Piece {
-                        caps: tris.len(),
-                        tris,
-                        bottom,
-                        top,
-                        round: false,
-                        outline: std::mem::take(&mut piece.outline),
-                        holes: std::mem::take(&mut piece.holes),
-                        material: std::mem::take(&mut piece.material),
-                        vis: piece.vis,
-                    };
-                }
+            for solid in &mut solids[..*before] {
+                kernel.cut(solid, void, cuts).map_err(|e| format!("form {}: {e}", i + 1))?;
             }
         }
-        out.retain(|p| !p.tris.is_empty());
-        Ok(out)
+        Ok(solids.into_iter().map(Into::into).filter(|p: &Piece| !p.tris.is_empty()).collect())
     }
 
     /// Form `i`'s own solid, sized by `values`, before any void cuts it: `None` where its `visible`
@@ -2763,7 +2748,15 @@ impl Family {
         values: &BTreeMap<String, Val>,
         read: &mut HashMap<&'a str, Result<Node, String>>,
     ) -> Result<Option<Piece>, String> {
-        let form = &self.forms[i];
+        MeshKernel.form(self, &self.forms[i], values, read)
+    }
+
+    fn mesh_form<'a>(
+        &'a self,
+        form: &'a Form,
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+    ) -> Result<Option<Piece>, String> {
         let mut num = |e: &'a Expr| number(e, values, read);
         if let Some(v) = &form.visible
             && num(v)? == 0.0

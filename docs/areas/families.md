@@ -1773,6 +1773,9 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/views.rs`: a family's plans and elevations.
 - `family/sketch.rs`: forms' sketches. `family/handles.rs`: shape handles on a profile's edges.
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
+- `family/kernel.rs` defines `FormKernel`. Each backend receives the original form sketch and builds its solids in
+  family coordinates. The mesh backend keeps just the triangles of each void and spends the family's shared CSG budget
+  on the earlier solids it cuts. Adaptive families and project-view cuts call CSG separately.
 - `family/constraints.rs`: its dimensions, labels, locks and EQ, solved as a type flexes; `family/constraints/pivot.rs`,
   lines and planes that turn about a pivot; `family/constraints/turn.rs`, Align turning a plane or a line onto a reference that
   isn't parallel; `family/constraints/moving.rs`, what a drag moves together through them; `family/constraints/copying.rs`,
