@@ -13,6 +13,7 @@ use bimcraft_core::model::Model;
 use rune::TextEdit;
 use serde_json::Value;
 
+pub mod curtain;
 pub mod electrical;
 pub mod quantities;
 pub mod reinforce;
@@ -158,10 +159,12 @@ pub enum Kind {
     CutPlan,
     Electrical,
     StairType,
+    CurtainPattern,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 6] = [Kind::Reinforce, Kind::Materials, Kind::SteelList, Kind::CutPlan, Kind::Electrical, Kind::StairType];
+    pub const ALL: [Kind; 7] =
+        [Kind::Reinforce, Kind::Materials, Kind::SteelList, Kind::CutPlan, Kind::Electrical, Kind::StairType, Kind::CurtainPattern];
 
     /// Its name in Find, and Revit's shortcut where egui has one.
     pub fn label(self) -> &'static str {
@@ -172,6 +175,7 @@ impl Kind {
             Kind::CutPlan => "Cut Plan",
             Kind::Electrical => "Electrical Settings",
             Kind::StairType => "Stair Type",
+            Kind::CurtainPattern => "Edit Pattern",
         }
     }
 
@@ -181,7 +185,7 @@ impl Kind {
             Kind::Materials => "QT",
             Kind::SteelList => "BL",
             Kind::CutPlan => "CU",
-            Kind::Electrical | Kind::StairType => "",
+            Kind::Electrical | Kind::StairType | Kind::CurtainPattern => "",
         }
     }
 
@@ -194,6 +198,7 @@ impl Kind {
             Kind::CutPlan => Ok(Box::new(quantities::Quantities::open(quantities::Page::Plan, m, selection))),
             Kind::Electrical => Ok(Box::new(electrical::Electrical::open(m))),
             Kind::StairType => stairtype::StairType::open(m, selection).map(|s| Box::new(s) as Box<dyn Discipline>),
+            Kind::CurtainPattern => curtain::Pattern::open(m, selection).map(|s| Box::new(s) as Box<dyn Discipline>),
         }
     }
 }

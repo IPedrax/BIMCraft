@@ -259,4 +259,10 @@ keeps in its window crate is copied into each dialog's module (`ui-egui` is unto
   code's number shows), how plans show it on the level below, its own and the level above (ten ways), the lines, fill, walk line symbols and cut mark. The sizes that do not apply to the construction
   are not sent, so switching back finds them again. OK sends all of it as one `type` command (the type changes everywhere it is used) and Apply keeps the dialog open. egui's little pictures of
   the constructions and of the ways a stair shows in plan are not here, and a ramp type's page is not built. Opened from Find on a selected stair.
+- **Edit Pattern** (`discipline/curtain.rs`): a curtain wall type's pattern, as egui's Edit Pattern window: the grid's columns and rows (a size each, add and remove, the fit and
+  the justification), the borders and the corner mullion, which mullions run through, restarting the pattern at levels, the smallest panel, and the module and thickness it makes. egui draws the
+  module to scale and a click picks a piece; here the pieces are three lists of check boxes (the panels, the vertical mullions, the horizontal ones, each named by its column letter and row number),
+  and what is ticked is given a panel type, a mullion type and a join below (a mix of types has none picked). OK or Apply puts the pattern on the type as one `type` command. The type is the selected curtain
+  wall's. Not here: the picture of the module, the curtain tools and panel pickers on the plan (egui's `curtain.rs` is also the plan's part picking, grid lines and segments), and the message about a
+  segment left too small for a panel.
 
