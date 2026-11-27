@@ -65,11 +65,15 @@ impl Source {
     }
 }
 
-/// A table of the model as its entries: the name and what a file writes of it.
+/// A table of the model as its entries: the name and what a file writes of it. An entry a file writes as a list (a line pattern's
+/// dashes) is the object `{"value": [..]}`, so the dialog shows it as a row like any other.
 macro_rules! table {
     ($map:expr) => {
         match serde_json::to_value(&$map) {
-            Ok(Value::Object(map)) => map.into_iter().collect::<Vec<_>>(),
+            Ok(Value::Object(map)) => map
+                .into_iter()
+                .map(|(name, v)| if v.is_object() { (name, v) } else { (name, json!({ "value": v })) })
+                .collect::<Vec<_>>(),
             _ => Vec::new(),
         }
     };
@@ -168,11 +172,15 @@ mod tests {
         let has = |source: Source, name: &str| entries(&s.model, source).iter().any(|(n, _)| n == name);
         assert!(has(Source::Materials, "Rune Mat") && has(Source::LineStyles, "Rune Style") && has(Source::Phases, "Rune Phase"));
         assert!(has(Source::TextTypes, "Rune Text") && has(Source::Parameters, "Rune Param"));
+        // A pattern a file writes as a list is an object with that list as its `value`, so it has a row to show.
+        let patterns = entries(&s.model, Source::LinePatterns);
+        assert!(!patterns.is_empty(), "a new project has line patterns");
+        assert!(patterns.iter().all(|(_, json)| json.get("value").is_some_and(Value::is_array)), "{patterns:?}");
         let house = crate::app::App::sample();
         for info in &ALL {
             assert_eq!(info.source.info().command, info.command, "{}: a source finds its own info", info.title);
             for model in [&*s.model, &*house.session.model] {
-                assert!(entries(model, info.source).iter().all(|(name, json)| !name.is_empty() && (json.is_object() || json.is_null())));
+                assert!(entries(model, info.source).iter().all(|(name, json)| !name.is_empty() && json.is_object()), "{}", info.title);
             }
             assert!(Form::named(info.command).is_some(), "{}: the command is in the core's table", info.title);
         }

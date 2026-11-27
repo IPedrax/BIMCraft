@@ -149,7 +149,7 @@ because each is a table of the project and a command of the core, and the generi
 |---|---|---|
 | `forms.rs` (`Kind::Pick`, `Class`, `options`) | a field the doc leaves untyped that is named `level`, `top_level`, `base_level`, `material`, `*_material`, `type`, `family`, `phase` or `line_style` is picked from the project's own names (a type is of the command's own category: `wall` offers the wall types) | 1, and the sweep |
 | `app/dialogs.rs` (`FormState::options`) | the lists, read when the form opens; a picker with nothing to offer is `Kind::Any` again, so it is typed | 2, no window |
-| `library.rs` | the managers, pure: `Source` (Materials, Line Styles, Line Patterns, Fill Patterns, Phases, Phase Filters, View Filters, View Templates, Text Types, Project Parameters, Object Styles), each a table of `Model` as JSON and one command; `changes`, `deletion` | 3 |
+| `library.rs` | the managers, pure: `Source` (Materials, Line Styles, Line Patterns, Fill Patterns, Phases, Phase Filters, View Filters, View Templates, Text Types, Project Parameters, Object Styles), each a table of `Model` as JSON (an entry a file writes as a list, a line pattern's dashes, is `{"value": [..]}`) and one command; `changes`, `deletion` | 3 |
 | `app/library.rs`, `ui/library.rs` | the dialog: an entry chosen from a list, its fields that can be typed, a new name, Apply, Delete, New | 5, no window; 2 in `ui/dialog_tests.rs` |
 
 **A manager.** The entries are `serde_json::to_value` of the model's own table (the JSON a file holds). The fields that can be typed are the
