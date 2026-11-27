@@ -872,6 +872,32 @@ constraints keep priority; grid snapping replaces the free-point fallback and au
 elevations snap annotation placement in their local horizontal/height coordinates. Model validation rejects invalid
 spacing, divisions, pens or rotation, and commands roll back the whole edit.
 
+## Placing and editing in the 3D view
+
+Door (DR) and Window (WN) work in the 3D view (`orbit/openings.rs`): the wall under the cursor takes the opening where the cursor
+is on it, the middle of its stretch of wall within the snap's reach, a door swinging into the side the cursor is on and a window
+facing out of it (Space flips them, as in a plan), a window at its type's sill. Before the click its shadow shows there: the box it
+would fill, as wide and tall as its type and as deep as the wall, drawn over the picture. Nothing is made again for it, so the view
+never waits on the cursor and a click is never lost to a picture being made. The click runs `door` or `window`, one undo step.
+
+Move (MV), Copy (CO), Rotate (RO) and Mirror (MM, DM) work there too (`orbit/tools3d.rs`), through the same handlers as a plan's
+(`shift_selection`, `turn`, `reflect`). Their points are taken as the drawing tools take theirs, on the face under the cursor and
+snapped as its level's plan snaps; on an upright face (a wall's side) the point of it at its own height. The second point stays on
+the first's plane, and while it is wanted the selection's shadow shows where a click would leave it (each element's box, a wall's
+outline, moved, turned or mirrored as the command would, drawn over the picture), with the length or the angle beside the cursor. Mirror - Pick Axis takes the line of
+the wall, line or grid clicked.
+
+Turned to a side with the triad (Front, Back, Left or Right: `tools3d::facing`), the view works on a plane facing it for now, as
+an elevation does: through the camera's target, square to the way it looks, said in the view's corner. Move and Copy then take
+their points on that plane, so what they move goes up and down as well as along (`move` and `copy` with `by: [dx, dy, dz]`), and
+Level (LL) places a level at the height clicked, its line drawn across the view until then. Away from a side, Level takes the
+height of the surface under the cursor. Orbited away, the view's own work plane is back.
+
+Right-click > Change Base Level lists the levels for what is selected when everything selected stands on a level and has an
+offset from it (`relevel::can_change_level`); the level picked runs `change_level`, which puts each on it where it stands: its
+base offset takes up the difference, a top tied to a level stays tied. Doors, windows, hosted components and group members are
+not offered it.
+
 ## Drawing tools in sections and elevations
 
 Aligned/Linear Dimension picks levels, grids perpendicular to the view line, and that view's detail-line references or endpoints. Pick references, then click away to place; Space cycles placement modes. Dimension types and instance text use the existing Properties controls. These dimensions follow their references but do not drive geometry, lock it or impose equality yet. Wall/mesh silhouettes, oblique grids and datum display endpoints are not dimension references in this first slice.
@@ -880,6 +906,11 @@ Detail Line draws in along/up coordinates with the existing Draw shapes (Pick Li
 grid snapping is on, else to the nearest 10 mm, grid snapping off or not.
 
 Commands: `dimension {view, refs, at:[along,height], ...}` and `move {view, ids, by:[along,up]}`; all other mutations retain existing commands. A vertical dimension's `level` anchor is its view GUID, also stored in `view`. Format 21 prevents older readers from resolving it as a plan dimension or dropping it. Format 20 needs no data conversion.
+
+Level (LL) places a level where the click is, its line across the view at the cursor's height until then; the Options Bar's
+elevation and Create still work. Move takes levels too, up or down only, and what stands on them goes with them. Copy copies
+what is selected as far along and up in the model as the view says (`copy` with a `dz`); a level is copied only up or down, as a
+new level named after it (`Level 2` gives `Level 3`).
 
 Other model creation/modification tools still use their supported plan/3D workflows. Copy/Paste is separate work. This does not claim arbitrary model editing, full reference snapping, dimension constraints or complete Revit parity in vertical views.
 
@@ -908,6 +939,10 @@ shows on its own thread, with the card, the workers and the compositor as they a
 
 ```text
 idle 2                       two seconds of frames with nothing asked
+select wall                  every element of a category selected (`select 100003 100004`, those ids)
+keys HH                      the letters typed, as a keyboard shortcut is
+click 640 520                a primary click at that point of the window, in points (`rclick`, the secondary button)
+hover 700 500                the pointer moved there, nothing pressed
 open /path/tower.bimc        File > Open (a big file opens on a thread, with its progress box)
 wait 900                     until nothing is being made (the open, a plan, the 3D scene) for five frames, at most 900 s
 zoom in 8                    eight notches of the wheel over the middle of the view, a frame apart (`out` the other way)

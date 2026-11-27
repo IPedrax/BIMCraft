@@ -8185,4 +8185,5 @@ mod preview_visibility;
 mod select_instances;
 mod sheet_fit;
 
+mod view3d_tools;
 mod window_drag;

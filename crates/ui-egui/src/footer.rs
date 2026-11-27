@@ -39,7 +39,7 @@ pub(crate) struct Temp {
 }
 
 impl Temp {
-    fn hides(&self) -> bool {
+    pub(crate) fn hides(&self) -> bool {
         !self.elements.is_empty() || !self.categories.is_empty()
     }
 }
@@ -356,10 +356,20 @@ impl BimApp {
         };
         let (id, over) = (egui::Id::new(("view-control", self.sheet)), self.view_rect);
         // How tall the card is: a row, or more where the view is narrower than the bar.
+        let held = id.with("card");
         let mut controls = |ui: &mut Ui| {
-            card.show(ui, |ui| {
-                // Onto a second row where the view is narrower than the bar, never under the palettes beside it.
-                ui.horizontal_wrapped(|ui| {
+            // The card as it stood last frame takes the presses and drags over it before its buttons take their clicks: a
+            // button senses clicks only, so a press on it, or between them, would otherwise go to the view under the card as
+            // a drag, and its release be a click on the view, which clears the selection the bar's menus act on.
+            // Per layer: a view floated in a window of its own draws its bar there. Not a tab stop: it is no control.
+            let held = held.with(ui.layer_id());
+            if let Some(r) = ui.ctx().data(|d| d.get_temp::<Rect>(held)) {
+                let _ = ui.interact(r, held.with("over"), egui::Sense::CLICK | egui::Sense::DRAG);
+            }
+            let shown = card
+                .show(ui, |ui| {
+                    // Onto a second row where the view is narrower than the bar, never under the palettes beside it.
+                    ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     match (self.graphic_view(), self.sheet == Sheet::View3D) {
                         (Some(view), false) => self.scale_and_detail(ui, &view),
@@ -507,10 +517,11 @@ impl BimApp {
                     self.agents_indicator(ui);
                     self.cowork_indicator(ui);
                 })
-            })
-            .response
-            .rect
-            .height()
+                })
+                .response
+                .rect;
+            ui.ctx().data_mut(|d| d.insert_temp(held, shown));
+            shown.height()
         };
         if compact {
             egui::Panel::bottom(id).frame(panel).show_separator_line(false).show(ui, controls);

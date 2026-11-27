@@ -21,7 +21,9 @@
 //! alone. The project's tools (grips, the section box, shape editing, sketching, dimensions, the work plane) stay in
 //! `BimApp::view3d`, between them.
 
+mod openings;
 mod placement;
+mod tools3d;
 use placement::PlacementDrag;
 
 use std::sync::Arc;
@@ -36,6 +38,7 @@ use bimcraft_core::model::{Dimension3D, Id, Model, Ref3, TOL, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
 use bimcraft_core::view3d;
+use bimcraft_core::view3d::background::Background;
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
 use bimcraft_core::view3d::{
     AZIMUTH, Camera, CapSource, Caps, ELEVATION, Image, MAX_SIDE, P3, PlaneMark, Scene, Surface, box_grips, move_box_face, on_floor_top,
@@ -366,6 +369,9 @@ pub struct Orbit {
     /// The processor's picture as it is shown before the work plane is laid over it, and the marks the picture on screen has:
     /// a change of marks alone lays them again, without drawing the picture anew.
     unmarked: Option<Vec<u8>>,
+    /// The picture of the view's background as a texture, by the picture's id, and its size in px: painted under the card's
+    /// picture.
+    backdrop: Option<(String, egui::TextureHandle, [usize; 2])>,
     marked: Option<Vec<PlaneMark>>,
     /// The processor's picture as a texture; and whether the card's is the one on screen.
     texture: Option<TextureHandle>,
@@ -425,6 +431,10 @@ pub struct Orbit {
     /// What the Aligned Dimension tool has picked in the 3D view so far: its references, before a click places its line.
     pub(crate) dim3: Vec<Ref3>,
     placement_drag: Option<PlacementDrag>,
+    /// The door or window the Door or Window tool would place where the cursor is (`openings.rs`).
+    opening: Option<openings::OpeningAim>,
+    /// Move's or Copy's base point, as clicked in the 3D view: where a move on a plane facing the camera goes up from.
+    base3: Option<P3>,
     /// The picture's size the camera was fitted to, while nothing has moved it since: a view that fits itself again as it is
     /// resized (a family's {3D}) looks at it.
     pub(crate) fitted: Option<(u32, u32)>,
@@ -474,6 +484,7 @@ impl Default for Orbit {
             picker: None,
             shown: None,
             unmarked: None,
+            backdrop: None,
             marked: None,
             texture: None,
             on_card: false,
@@ -506,6 +517,8 @@ impl Default for Orbit {
             triad: Default::default(),
             dim3: Vec::new(),
             placement_drag: None,
+            opening: None,
+            base3: None,
             fitted: None,
             slot: NEXT_SLOT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             name: "view3d",
@@ -760,6 +773,13 @@ fn inside(poly: &[Pos2], p: Pos2) -> bool {
 /// The ViewCube, which turns a view's camera: where it stands, its faces, what a click on it asks for and how it is drawn. It
 /// needs only a camera and the view's rect, so any 3D view may show one.
 impl Orbit {
+    /// Whether the card's mesh of the picture on screen draws element `id`: none while there is no mesh.
+    #[cfg(test)]
+    pub(crate) fn mesh_shows(&self, id: Id) -> Option<bool> {
+        let (_, mesh) = self.mesh.as_ref()?;
+        mesh.as_ref().ok().map(|m| m.owners.iter().any(|o| o.id == id))
+    }
+
     /// The tints the picture on screen was drawn with: what is lit, under the pointer and greyed.
     #[cfg(test)]
     pub(crate) fn tints_shown(&self) -> Vec<(Id, Rgb)> {
@@ -959,6 +979,21 @@ impl Orbit {
         self.worker.as_ref().is_some_and(Latest::busy)
             || self.fit_worker.as_ref().is_some_and(Latest::busy)
             || self.cap_worker.as_ref().is_some_and(Latest::busy)
+    }
+
+    /// The picture background `b` names, as a texture, made once for each picture.
+    fn backdrop_texture(&mut self, ctx: &egui::Context, model: &Model, b: &Background) -> Option<(egui::TextureHandle, [usize; 2])> {
+        let id = b.picture()?;
+        if let Some((held, texture, size)) = &self.backdrop
+            && held == id
+        {
+            return Some((texture.clone(), *size));
+        }
+        let (w, h, rgb) = model.images.get(id)?.pixels();
+        let image = ColorImage::from_rgb([w, h], rgb);
+        let texture = ctx.load_texture(format!("{}-backdrop", self.name), image, TextureOptions::LINEAR);
+        self.backdrop = Some((id.to_string(), texture.clone(), [w, h]));
+        Some((texture, [w, h]))
     }
 
     pub(crate) fn placement_drag_active(&self) -> bool {
@@ -1398,6 +1433,11 @@ impl Orbit {
     ) -> Option<Status> {
         let Shown { model, scene, cam, tints, marks: plane_marks, dragged: reboxed, cut: boxed, caps } = shot;
         let mut failed = None;
+        // What shows where nothing is drawn: the card leaves it clear and it is painted under, the processor paints it in.
+        let backdrop = crate::background::of(model, self.view);
+        if let Some(gpu) = card.gpu.as_mut() {
+            gpu.see_through = !backdrop.is_none();
+        }
         // The ground, which a canvas colour of the user's changes without making the drawing dark or light.
         let dark = color(render::PAPER);
         let same_caps = |held: &Option<Arc<Caps>>| match (held, &caps) {
@@ -1435,6 +1475,7 @@ impl Orbit {
                 if let Some(caps) = &caps {
                     image.capped(&cam, caps, tints, &look);
                 }
+                backdrop.paint(&mut image, &model.images, &cam);
                 // The model shaded as ever, on the theme's ground: only the background is paper white.
                 let ground = color(render::PAPER);
                 let (rgba, _) = image.rgba.as_chunks::<4>();
@@ -1489,7 +1530,14 @@ impl Orbit {
         (self.waiting, self.waiting_since) = (None, None);
         let rect = self.rect;
         self.picture_size = Some(rect.size());
-        p.rect_filled(rect, 0.0, color(render::PAPER));
+        if self.on_card && !backdrop.is_none() {
+            let picture = self.backdrop_texture(ctx, model, &backdrop);
+            // The horizon of elevation 0, on screen, as the camera shows it.
+            let horizon = (bimcraft_core::view3d::background::horizon_y(&cam) / f64::from(self.ppp)) as f32 + rect.top();
+            crate::background::paint(p, rect, &backdrop, picture.as_ref().map(|(t, s)| (t, *s)), color(render::PAPER), Some(horizon));
+        } else {
+            p.rect_filled(rect, 0.0, color(render::PAPER));
+        }
         let shown = if self.on_card { card.gpu.as_ref().and_then(|g| g.texture()) } else { self.texture.as_ref().map(|t| t.id()) };
         if let Some(id) = shown {
             p.image(id, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
@@ -1673,6 +1721,14 @@ impl BimApp {
                 self.orbit.placement_drag = Some(drag);
             }
         }
+        // Door and Window: the opening a click would make in the wall under the cursor.
+        let on_view = hover.filter(|at| rect.contains(*at)).map(px);
+        if !placement_captured {
+            self.opening_hover(&model, on_view);
+        }
+        // Move, Copy, Rotate, Mirror and Level: the point a click takes.
+        let edit_point = self.edit_point(&model, on_view, shift);
+        let editing = self.edits_3d();
         // An Edit Boundary begun here: its lines on the element's plane, a drag from a picked one's end holding its grip.
         let sketch_z = self.sketch_surface();
         let last = self.orbit.camera.map(|c| Camera { width: w, height: h, ..c });
@@ -2598,6 +2654,8 @@ impl BimApp {
             under.and_then(|u| Some((u.id, model.face_role(u.id, u.at, u.normal)?, u.at)))
         });
         let target = click.filter(|_| drawing && !on_face).and_then(|at| aimed(&o.picker, at));
+        // What an edit tool's click is on: the element and the point of it.
+        let edit_hit = click.filter(|_| editing).and_then(|at| surface(&o.picker, &cam, at)).map(|s| (s.id, s.at));
         match clicked {
             Some(_) if self.curtain_face_tool() => {
                 let on = click.and_then(face_at);
@@ -2631,6 +2689,8 @@ impl BimApp {
             }
             Some(_) if trimming => {}
             Some(_) if attaching => {}
+            Some(_) if matches!(self.tool, Tool::Door | Tool::Window) => self.place_opening_3d(),
+            Some(_) if editing => self.edit_click(edit_point, edit_hit),
             Some(_) => {
                 self.status =
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }
@@ -2691,6 +2751,13 @@ impl BimApp {
         }
         if patched {
             self.open_work_plane();
+        }
+        // The opening the Door or Window tool would place, as a shadow.
+        self.paint_opening(&p, &screen);
+        // The edit tool's point, the shadow of what it would move and the line to it; on a plane facing the camera, a word saying so.
+        if editing {
+            self.paint_edit(&p, edit_point, &screen);
+            self.paint_facing(&p, rect);
         }
         // What a Pick of the work plane would take.
         let m = &self.session.model;

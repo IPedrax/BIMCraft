@@ -2003,6 +2003,9 @@ pub struct View3D {
     /// What it sketches on (`workplane.rs`): the lowest level when it has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub work_plane: Option<crate::workplane::WorkPlane>,
+    /// What shows where the model doesn't: the canvas's paper, colours or a picture (`view3d::background`).
+    #[serde(default, skip_serializing_if = "crate::view3d::background::Background::is_none")]
+    pub background: crate::view3d::background::Background,
 }
 
 /// A 3D view's camera: the model point its eye stands at, and the model point it looks at, in mm. The view is seen in
@@ -2043,6 +2046,7 @@ impl View3D {
             perspective: None,
             camera: None,
             display: Default::default(),
+            background: Default::default(),
             work_plane: None,
         }
     }
@@ -10946,6 +10950,7 @@ impl Model {
                 if let Some(cam) = &v.camera {
                     camera_ok(&who, cam)?;
                 }
+                v.background.check(&self.images).map_err(|e| format!("{who}: {e}"))?;
                 if v.display.silhouette > crate::view3d::MAX_SILHOUETTE {
                     let most = crate::view3d::MAX_SILHOUETTE;
                     return Err(format!("{who}: a silhouette {} px wide is wider than the {most} px one may be", v.display.silhouette));

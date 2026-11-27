@@ -206,6 +206,7 @@ impl FamilyEditor {
             camera: None,
             display: Default::default(),
             work_plane: None,
+            background: Default::default(),
         }));
         Ok(FamilyScene { model: Arc::clone(&s.model), part, key })
     }

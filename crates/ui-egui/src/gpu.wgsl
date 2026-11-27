@@ -38,7 +38,7 @@ struct Globals {
     // in front of the eye.
     lens: vec4<f32>,
     // The view's Graphic Display Options: x 1 where it shows its edges, y a silhouette's width (px, 0 for none), z 1 where it
-    // shows ambient shadows.
+    // shows ambient shadows, w 1 where it has a background of its own, which shows where nothing is drawn (left clear).
     display: vec4<f32>,
     // The section box from the mesh's origin: its least corner (w: 1 where there is one) and its greatest.
     cut_lo: vec4<f32>,
@@ -518,9 +518,11 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     }
     // Over it, the nearest surface seen through, as much of it as the view lets show (and a tinted one always a little, or
     // selecting it would show nothing).
+    var glass = false;
     if g.size.w > 0.5 {
         let clear = textureLoad(clear_ids, vec2<i32>(x, y), 0).x;
         if clear != 0u {
+            glass = true;
             let owner = owners[clear - 1u];
             var s = bytes(textureLoad(clear_color, vec2<i32>(x, y), 0));
             var weight = owner.edge.w;
@@ -530,6 +532,10 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
             }
             rgb = floor(rgb + (s - rgb) * weight + vec3<f32>(0.5));
         }
+    }
+    // Nothing here: the view's own background shows, painted under the picture.
+    if g.display.w > 0.5 && !edge && here.y == 0u && !glass {
+        return vec4<f32>(0.0);
     }
     return vec4<f32>(inked(rgb) / 255.0, 1.0);
 }

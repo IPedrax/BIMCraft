@@ -2484,9 +2484,12 @@ other_files(
         "move",
         ui_msg!("Move"),
         &["MV"],
-        "{ids: [id,…], by: [dx, dy], view?, end?: start|end} With a section/elevation `view`, `by` is [along, up]: moves \
-         its annotations in drawing coordinates, straight-wall openings in their host (refusing motion off the host), and \
-         unhosted non-adaptive components in world coordinates. Other model kinds and `end` are refused in this mode. \
+        "{ids: [id,…], by: [dx, dy] | [dx, dy, dz], view?, end?: start|end} A `dz` raises what moves (lowers it, below none): \
+         its offset from its level takes the rise, a door's or a window's sill, a level's elevation (a level moves only up or \
+         down, and what stands on it with it); what has no height of its own (annotation, grids) moves in plan only. With a \
+         section/elevation `view`, `by` is [along, up]: moves \
+         its annotations in drawing coordinates, straight-wall openings in their host (refusing motion off the host), levels up \
+         or down, and unhosted non-adaptive components in world coordinates. Other model kinds and `end` are refused in this mode. \
          Without `view`, moves elements in plan; walls joined to a moved wall stretch to stay \
          joined, and doors and windows slide along their walls. With `end`, only that end of one wall, one run or one grid \
          moves (a grid's other end stays, and it keeps some length). One \
@@ -2508,7 +2511,9 @@ other_files(
         "copy",
         msg!("Copy"),
         &["CO"],
-        "{ids: [id,…], by: [dx, dy]} copies elements, with the doors and windows of copied walls; returns the copies' ids",
+        "{ids: [id,…], by: [dx, dy] | [dx, dy, dz]} copies elements, with the doors and windows of copied walls, `dz` mm higher \
+         (lower, below none) as `move` raises them; a level is copied only up or down, as a new level that much higher, named \
+         after it. Returns the copies' ids",
         copy,
     ),
     other(
@@ -2554,6 +2559,18 @@ other_files(
         "{ids: [id,…], about: [x, y], angle, copy?} turns elements about a point by `angle` degrees, counter-clockwise; walls \
          joined to them stay joined, and doors and windows turn with their walls",
         rotate,
+    ),
+    edit(
+        "change_level",
+        ui_msg!("Change Base Level"),
+        &[],
+        "{ids: [id,…], level} puts each element on `level` where it stands: its base offset (or its offset) takes up the \
+         difference between the two levels, so nothing moves; a top tied to a level stays tied to it, and an unconnected \
+         height stays as tall. For what stands on a level and has an offset from it: walls, floors, ceilings, roofs, \
+         columns, footings, beams and the other runs, stairs, rooms, shafts, masses, toposolids, unhosted components and \
+         railings, point clouds. Doors and windows (their wall's level), hosted components and group members are refused. \
+         Returns {changed}",
+        crate::relevel::change_level,
     ),
     edit(
         "mirror",
@@ -3434,6 +3451,25 @@ other_files(
          or of nothing; `ambient_shadows`, soft shadows where faces meet inside a corner (off unless turned on). What is left \
          out stays as it was; with none of them it only says what the view has",
         graphic_display_options,
+    ),
+    edit_files(
+        "background",
+        ui_msg!("Background"),
+        &[],
+        "{view?: a 3D view's name or id ({3D} unless given), kind?: none | solid | two_color | gradient | image, color?, top?, \
+         bottom?, stops?: [[percent, colour], …], path? | picture?, fit?: fill | fit | stretch, ground?: colour | false} what a \
+         3D view shows where the model doesn't, as Revit's Graphic Display Options > Background. Colours are \"#rrggbb\" or \
+         [r, g, b]. `kind` fills it: `none`, the canvas's paper; `solid`, one `color`; `two_color`, `top` over the picture's \
+         middle and `bottom` under it; `gradient`, blended down the view through `stops`, each a colour at a percent from 0 \
+         (the top) to 100 (the bottom), 1 to 16 of them in any order; `image`, a PNG or JPEG file (`path`, taken into the \
+         project as `image` takes one) or a picture the project holds (`picture`, its id from `assets`), filling the view \
+         (`fill`, cut to its shape, the default), whole within it (`fit`) or stretched over it (`stretch`). `ground` turns the \
+         horizon on: everything the view shows at elevation 0 and below is that colour, its edge following the camera as it \
+         turns (in perspective the eye's level, far off; in a parallel view as if seen through the default lens, so from \
+         the top the ground fills it); `false` turns it off. What is left out stays as it was, a colour not had yet a sky's or a ground's. With \
+         neither `kind` nor `ground` it only says what the view has. Returns {view, background}",
+        background,
+        Files::Read,
     ),
     edit(
         "camera",
@@ -6310,6 +6346,10 @@ fn render_view(s: &mut Session, p: &Value) -> R {
         if look.section_box().is_some() {
             image.capped(&cam, &view3d::CapSource::new(m).caps_in(m, three, &look), &[], &look);
         }
+        // Its background where nothing is drawn.
+        if let Some(v) = &held {
+            v.background.paint(&mut image, &m.images, &cam);
+        }
         // Its dimensions, over the picture.
         if let Some(v) = three {
             crate::dims3d::paint(&mut image, &crate::dims3d::marks(m, v, &cam, &look, crate::dims3d::SCREEN));
@@ -7043,6 +7083,155 @@ fn graphic_display_options(s: &mut Session, p: &Value) -> R {
         v3.display = now;
     }
     Ok(json!({"view": view, "edges": now.edges, "silhouette": now.silhouette, "ambient_shadows": now.ambient_shadows}))
+}
+
+fn background(s: &mut Session, p: &Value) -> R {
+    use view3d::background::{Background, Fill, Fit, GROUND, HAZE, KINDS, MAX_STOPS, SKY, Stop};
+    let c = "background";
+    only(c, p, &["view", "kind", "color", "top", "bottom", "stops", "path", "picture", "fit", "ground"])?;
+    let m = &s.model;
+    let default = absent(p.get("view"))
+        || matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
+    let view = if default {
+        m.default_3d()
+    } else {
+        let v = view_param(c, m, p, false)?;
+        if !matches!(m.elements.get(v), Some(Element::View3D(_))) {
+            return Err(bad(c, format!("{} isn't a 3D view; only a 3D view has a background", view_title(m, v))));
+        }
+        Some(v)
+    };
+    let was = view
+        .and_then(|v| match m.elements.get(v) {
+            Some(Element::View3D(v3)) => Some(v3.background.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let col = |key: &str, v: &Value| colour(v).ok_or_else(|| bad(c, format!("`{key}` is a colour, \"#rrggbb\" or [r, g, b], not {v}")));
+    // The ground under the horizon: a colour, or false (or null) for none; left out, as it was.
+    let ground = match p.get("ground") {
+        None => was.ground,
+        Some(Value::Null | Value::Bool(false)) => None,
+        Some(Value::Bool(true)) => Some(was.ground.unwrap_or(GROUND)),
+        Some(v) => Some(col("ground", v)?),
+    };
+    let kind = string(c, p, "kind")?;
+    if kind.is_none()
+        && let Some(k) = ["color", "top", "bottom", "stops", "path", "picture", "fit"].iter().find(|k| !absent(p.get(**k)))
+    {
+        return Err(bad(c, format!("`{k}` goes with a `kind`: one of {}", KINDS.join(", "))));
+    }
+    // What it had of each colour, else a sky's and a ground's.
+    let (top0, bottom0) = match &was.fill {
+        Fill::Solid { color } => (*color, *color),
+        Fill::TwoColor { top, bottom } => (*top, *bottom),
+        _ => (SKY, GROUND),
+    };
+    let given = |key: &str, or: [u8; 3]| -> Result<[u8; 3], String> {
+        match p.get(key) {
+            v if absent(v) => Ok(or),
+            Some(v) => col(key, v),
+            None => Ok(or),
+        }
+    };
+    let unused = |kind: &str, keys: &[&str]| -> Result<(), String> {
+        match keys.iter().find(|k| !absent(p.get(**k))) {
+            Some(k) => Err(bad(c, format!("`{k}` isn't a {kind} background's"))),
+            None => Ok(()),
+        }
+    };
+    let mut picture = None;
+    let fill = match kind.as_deref() {
+        None => was.fill.clone(),
+        Some("none") => {
+            unused("none", &["color", "top", "bottom", "stops", "path", "picture", "fit"])?;
+            Fill::None
+        }
+        Some("solid") => {
+            unused("solid", &["top", "bottom", "stops", "path", "picture", "fit"])?;
+            Fill::Solid { color: given("color", top0)? }
+        }
+        Some("two_color") => {
+            unused("two_color", &["color", "stops", "path", "picture", "fit"])?;
+            Fill::TwoColor { top: given("top", top0)?, bottom: given("bottom", bottom0)? }
+        }
+        Some("gradient") => {
+            unused("gradient", &["color", "top", "bottom", "path", "picture", "fit"])?;
+            let stops = match p.get("stops") {
+                v if absent(v) => match &was.fill {
+                    Fill::Gradient { stops } => stops.clone(),
+                    _ => vec![Stop { at: 0.0, color: SKY }, Stop { at: 50.0, color: HAZE }, Stop { at: 100.0, color: GROUND }],
+                },
+                Some(Value::Array(a)) if !a.is_empty() && a.len() <= MAX_STOPS => {
+                    a.iter()
+                        .map(|v| {
+                            let (at, colour_v) = match v {
+                                Value::Array(pair) if pair.len() == 2 => (&pair[0], &pair[1]),
+                                Value::Object(o) if o.len() == 2 => {
+                                    (o.get("at").unwrap_or(&Value::Null), o.get("color").unwrap_or(&Value::Null))
+                                }
+                                _ => return Err(bad(c, format!("a stop is [percent, colour] or {{at, color}}, not {v}"))),
+                            };
+                            let at = at.as_f64().filter(|x| (0.0..=100.0).contains(x)).ok_or_else(|| {
+                                bad(c, format!("a stop's place is a percent from 0 (the top) to 100 (the bottom), not {at}"))
+                            })?;
+                            Ok(Stop { at, color: col("stops", colour_v)? })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?
+                }
+                Some(v) => return Err(bad(c, format!("`stops` is a list of 1 to {MAX_STOPS} [percent, colour], not {v}"))),
+                None => Vec::new(),
+            };
+            Fill::Gradient { stops }
+        }
+        Some("image") => {
+            unused("image", &["color", "top", "bottom", "stops"])?;
+            let fit = match string(c, p, "fit")? {
+                None => match &was.fill {
+                    Fill::Image { fit, .. } => *fit,
+                    _ => Fit::Fill,
+                },
+                Some(f) => Fit::named(&f).ok_or_else(|| bad(c, format!("`fit` is fill, fit or stretch, not `{f}`")))?,
+            };
+            let id = match (string(c, p, "path")?, string(c, p, "picture")?) {
+                (Some(_), Some(_)) => return Err(bad(c, "give `path`, a PNG or JPEG file, or `picture`, one the project holds; not both")),
+                (Some(path), None) => {
+                    if ext(std::path::Path::new(&path)) == "pdf" {
+                        return Err(bad(c, "a background is a PNG or JPEG picture, not a PDF"));
+                    }
+                    let (pic, _) = read_picture(c, s, &path, None)?;
+                    let id = pic.id();
+                    picture = Some(pic);
+                    id
+                }
+                (None, Some(id)) if m.images.contains_key(&id) && !m.pdfs.contains_key(&id) => id,
+                (None, Some(id)) => return Err(bad(c, format!("the project holds no picture `{id}`"))),
+                (None, None) => match &was.fill {
+                    Fill::Image { picture, .. } => picture.clone(),
+                    _ => return Err(bad(c, "an image background needs `path`, a PNG or JPEG file, or `picture`, one the project holds")),
+                },
+            };
+            Fill::Image { picture: id, fit }
+        }
+        Some(other) => return Err(bad(c, format!("`kind` is one of {}, not `{other}`", KINDS.join(", ")))),
+    };
+    let now = Background { fill, ground };
+    let said = |b: &Background| json!({"view": view, "background": b});
+    if now == was && picture.is_none() {
+        return Ok(said(&now));
+    }
+    let model = s.model_mut();
+    if let Some(pic) = picture {
+        model.images.entry(pic.id()).or_insert(pic);
+    }
+    let view = match view {
+        Some(v) => v,
+        None => model.insert(Element::View3D(View3D::default_view())),
+    };
+    if let Some(Element::View3D(v3)) = model.elements.get_mut(view) {
+        v3.background = now.clone();
+    }
+    Ok(json!({"view": view, "background": now}))
 }
 
 /// `[x, y, z]` in mm within the model's limits, or an error naming `key`.
@@ -22358,11 +22547,13 @@ fn move_in_view(s: &mut Session, view: Id, ids: &[Id], by: P2) -> R {
             Element::Component(cmp) if cmp.host.is_none() && !m.placed_by_points(cmp) => {
                 edits.push(json!({"id":id,"at":[cmp.at.0+xy.0,cmp.at.1+xy.1],"offset":cmp.offset+delta[2]}));
             }
+            // A level goes up or down, and what stands on it with it.
+            Element::Level(l) => edits.push(json!({"id": id, "elevation": l.elevation + delta[2]})),
             _ => {
                 return Err(bad(
                     c,
                     format!(
-                        "{} {id}: Move in sections/elevations currently supports own-view annotations, straight-wall openings and unhosted components",
+                        "{} {id}: Move in sections/elevations currently supports own-view annotations, levels, straight-wall openings and unhosted components",
                         e.category()
                     ),
                 ));
@@ -22378,10 +22569,79 @@ fn move_in_view(s: &mut Session, view: Id, ids: &[Id], by: P2) -> R {
     Ok(json!({"moved":ids}))
 }
 
+/// `by`, [dx, dy] or [dx, dy, dz] mm: how far in plan, and how far up.
+fn shift_param(c: &str, p: &Value) -> Result<(P2, f64), String> {
+    match p.get("by") {
+        Some(v @ Value::Array(a)) if a.len() == 3 => {
+            let q = point3(v).ok_or_else(|| bad(c, format!("`by` must be [dx, dy] or [dx, dy, dz] in mm, got {v}")))?;
+            Ok((P2(q[0], q[1]), q[2]))
+        }
+        _ => Ok((point_req(c, p, "by")?, 0.0)),
+    }
+}
+
+/// The name a copy of level `name` takes: the next number after its own that no level has (`Level 2` gives `Level 3`), or
+/// `name 2` onward where it ends in none.
+fn next_level_name(m: &Model, name: &str) -> String {
+    let taken: BTreeSet<String> = m.levels().into_iter().map(|(_, l)| l.name.clone()).collect();
+    let digits = name.len() - name.trim_end_matches(|c: char| c.is_ascii_digit()).len();
+    let (stem, n) = match name.get(name.len() - digits..).and_then(|d| d.parse::<u64>().ok()) {
+        Some(n) => (name[..name.len() - digits].to_string(), n),
+        None => (format!("{name} "), 1),
+    };
+    (n.saturating_add(1)..n.saturating_add(10_000))
+        .map(|k| format!("{stem}{k}"))
+        .find(|k| !taken.contains(k))
+        .unwrap_or_else(|| format!("{name} copy"))
+}
+
+/// The levels among `ids`, and the rest.
+fn levels_apart(m: &Model, ids: &[Id]) -> (Vec<Id>, Vec<Id>) {
+    ids.iter().partition(|id| matches!(m.elements.get(**id), Some(Element::Level(_))))
+}
+
+/// Each of `ids` raised by `dz` (`relevel::lifted`); a door or a window whose wall goes up with it stays on it as it is, and what
+/// has no height of its own stays. A group is refused: its members are its type's.
+fn lift(c: &str, s: &mut Session, ids: &[Id], dz: f64) -> Result<(), String> {
+    if dz == 0.0 {
+        return Ok(());
+    }
+    let m = &s.model;
+    let raised: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
+    let mut changed = Vec::new();
+    for &id in ids {
+        let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+        if crate::groups::instance(e).is_some() {
+            return Err(bad(c, format!("{} {id} is a group: it moves in plan; raise its members in Edit Group", e.category())));
+        }
+        if let Element::Door(o) | Element::Window(o) = e
+            && raised.contains(&o.host)
+        {
+            continue;
+        }
+        if let Some(up) = crate::relevel::lifted(m, e, dz) {
+            changed.push((id, up));
+        }
+    }
+    let model = s.model_mut();
+    for (id, e) in changed {
+        if let Some(slot) = model.elements.get_mut(id) {
+            *slot = e;
+        }
+    }
+    Ok(())
+}
+
 fn move_elements(s: &mut Session, p: &Value) -> R {
     let c = "move";
     let ids = ids_param(c, &s.model, p)?;
-    let by = point_req(c, p, "by")?;
+    let (by, dz) = shift_param(c, p)?;
+    if dz != 0.0 && (!absent(p.get("view")) || !absent(p.get("end"))) {
+        return Err(bad(c, "`by` [dx, dy, dz] moves whole elements in the model: give no `view` or `end` with a dz"));
+    }
+    if dz != 0.0 {
+        refuse_pinned(c, &s.model, &ids, "move")?;
+    }
     if !absent(p.get("view")) {
         let view = view_param(c, &s.model, p, false)?;
         if !absent(p.get("end")) || s.model.section(view).is_none() {
@@ -22418,17 +22678,54 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
             "`end` moves an end of one wall or one run, or of one grid, or a part of one section or elevation; give `ids` one of those",
         ));
     }
-    // A group goes with its members.
-    let taken = if end.is_none() { crate::groups::with_members(&s.model, &ids) } else { ids.clone() };
-    relocate(c, s, &taken, &Motion { map: &|q| q + by, slide: Some(by), mirror: false }, end)?;
+    // Levels go up or down only, and what stands on them with them.
+    let (levels, ids_rest) = levels_apart(&s.model, &ids);
+    if !levels.is_empty() && by.length() > TOL {
+        return Err(bad(c, "a level moves only up or down, its elevation: give `by` [0, 0, dz]"));
+    }
+    if !ids_rest.is_empty() && (by.length() > 0.0 || dz == 0.0) {
+        // A group goes with its members.
+        let taken = if end.is_none() { crate::groups::with_members(&s.model, &ids_rest) } else { ids_rest.clone() };
+        relocate(c, s, &taken, &Motion { map: &|q| q + by, slide: Some(by), mirror: false }, end)?;
+    }
+    lift(c, s, &ids_rest, dz)?;
+    for l in levels {
+        if let Some(Element::Level(level)) = s.model_mut().elements.get_mut(l) {
+            level.elevation += dz;
+        }
+    }
     Ok(json!({"moved": ids}))
 }
 
 fn copy(s: &mut Session, p: &Value) -> R {
     let c = "copy";
     let ids = ids_param(c, &s.model, p)?;
-    let by = point_req(c, p, "by")?;
-    duplicate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false })
+    let (by, dz) = shift_param(c, p)?;
+    // A level copied is a new level as far above or below it.
+    let (levels, ids) = levels_apart(&s.model, &ids);
+    if !levels.is_empty() && (by.length() > TOL || dz == 0.0) {
+        return Err(bad(c, "a level is copied only up or down: give `by` [0, 0, dz]"));
+    }
+    let mut made = Vec::new();
+    for l in levels {
+        let Some(Element::Level(from)) = s.model.elements.get(l) else { continue };
+        let (name, elevation) = (from.name.clone(), from.elevation + dz);
+        let base = next_level_name(&s.model, &name);
+        let new = Level { extent: from.extent, elevation_base: from.elevation_base, ..Level::new(base, elevation) };
+        made.push(s.model_mut().insert(Element::Level(new)));
+    }
+    if ids.is_empty() {
+        return Ok(json!({"ids": made}));
+    }
+    let mut out = duplicate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false })?;
+    let copies: Vec<Id> = out["ids"].as_array().map(|a| a.iter().filter_map(Value::as_u64).collect()).unwrap_or_default();
+    lift(c, s, &copies, dz)?;
+    if !made.is_empty()
+        && let Some(a) = out["ids"].as_array_mut()
+    {
+        a.extend(made.into_iter().map(|id| json!(id)));
+    }
+    Ok(out)
 }
 
 fn copy_to_clipboard(s: &mut Session, p: &Value) -> R {

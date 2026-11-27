@@ -14,6 +14,8 @@ pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
 pub mod background_grid;
+#[cfg(test)]
+mod background_tests;
 pub mod bath;
 pub mod bima;
 pub mod bimc;
@@ -255,6 +257,9 @@ mod rebar_tests;
 pub mod reinforce;
 #[cfg(test)]
 mod reinforce_tests;
+pub mod relevel;
+#[cfg(test)]
+mod relevel_tests;
 pub mod render;
 #[cfg(test)]
 mod renovation_tests;

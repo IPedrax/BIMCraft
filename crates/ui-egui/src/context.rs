@@ -85,6 +85,9 @@ pub(crate) enum Action {
     EditDimensionReferences,
     /// Of a curtain wall's mullion picked: every mullion along its grid.
     SelectAlongGrid,
+    /// Change Base Level: the selection put on a level where it stands (`change_level`). `None` is the item that opens the
+    /// list of levels; `Some` the level picked from it.
+    ChangeLevel(Option<bimcraft_core::model::Id>),
     /// The selection to the clipboard, taken away or kept; and the clipboard pasted by hand (`clipboard.rs`).
     Cut,
     CopyToClipboard,
@@ -128,6 +131,7 @@ impl Action {
             Action::Cut => msg!("Cut to Clipboard"),
             Action::CopyToClipboard => msg!("Copy to Clipboard"),
             Action::Paste => msg!("Paste"),
+            Action::ChangeLevel(_) => msg!("Change Base Level"),
         }
     }
 
@@ -169,9 +173,12 @@ impl Item {
     }
 }
 
+/// The levels Change Base Level offers: each level's id, what the list says of it, and whether the selection is on it.
+pub(crate) type Levels = Vec<(bimcraft_core::model::Id, String, bool)>;
+
 /// The menu of `groups` on `response`'s right click; the item clicked goes to `chosen`. Free of the
-/// app, so a view drawing in a closure that holds it can still offer the menu.
-pub(crate) fn menu(response: &Response, groups: &[Vec<Item>], chosen: &mut Option<Action>) {
+/// app, so a view drawing in a closure that holds it can still offer the menu. `levels` are Change Base Level's.
+pub(crate) fn menu(response: &Response, groups: &[Vec<Item>], levels: &Levels, chosen: &mut Option<Action>) {
     response.context_menu(|ui| {
         for (i, group) in groups.iter().filter(|g| !g.is_empty()).enumerate() {
             if i > 0 {
@@ -182,6 +189,20 @@ pub(crate) fn menu(response: &Response, groups: &[Vec<Item>], chosen: &mut Optio
                     if let Some(scope) = instances_menu(ui, item.enabled, true) {
                         *chosen = Some(Action::SelectInstances(scope));
                     }
+                    continue;
+                }
+                if item.action == Action::ChangeLevel(None) {
+                    ui.add_enabled_ui(item.enabled, |ui| {
+                        ui.menu_button(t(item.action.label()), |ui| {
+                            for (id, name, on) in levels {
+                                // The level it is on already is said, and changes nothing.
+                                if ui.add_enabled(!on, Button::new(name.as_str()).selected(*on)).clicked() {
+                                    *chosen = Some(Action::ChangeLevel(Some(*id)));
+                                    ui.close();
+                                }
+                            }
+                        });
+                    });
                     continue;
                 }
                 let mut button = Button::new(t(item.action.label()));
@@ -287,6 +308,10 @@ impl BimApp {
                     Item::new(Action::OverrideGraphics, true),
                 ]);
             }
+            // What stands on a level may go on another, where it is.
+            if bimcraft_core::relevel::can_change_level(m, &self.selection) {
+                groups.push(vec![Item::new(Action::ChangeLevel(None), true)]);
+            }
             if !joins.is_empty() {
                 groups.push(vec![
                     Item::new(Action::DisallowJoin, joins.iter().any(|j| *j)),
@@ -368,7 +393,26 @@ impl BimApp {
             Action::Pin => self.set_pinned(true),
             Action::Unpin => self.set_pinned(false),
             Action::EditDimensionReferences => self.start_dimension_refs_edit(),
+            Action::ChangeLevel(None) => {}
+            Action::ChangeLevel(Some(level)) => {
+                self.run("change_level", serde_json::json!({"ids": self.selection, "level": level}));
+            }
         }
+    }
+
+    /// The levels Change Base Level lists, low to high, each with its elevation; the one every selected element is on already
+    /// marked.
+    pub(crate) fn level_choices(&self) -> Levels {
+        let m = &self.session.model;
+        let on: std::collections::BTreeSet<_> =
+            self.selection.iter().filter_map(|id| m.elements.get(*id)).filter_map(|e| m.level_of(e)).collect();
+        m.levels()
+            .into_iter()
+            .map(|(id, l)| {
+                let here = on.len() == 1 && on.contains(&m.guid(id));
+                (id, format!("{}  ({})", l.name, m.with_unit(l.elevation)), here)
+            })
+            .collect()
     }
 
     /// Pin every selected element, or unpin them, as one command; those already as asked are left.
@@ -420,8 +464,9 @@ impl BimApp {
     /// The menu on a view's `response`, doing what's chosen from it.
     pub(crate) fn context_menu(&mut self, response: &Response) {
         let groups = self.context_items();
+        let levels = self.level_choices();
         let mut chosen = None;
-        menu(response, &groups, &mut chosen);
+        menu(response, &groups, &levels, &mut chosen);
         if let Some(action) = chosen {
             self.act(action);
         }
