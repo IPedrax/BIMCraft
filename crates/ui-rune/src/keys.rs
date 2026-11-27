@@ -50,7 +50,7 @@ impl Typed {
             return Step::Nothing;
         }
         // Too long a wait, or a clock that is no number, and what came before is dropped.
-        if !self.text.is_empty() && !(now - self.at <= WAIT) {
+        if self.late(now) {
             self.clear();
         }
         self.at = if now.is_finite() { now } else { 0.0 };
@@ -73,9 +73,14 @@ impl Typed {
         }
     }
 
+    /// Whether the letters waiting have waited too long by `now`; a clock that is no number counts as too long.
+    fn late(&self, now: f64) -> bool {
+        !self.text.is_empty() && ((now - self.at).is_nan() || now - self.at > WAIT)
+    }
+
     /// Drops what has waited past [`WAIT`] by `now`: true when something was waiting.
     pub fn expire(&mut self, now: f64) -> bool {
-        let late = !self.text.is_empty() && !(now - self.at <= WAIT);
+        let late = self.late(now);
         if late {
             self.clear();
         }

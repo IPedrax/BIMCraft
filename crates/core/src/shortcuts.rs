@@ -187,6 +187,10 @@ fn claim(out: &mut Vec<(&'static str, Target)>, code: &'static str, target: Targ
     }
 }
 
+/// Labels the desktop does itself though a command has them: `modify` edits fields by id and `select_instances` reads ids, where
+/// `Modify` puts the tool down and `Select All Instances` selects by the selection's category and type.
+const OWN: &[&str] = &["Modify", "Select All Instances"];
+
 fn built() -> Vec<(&'static str, Target)> {
     let lists: [&[(&'static str, &'static str)]; 3] = [DESKTOP, EXTRA, FIXTURES];
     let mut out = Vec::new();
@@ -197,7 +201,7 @@ fn built() -> Vec<(&'static str, Target)> {
         }
         for list in lists {
             for &(code, label) in list {
-                if label == c.label {
+                if label == c.label && !OWN.contains(&label) {
                     claim(&mut out, code, Target::Command(c.id));
                 }
             }
