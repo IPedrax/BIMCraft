@@ -7,6 +7,7 @@ use rune::{El, FileDialogOptions, Tx, el, row, text};
 
 use crate::app::App;
 use crate::lang::t;
+use crate::views::ViewKind;
 
 pub const HEIGHT: f32 = 36.0;
 
@@ -97,5 +98,10 @@ pub fn bar(s: &App, th: &Theme) -> El {
         .child(labelled("zoom-previous", t("Previous Pan/Zoom"), t("Back"), th, |s: &mut App, _: &mut Tx| {
             s.previous();
         }))
+        // In a 3D view the work plane it sketches on is named, and a press opens its dialog.
+        .children(
+            matches!(s.view, ViewKind::View3D(_))
+                .then(|| labelled("work-plane", t("Work Plane"), &s.work_plane_name(), th, |s: &mut App, _: &mut Tx| s.open_work_plane())),
+        )
         .child(text(name).key("project-name").font(type_::TITLE).color(th.text_secondary))
 }

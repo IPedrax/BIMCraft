@@ -26,6 +26,7 @@ pub fn layers(s: &App, k: &Kit, layer: &mut Vec<El>) {
     super::settings::dialog(s, k, layer);
     super::types::dialog(s, k, layer);
     super::choose::dialog(s, k, layer);
+    super::workplane::dialog(s, k, layer);
 }
 
 /// The text of a field's choice that means none.

@@ -33,6 +33,7 @@ mod tools;
 mod topbar;
 mod types;
 mod view3d;
+mod workplane;
 
 /// The Properties panel's width, points.
 pub const PANEL_WIDTH: f32 = 300.0;
@@ -195,3 +196,5 @@ mod tests;
 mod tooling_tests;
 #[cfg(test)]
 mod underlay_tests;
+#[cfg(test)]
+mod workplane_tests;

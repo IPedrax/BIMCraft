@@ -20,6 +20,7 @@ pub const TOOLS: &[(&str, &[(&str, &str)])] = &[
             ("ramp", "Ramp"),
             ("railing", "Railing"),
             ("room", "Room"),
+            ("reference_plane", "Reference Plane"),
         ],
     ),
     (

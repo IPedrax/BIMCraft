@@ -108,6 +108,7 @@ pub const SPECS: &[Spec] = &[
     spec("ceiling", "ceiling", Kind::Point { key: "point" }),
     spec("stair", "stair", Kind::Span { from: "start", to: "end" }),
     spec("ramp", "ramp", Kind::Span { from: "start", to: "end" }),
+    spec("reference_plane", "reference_plane", Kind::Span { from: "start", to: "end" }),
     spec("railing", "railing", Kind::Path { key: "path", min: 2, host: true }),
     spec("room", "room", Kind::Point { key: "point" }),
     spec("beam", "beam", RUN),
