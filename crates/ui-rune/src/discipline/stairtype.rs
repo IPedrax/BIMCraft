@@ -185,7 +185,7 @@ impl StairType {
                 texts.push(text);
             }
         }
-        let plan = |w: &str| key_of(&WAYS, &word(serde_json::to_value(&kind.plan).map(|p| p[w].clone()))).to_string();
+        let plan = |w: &str| key_of(&WAYS, &word(serde_json::to_value(kind.plan).map(|p| p[w].clone()))).to_string();
         let construction = key_of(&CONSTRUCTIONS.map(|(k, l, _)| (k, l)), &word(serde_json::to_value(kind.built()))).to_string();
         let mut checks = [false; TICK];
         checks[BEGIN_RISER] = !kind.start_tread;

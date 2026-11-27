@@ -56,7 +56,6 @@ struct Supply {
 }
 
 struct SystemRow {
-    key: u64,
     was: Option<(String, Supply)>,
     name: TextEdit,
     supply: Supply,
@@ -64,7 +63,6 @@ struct SystemRow {
 
 /// A wire type: name, temperature, insulation and note typed, its material chosen, and a table of sizes (section, ampacity, label).
 struct WireRow {
-    key: u64,
     was: Option<(String, WireType)>,
     edits: Vec<TextEdit>,
     material: String,
@@ -104,9 +102,8 @@ fn size_row(s: &WireSize) -> Vec<TextEdit> {
     edits([shown(s.section), shown(s.ampacity), s.label.clone().unwrap_or_default()])
 }
 
-fn wire_row(key: u64, was: Option<(String, WireType)>, name: &str, w: &WireType) -> WireRow {
+fn wire_row(was: Option<(String, WireType)>, name: &str, w: &WireType) -> WireRow {
     WireRow {
-        key,
         was,
         edits: edits([name.to_string(), shown(w.temperature), w.insulation.clone(), w.note.clone()]),
         material: w.material.clone(),
@@ -141,16 +138,14 @@ impl Electrical {
             d.voltages.push(voltage_row(key, Some((n.clone(), v.clone())), n, v));
         }
         for (n, s) in &m.distribution_systems {
-            let key = d.key();
             let by =
                 |name: &Option<String>| name.as_deref().and_then(|n| d.voltages.iter().find(|r| typed(&r.edits[0]) == n)).map(|r| r.key);
             let supply =
                 Supply { phases: s.phases, wires: s.wires, l_l: by(&s.l_l), l_n: by(&s.l_n), l_g: by(&s.l_g), ground: s.ground.clone() };
-            d.systems.push(SystemRow { key, was: Some((n.clone(), supply.clone())), name: TextEdit::new(n.clone()), supply });
+            d.systems.push(SystemRow { was: Some((n.clone(), supply.clone())), name: TextEdit::new(n.clone()), supply });
         }
         for (n, w) in &m.wire_types {
-            let key = d.key();
-            d.wires.push(wire_row(key, Some((n.clone(), w.clone())), n, w));
+            d.wires.push(wire_row(Some((n.clone(), w.clone())), n, w));
         }
         d
     }
@@ -190,9 +185,8 @@ impl Electrical {
         let names: Vec<String> = self.systems.iter().map(|r| typed(&r.name).trim().to_string()).collect();
         let name = spare(&names, t("New Distribution System"));
         let l_l = self.voltages.first().map(|r| r.key);
-        let key = self.key();
         let supply = Supply { phases: 3, wires: 4, l_l, l_n: None, l_g: None, ground: None };
-        self.systems.push(SystemRow { key, was: None, name: TextEdit::new(name), supply });
+        self.systems.push(SystemRow { was: None, name: TextEdit::new(name), supply });
     }
 
     fn delete_system(&mut self, i: usize) {
@@ -206,7 +200,6 @@ impl Electrical {
     fn add_wire(&mut self) {
         let names: Vec<String> = self.wires.iter().map(|r| typed(&r.edits[0]).trim().to_string()).collect();
         let name = spare(&names, t("New Wire Type"));
-        let key = self.key();
         let value = WireType {
             material: MATERIALS[0].into(),
             temperature: 70.0,
@@ -214,7 +207,7 @@ impl Electrical {
             note: String::new(),
             sizes: vec![WireSize { section: 1.5, ampacity: 15.0, label: None }],
         };
-        self.wires.push(wire_row(key, None, &name, &value));
+        self.wires.push(wire_row(None, &name, &value));
         self.wire = self.wires.len() - 1;
     }
 

@@ -454,6 +454,14 @@ impl Reinforce {
         }
     }
 
+    /// Delete Preset: the one the fields were filled from.
+    fn forget(&mut self, host: &mut dyn Host) {
+        if host.execute("reinforcement_preset", &json!({"name": self.preset, "delete": true})).is_ok() {
+            self.preset.clear();
+            self.refresh(host.model());
+        }
+    }
+
     /// Save Preset: the fields as they are, under the name typed.
     fn save(&mut self, host: &mut dyn Host) {
         let name = self.text("save_as");
@@ -618,12 +626,7 @@ impl Discipline for Reinforce {
                 return Outcome::Close;
             }
             "save_preset" => self.save(host),
-            "delete_preset" => {
-                if host.execute("reinforcement_preset", &json!({"name": self.preset, "delete": true})).is_ok() {
-                    self.preset.clear();
-                    self.refresh(host.model());
-                }
-            }
+            "delete_preset" => self.forget(host),
             _ => {}
         }
         Outcome::Keep

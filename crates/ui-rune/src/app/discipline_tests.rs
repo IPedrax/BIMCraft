@@ -8,7 +8,7 @@ use crate::discipline::{Cell, Kind};
 /// The place of the box named `name` on the open dialog.
 fn edit_named(app: &App, name: &str) -> usize {
     let open = app.dialogs.discipline.as_ref().expect("a dialog open");
-    let cells = open.dialog.sections().into_iter().flat_map(|s| s.rows).flatten();
+    let mut cells = open.dialog.sections().into_iter().flat_map(|s| s.rows).flatten();
     cells
         .find_map(|c| if let Cell::Field { edit, name: n, .. } = c { (n == name).then_some(edit) } else { None })
         .expect("a box with that name")
