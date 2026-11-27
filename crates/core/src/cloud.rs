@@ -1,10 +1,10 @@
 //! Point clouds: what a laser scan brings in. A file's points are read from public specifications
-//! (PTS and XYZ text, PLY, ASPRS LAS 1.2 to 1.4, ASTM E57), turned into millimetres, thinned to what a project
-//! may hold, and kept about their centre as `f32`, which holds a millimetre across `MAX_SPAN`. A
-//! project holds each scan once, as a [`Cloud`]; a `PointCloud` element places it.
+//! (PTS and XYZ text, PLY, ASPRS LAS 1.2 to 1.4, LAZ and COPC as LASzip compresses them, ASTM E57),
+//! turned into millimetres, thinned to what a project may hold, and kept about their centre as `f32`, which holds a
+//! millimetre across `MAX_SPAN`. A project holds each scan once, as a [`Cloud`]; a `PointCloud` element places it.
 
 use std::collections::{HashMap, HashSet};
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::sync::{Arc, OnceLock};
 
 use flate2::Compression;
@@ -13,12 +13,27 @@ use flate2::write::ZlibEncoder;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "laz")]
+pub mod copc;
 mod e57;
+pub mod index;
+#[cfg(feature = "laz")]
+mod laz;
+pub mod lod;
+pub mod source;
 
 /// Points a cloud may keep: a file with more is thinned down to it.
 pub const MAX_CLOUD_POINTS: usize = 5_000_000;
-/// What a file may be before it's refused, bytes.
-pub const MAX_BYTES: usize = 2 << 30;
+/// What a file may be before it's refused, bytes: a terabyte. A file is read a piece at a time and never held, so what it
+/// takes of memory is the points kept, not its size.
+pub const MAX_BYTES: u64 = 1 << 40;
+/// What a point kept takes of memory while a file is read, bytes: its place and colour, its cube when thinned by spacing, and
+/// for a file read once (LAZ), what it was in the file until the file's bounds are known.
+pub const KEPT_BYTES: u64 = 96;
+/// The longest line a text file of points may have, bytes: a point is a hundred or so.
+const MAX_LINE: usize = 1 << 20;
+/// How much of a file is read at a time, bytes.
+const BLOCK: usize = 1 << 20;
 /// How far a file's coordinates may lie from its own origin, mm: a survey's, a long way off, but never past it.
 pub const MAX_FILE_COORD: f64 = 1e12;
 /// The widest a cloud may be along any axis, mm: `f32` about its centre holds a millimetre that far.
@@ -29,6 +44,12 @@ pub const MAX_CLOUDS: usize = 16;
 pub const MAX_STATIONS: usize = 256;
 /// How wide a square of a cloud's [`Grid`] is, mm.
 const CELL: f64 = 250.0;
+/// The most nodes of a scan's index a snap reads.
+const NEAREST_NODES: usize = 64;
+
+/// What a build without the `laz` feature says of a LAZ file.
+const NO_LAZ: &str =
+    "this build of BIMCraft reads no LAZ (it was built without the `laz` feature): decompress it to LAS first (laszip or PDAL)";
 
 /// What a file of points is written as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,6 +63,8 @@ pub enum Format {
     Ply,
     /// ASPRS LAS 1.2 to 1.4, uncompressed.
     Las,
+    /// LAZ: LAS whose points LASzip compressed; COPC (`.copc.laz`) is one.
+    Laz,
     /// ASTM E57: every scan the file holds, placed by its pose.
     E57,
 }
@@ -55,10 +78,11 @@ impl Format {
             "xyz" | "txt" => Ok(Format::Xyz),
             "ply" => Ok(Format::Ply),
             "las" => Ok(Format::Las),
-            "laz" => Err("LAZ is compressed LAS, which BIMCraft doesn't read: decompress it to LAS first (laszip or PDAL)".into()),
+            "laz" if cfg!(feature = "laz") => Ok(Format::Laz),
+            "laz" => Err(NO_LAZ.into()),
             "e57" => Ok(Format::E57),
             "rcp" | "rcs" => Err("ReCap's RCP and RCS are closed formats: export the scan from ReCap as E57, LAS or PTS".into()),
-            _ => Err(format!("a .{ext} file isn't a point cloud BIMCraft reads: PTS, XYZ, PLY, LAS or E57")),
+            _ => Err(format!("a .{ext} file isn't a point cloud BIMCraft reads: PTS, XYZ, PLY, LAS, LAZ or E57")),
         }
     }
 }
@@ -101,6 +125,8 @@ pub struct Scan {
     pub points: Vec<[f32; 3]>,
     /// Each point's colour, or its intensity as grey; none when the file holds neither.
     pub colours: Option<Vec<[u8; 3]>>,
+    /// Each point's intensity, from the least in the file (0) to the most (255); none when the file holds none, or all alike.
+    pub intensity: Option<Vec<u8>>,
     /// The points the file holds, before thinning.
     pub read: usize,
 }
@@ -149,8 +175,9 @@ pub fn merge(scans: Vec<(String, Scan)>, spacing: f64) -> Result<(Scan, Vec<Stat
     }
     let origin = [0, 1, 2].map(|k| (lo[k] + hi[k]) / 2.0);
     let coloured = scans.iter().any(|(_, scan)| scan.colours.is_some());
+    let bright = scans.iter().any(|(_, scan)| scan.intensity.is_some());
     let mut cells = HashSet::new();
-    let (mut points, mut colours, mut stations, mut read) = (Vec::new(), Vec::new(), Vec::new(), 0_usize);
+    let (mut points, mut colours, mut levels, mut stations, mut read) = (Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0_usize);
     for (source, scan) in scans {
         let before = points.len();
         for (i, p) in scan.points.iter().enumerate() {
@@ -162,11 +189,15 @@ pub fn merge(scans: Vec<(String, Scan)>, spacing: f64) -> Result<(Scan, Vec<Stat
             if coloured {
                 colours.push(scan.colours.as_ref().and_then(|c| c.get(i).copied()).unwrap_or([GREY; 3]));
             }
+            // Among files with an intensity, one without is in the middle of the range.
+            if bright {
+                levels.push(scan.intensity.as_ref().and_then(|l| l.get(i).copied()).unwrap_or(128));
+            }
         }
         read = read.saturating_add(scan.read);
         stations.push(Station { source, points: points.len() - before });
     }
-    Ok((Scan { origin, points, colours: coloured.then_some(colours), read }, stations))
+    Ok((Scan { origin, points, colours: coloured.then_some(colours), intensity: bright.then_some(levels), read }, stations))
 }
 
 /// A scan as a project holds it: its points about their middle, mm, their colours if the file had any, and where it came
@@ -180,12 +211,20 @@ pub struct Cloud {
     read: usize,
     points: Arc<Vec<[f32; 3]>>,
     colours: Option<Arc<Vec<[u8; 3]>>>,
+    /// Each point's intensity, 0 to 255 over the file's range, if the file had one.
+    intensity: Option<Arc<Vec<u8>>>,
     lo: [f32; 3],
     hi: [f32; 3],
     /// What a project file holds of it, made the first time it's saved.
     packed: Arc<OnceLock<CloudFile>>,
     /// Where its points are from above, made the first time something snaps to it.
     grid: Arc<OnceLock<Grid>>,
+    /// Its index, when every point of it is kept in one beside the project and these are the top of it.
+    index: Option<lod::IndexRef>,
+    /// Its index opened, once it has been: not in a file.
+    opened: Arc<OnceLock<Arc<lod::Indexed>>>,
+    /// Each intensity's place among its points', worked out the first time a view colours by them.
+    stretch: Arc<OnceLock<Arc<[u8; 256]>>>,
 }
 
 /// A cloud's points by the square [`CELL`] mm wide they lie in, seen from above.
@@ -211,6 +250,8 @@ impl PartialEq for Cloud {
             && self.read == other.read
             && (Arc::ptr_eq(&self.points, &other.points) || self.points == other.points)
             && self.colours == other.colours
+            && self.intensity == other.intensity
+            && self.index == other.index
     }
 }
 
@@ -224,15 +265,15 @@ thread_local! {
 impl Cloud {
     /// A scan read from the file `source` (its name, for people to know it by), or why it can't be held.
     pub fn new(source: &str, scan: Scan) -> Result<Cloud, String> {
-        let Scan { origin, points, colours, read } = scan;
-        Cloud::checked(source.chars().take(crate::model::MAX_TEXT).collect(), Vec::new(), origin, read, points, colours)
+        let Scan { origin, points, colours, intensity, read } = scan;
+        Cloud::checked(source.chars().take(crate::model::MAX_TEXT).collect(), Vec::new(), origin, read, points, colours, intensity)
     }
 
     /// A scan brought in from several files, `stations`, or why it can't be held. It's known by the first.
     pub fn of_stations(scan: Scan, stations: Vec<Station>) -> Result<Cloud, String> {
-        let Scan { origin, points, colours, read } = scan;
+        let Scan { origin, points, colours, intensity, read } = scan;
         let source = stations.first().map(|t| t.source.clone()).unwrap_or_default();
-        Cloud::checked(source, stations, origin, read, points, colours)
+        Cloud::checked(source, stations, origin, read, points, colours, intensity)
     }
 
     fn checked(
@@ -242,6 +283,7 @@ impl Cloud {
         read: usize,
         points: Vec<[f32; 3]>,
         colours: Option<Vec<[u8; 3]>>,
+        intensity: Option<Vec<u8>>,
     ) -> Result<Cloud, String> {
         if points.is_empty() || points.len() > MAX_CLOUD_POINTS {
             return Err(format!("a cloud holds 1 to {MAX_CLOUD_POINTS} points, not {}", points.len()));
@@ -255,13 +297,19 @@ impl Cloud {
         if colours.as_ref().is_some_and(|c| c.len() != points.len()) {
             return Err("a cloud has a colour for each point or none".into());
         }
+        if intensity.as_ref().is_some_and(|l| l.len() != points.len()) {
+            return Err("a cloud has an intensity for each point or none".into());
+        }
         if stations.len() == 1 {
             stations.clear();
         }
         if stations.len() > MAX_STATIONS {
             return Err(format!("a cloud comes from up to {MAX_STATIONS} files, not {}", stations.len()));
         }
-        if !stations.is_empty() && stations.iter().map(|t| t.points).try_fold(0_usize, usize::checked_add) != Some(points.len()) {
+        // An indexed scan's stations hold the points each file gave the index.
+        if !stations.is_empty()
+            && !stations.iter().map(|t| t.points).try_fold(0_usize, usize::checked_add).is_some_and(|n| n == points.len() || n == read)
+        {
             return Err("a cloud's stations hold all its points between them".into());
         }
         for t in &mut stations {
@@ -288,11 +336,64 @@ impl Cloud {
             read,
             points: Arc::new(points),
             colours: colours.map(Arc::new),
+            intensity: intensity.map(Arc::new),
             lo,
             hi,
             packed: Arc::default(),
             grid: Arc::default(),
+            index: None,
+            opened: Arc::default(),
+            stretch: Arc::default(),
         })
+    }
+
+    /// This scan with every point of it in the index `index` names, these being the top of it.
+    pub fn with_index(self, index: lod::IndexRef) -> Result<Cloud, String> {
+        index.check()?;
+        Ok(Cloud { index: Some(index), packed: Arc::default(), opened: Arc::default(), ..self })
+    }
+
+    /// What the project holds of its index, if it has one.
+    pub fn index(&self) -> Option<&lod::IndexRef> {
+        self.index.as_ref()
+    }
+
+    /// Its index, open, if it has been opened ([`Cloud::attach`]).
+    pub fn indexed(&self) -> Option<&Arc<lod::Indexed>> {
+        self.opened.get()
+    }
+
+    /// Opens its index at the path the project holds (from the folder of the project at `project`), or the full one it was
+    /// built at, unless it's open; why it can't be when it can't. Every copy of the scan shares it.
+    pub fn attach(&self, project: Option<&std::path::Path>) -> Result<(), String> {
+        self.attach_in(project, None)
+    }
+
+    /// [`Cloud::attach`], looking in the folder `cache` too (the user's folder of indexes) for a file of the index's name, when
+    /// it isn't where the project holds it: a project copied without its indexes finds them there.
+    pub fn attach_in(&self, project: Option<&std::path::Path>, cache: Option<&std::path::Path>) -> Result<(), String> {
+        let Some(r) = &self.index else { return Ok(()) };
+        if self.opened.get().is_some() {
+            return Ok(());
+        }
+        let mut first = None;
+        for at in lod::places(r, project, cache) {
+            match lod::Indexed::open(&at, r) {
+                Ok(i) => {
+                    let _ = self.opened.set(Arc::new(i));
+                    return Ok(());
+                }
+                Err(e) => {
+                    first.get_or_insert(e);
+                }
+            }
+        }
+        Err(first.unwrap_or_else(|| "it has no index to open".into()))
+    }
+
+    /// This scan, its index let go: the project holds only the points it has.
+    pub fn without_index(self) -> Cloud {
+        Cloud { index: None, packed: Arc::default(), opened: Arc::default(), ..self }
     }
 
     /// The file it was read from.
@@ -341,6 +442,37 @@ impl Cloud {
         self.colours.clone()
     }
 
+    /// Each point's intensity, 0 to 255 over the file's range, if the file had one: what a view colours by intensity.
+    pub fn intensity(&self) -> Option<&[u8]> {
+        self.intensity.as_deref().map(Vec::as_slice)
+    }
+
+    pub(crate) fn shared_intensity(&self) -> Option<Arc<Vec<u8>>> {
+        self.intensity.clone()
+    }
+
+    /// Each intensity's place among its points', 0 to 255: how many are weaker, and half those as strong, of them all. A view
+    /// colours by intensity through it (histogram equalization), so its colours spread over the whole ramp however the
+    /// returns crowd, as a surveyor's viewer does.
+    pub fn intensity_levels(&self) -> Arc<[u8; 256]> {
+        Arc::clone(self.stretch.get_or_init(|| {
+            let Some(l) = self.intensity.as_deref().filter(|l| !l.is_empty()) else {
+                return Arc::new(std::array::from_fn(|v| v as u8));
+            };
+            let mut count = [0_u64; 256];
+            for &v in l.iter() {
+                count[usize::from(v)] += 1;
+            }
+            let n = l.len() as f64;
+            let mut below = 0_u64;
+            Arc::new(std::array::from_fn(|v| {
+                let at = (below as f64 + count[v] as f64 / 2.0) / n;
+                below += count[v];
+                (at * 255.0).round().clamp(0.0, 255.0) as u8
+            }))
+        }))
+    }
+
     /// Of its points whose height from its middle lies within `z`, the nearest to `at` (from its middle, mm) seen from above and
     /// no farther than `reach`: what a plan snaps to. It looks only in the squares of its [`Grid`] that `reach` touches.
     pub fn nearest(&self, at: [f64; 2], reach: f64, z: (f64, f64)) -> Option<[f32; 3]> {
@@ -378,6 +510,30 @@ impl Cloud {
         best.map(|(_, p)| p)
     }
 
+    /// [`Cloud::nearest`] among every point of it: those of its index too, when it's open, read as they're needed (a few
+    /// nodes, those round `at`, which stay read for the next).
+    pub fn nearest_of_all(&self, at: [f64; 2], reach: f64, z: (f64, f64)) -> Option<[f32; 3]> {
+        let mut best = self.nearest(at, reach, z).map(|p| ((f64::from(p[0]) - at[0]).hypot(f64::from(p[1]) - at[1]), p));
+        let Some(ix) = self.indexed() else { return best.map(|(_, p)| p) };
+        if !(reach.is_finite() && reach >= 0.0 && at.iter().all(|v| v.is_finite())) {
+            return best.map(|(_, p)| p);
+        }
+        let near = |lo: [f64; 3], hi: [f64; 3]| {
+            let touches = lo[0] <= at[0] + reach && hi[0] >= at[0] - reach && lo[1] <= at[1] + reach && hi[1] >= at[1] - reach;
+            (touches && lo[2] <= z.1 && hi[2] >= z.0).then_some(f64::MAX / 4.0)
+        };
+        for i in ix.select(&near, 2_000_000).into_iter().take(NEAREST_NODES) {
+            let Some(node) = ix.fetch(i) else { continue };
+            for p in node.points.iter() {
+                let d = (f64::from(p[0]) - at[0]).hypot(f64::from(p[1]) - at[1]);
+                if d <= reach && (z.0..=z.1).contains(&f64::from(p[2])) && best.is_none_or(|(b, _)| d < b) {
+                    best = Some((d, *p));
+                }
+            }
+        }
+        best.map(|(_, p)| p)
+    }
+
     /// The box round its points, from its middle, mm.
     pub fn bounds(&self) -> ([f64; 3], [f64; 3]) {
         (self.lo.map(f64::from), self.hi.map(f64::from))
@@ -394,6 +550,8 @@ impl Cloud {
                 read: self.read,
                 points: crate::commands::base64(&deflate(&points)),
                 colours: colours.map(|c| crate::commands::base64(&deflate(&c))),
+                intensity: self.intensity.as_ref().map(|l| crate::commands::base64(&deflate(l))),
+                index: self.index.clone(),
             }
         })
     }
@@ -412,6 +570,12 @@ struct CloudFile {
     points: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     colours: Option<String>,
+    /// Each point's intensity as a byte, deflated and in base64; an older file has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    intensity: Option<String>,
+    /// Where every point of it is, when the project holds only the top of them; an older file has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    index: Option<lod::IndexRef>,
 }
 
 pub(crate) fn deflate(bytes: &[u8]) -> Vec<u8> {
@@ -454,8 +618,16 @@ impl TryFrom<CloudFile> for Cloud {
             Some(text) => Some(inflate(text, MAX_CLOUD_POINTS * 3)?.as_chunks::<3>().0.to_vec()),
             None => None,
         };
-        let cloud =
-            Cloud::checked(f.source.chars().take(crate::model::MAX_TEXT).collect(), f.stations.clone(), f.origin, f.read, points, colours)?;
+        let intensity = match &f.intensity {
+            Some(text) => Some(inflate(text, MAX_CLOUD_POINTS)?),
+            None => None,
+        };
+        let source = f.source.chars().take(crate::model::MAX_TEXT).collect();
+        let mut cloud = Cloud::checked(source, f.stations.clone(), f.origin, f.read, points, colours, intensity)?;
+        if let Some(r) = &f.index {
+            r.check()?;
+            cloud.index = Some(r.clone());
+        }
         let _ = cloud.packed.set(f);
         Ok(cloud)
     }
@@ -519,8 +691,43 @@ fn scans_within<'de, D: serde::Deserializer<'de>>(
     d.deserialize_map(Scans { most, points })
 }
 
-/// The points of a file of `format`, or what's wrong with it.
+/// A scan read on a thread of its own ([`crate::engine::Session::read_scan_ahead`]), for the `point_cloud` that places it to
+/// take ([`crate::engine::Session::give_scan`]) instead of reading its files again: so a front end reads a big file without
+/// stopping, and the command that changes the project is still one undo step on its own session. It's taken only for the files
+/// and options it was read for, the project leaving it the same room.
+#[derive(Clone)]
+pub struct ScanRead {
+    pub(crate) key: ScanKey,
+    pub(crate) cloud: Cloud,
+}
+
+/// What a scan was read for: its files, their unit, the spacing, and the most points the project left it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ScanKey {
+    pub(crate) paths: Vec<std::path::PathBuf>,
+    /// The index it was built into, if it was.
+    pub(crate) index: Option<std::path::PathBuf>,
+    pub(crate) scale: f64,
+    pub(crate) spacing: f64,
+    pub(crate) cap: usize,
+}
+
+/// A file of points as it's read: one on disk, a piece at a time, or bytes in memory.
+pub trait Source: Read + Seek + Send + Sync {}
+impl<T: Read + Seek + Send + Sync + ?Sized> Source for T {}
+
+/// The points of a file of `format` held in memory, or what's wrong with it.
 pub fn read(bytes: &[u8], format: Format, o: &Options) -> Result<Scan, String> {
+    read_from(&mut std::io::Cursor::new(bytes), format, o, None)
+}
+
+/// How many points are read between looks at the memory and at Cancel.
+const LOOK: u64 = 1 << 16;
+
+/// The points of a file of `format`, read from `src` a piece at a time and never held, or what's wrong with it: what it takes
+/// of memory is the points kept. `budget`, when given, is looked at as it reads (the memory the machine has free, and Cancel),
+/// and its progress hears how far it is.
+pub fn read_from(src: &mut dyn Source, format: Format, o: &Options, budget: Option<&crate::memory::Budget>) -> Result<Scan, String> {
     if !(o.scale.is_finite() && o.scale > 0.0) {
         return Err(format!("a unit of {} mm isn't one", o.scale));
     }
@@ -530,12 +737,43 @@ pub fn read(bytes: &[u8], format: Format, o: &Options) -> Result<Scan, String> {
     if o.cap == 0 {
         return Err("a cloud keeps one point at least".into());
     }
-    if bytes.len() > MAX_BYTES {
-        return Err(format!("it's {} bytes; up to {MAX_BYTES}", bytes.len()));
+    let len = src.seek(SeekFrom::End(0)).map_err(|e| format!("it can't be read: {e}"))?;
+    if len > MAX_BYTES {
+        return Err(format!("it's {len} bytes; up to {MAX_BYTES}"));
     }
-    // ponytail: the file is parsed twice, once to measure it and once to keep its points; text files pay for it.
-    let mut stats = Stats::default();
-    each(bytes, format, &mut |raw| stats.add(&raw, o.scale))?;
+    let progress = budget.and_then(crate::memory::Budget::progress);
+    // Every `LOOK` points on: the memory and Cancel looked at, and the progress moved on to the point at `now`.
+    let look = |last: &mut u64, now: u64| -> Result<(), String> {
+        if now >= last.saturating_add(LOOK) {
+            if let Some(b) = budget {
+                b.check()?;
+            }
+            if let Some(p) = progress {
+                p.step(now - *last);
+            }
+            *last = now;
+        }
+        Ok(())
+    };
+    // ponytail: the file is parsed twice, once to measure it and once to keep its points; text files pay for it. A LAZ file
+    // is read once: its points can't be stepped over, so a second pass would decompress every one of them again, and its
+    // header says how many it holds, so which to keep is known as it's read.
+    let known = once(src, len, format);
+    let every = known.map(|count| count.div_ceil(o.cap as u64).max(1));
+    if let Some(p) = progress {
+        match known {
+            Some(count) => p.stage(bimcraft_i18n::ui_msg!("Reading the points"), count),
+            None => p.stage(bimcraft_i18n::ui_msg!("Measuring the scan"), 0),
+        }
+    }
+    let (mut stats, mut last, mut held) = (Stats::default(), 0, Vec::new());
+    each(src, len, format, 1, &mut |at, raw| {
+        stats.add(&raw, o.scale)?;
+        if every.is_some_and(|every| at.is_multiple_of(every)) {
+            held.push(Held::of(&raw));
+        }
+        look(&mut last, stats.count as u64)
+    })?;
     if stats.count == 0 {
         return Err("it holds no points".into());
     }
@@ -549,33 +787,107 @@ pub fn read(bytes: &[u8], format: Format, o: &Options) -> Result<Scan, String> {
     }
     // Every so many, so the cap is never passed, and then one in each cube of the spacing.
     let stride = stats.count.div_ceil(o.cap).max(1);
-    let colour = stats.colour();
-    let mut cells = HashSet::new();
-    let (mut points, mut colours, mut n) = (Vec::new(), Vec::new(), 0_usize);
-    each(bytes, format, &mut |raw| {
-        let at = n;
-        n += 1;
-        if at % stride != 0 {
-            return Ok(());
+    let bright = stats.intensity.filter(|(lo, hi)| hi > lo);
+    let mut keep = Keep { scale: o.scale, spacing: o.spacing, min: stats.min, origin, colour: stats.colour(), bright, ..Keep::default() };
+    if let Some(count) = known {
+        if stats.count as u64 != count {
+            return Err(format!("it holds {} points, and its header says {count}", stats.count));
         }
-        let p = raw.p.map(|v| v * o.scale);
-        if o.spacing > 0.0 {
-            let cell = [0, 1, 2].map(|k| ((p[k] - stats.min[k]) / o.spacing).floor() as i64);
-            if !cells.insert(cell) {
-                return Ok(());
+        for h in &held {
+            keep.push(&h.raw());
+        }
+    } else {
+        let mut last = 0;
+        if let Some(p) = progress {
+            p.stage(bimcraft_i18n::ui_msg!("Reading the points"), stats.count as u64);
+        }
+        each(src, len, format, stride as u64, &mut |at, raw| {
+            look(&mut last, at)?;
+            if at.is_multiple_of(stride as u64) {
+                keep.push(&raw);
+            }
+            Ok(())
+        })?;
+    }
+    let colours = keep.colour.as_ref().map(|_| keep.colours);
+    let intensity = keep.bright.map(|_| keep.levels);
+    Ok(Scan { origin, points: keep.points, colours, intensity, read: stats.count })
+}
+
+/// How many points a file holds, when that's known before it's read and reading it once is what's wanted: a LAZ file's, from
+/// its header.
+fn once(src: &mut dyn Source, size: u64, format: Format) -> Option<u64> {
+    if !matches!(format, Format::Las | Format::Laz) {
+        return None;
+    }
+    src.seek(SeekFrom::Start(0)).ok()?;
+    LasHead::read(src, size).ok().filter(|h| h.compressed).map(|h| h.count)
+}
+
+/// A point held while a file is read once, until its bounds and shades are known: its place, and its intensity and colour,
+/// which a LAZ file holds in sixteen bits and `f32` holds exactly (NaN where it has none).
+struct Held {
+    p: [f64; 3],
+    intensity: f32,
+    rgb: [f32; 3],
+}
+
+impl Held {
+    fn of(raw: &Raw) -> Held {
+        Held {
+            p: raw.p,
+            intensity: raw.intensity.map_or(f32::NAN, |i| i as f32),
+            rgb: raw.rgb.map_or([f32::NAN; 3], |c| c.map(|v| v as f32)),
+        }
+    }
+
+    fn raw(&self) -> Raw {
+        Raw {
+            p: self.p,
+            intensity: (!self.intensity.is_nan()).then_some(f64::from(self.intensity)),
+            rgb: (!self.rgb[0].is_nan()).then(|| self.rgb.map(f64::from)),
+        }
+    }
+}
+
+/// The points a read keeps, once its bounds and shades are known: one in each cube of `spacing` (from `min`), about `origin`.
+#[derive(Default)]
+struct Keep {
+    scale: f64,
+    spacing: f64,
+    min: [f64; 3],
+    origin: [f64; 3],
+    colour: Option<Shade>,
+    /// The file's range of intensity, when its points have one that varies.
+    bright: Option<(f64, f64)>,
+    cells: HashSet<[i64; 3]>,
+    points: Vec<[f32; 3]>,
+    colours: Vec<[u8; 3]>,
+    levels: Vec<u8>,
+}
+
+impl Keep {
+    fn push(&mut self, raw: &Raw) {
+        let p = raw.p.map(|v| v * self.scale);
+        if self.spacing > 0.0 {
+            let cell = [0, 1, 2].map(|k| ((p[k] - self.min[k]) / self.spacing).floor() as i64);
+            if !self.cells.insert(cell) {
+                return;
             }
         }
-        points.push([0, 1, 2].map(|k| (p[k] - origin[k]) as f32));
-        if let Some(c) = &colour {
-            colours.push(c.of(&raw));
+        self.points.push([0, 1, 2].map(|k| (p[k] - self.origin[k]) as f32));
+        if let Some(c) = &self.colour {
+            self.colours.push(c.of(raw));
         }
-        Ok(())
-    })?;
-    Ok(Scan { origin, points, colours: colour.map(|_| colours), read: stats.count })
+        if let Some((lo, hi)) = self.bright {
+            let v = raw.intensity.filter(|v| v.is_finite()).map_or(0.0, |v| (v - lo) / (hi - lo));
+            self.levels.push((v * 255.0).round().clamp(0.0, 255.0) as u8);
+        }
+    }
 }
 
 /// A point as a file holds it: in the file's unit, and its intensity and colour in the file's own range.
-struct Raw {
+pub(super) struct Raw {
     p: [f64; 3],
     intensity: Option<f64>,
     rgb: Option<[f64; 3]>,
@@ -665,22 +977,104 @@ impl Shade {
     }
 }
 
-/// Hands each point of a file to `f`, in the file's order.
-fn each(bytes: &[u8], format: Format, f: &mut impl FnMut(Raw) -> Result<(), String>) -> Result<(), String> {
+/// Hands each point of a file to `f` with its place among the file's points, in the file's order. A reader that can step
+/// over records (LAS, binary PLY) hands only every `every`th; the others hand every point and leave the choosing to `f`.
+fn each(
+    src: &mut dyn Source,
+    size: u64,
+    format: Format,
+    every: u64,
+    f: &mut impl FnMut(u64, Raw) -> Result<(), String>,
+) -> Result<(), String> {
+    src.seek(SeekFrom::Start(0)).map_err(unread)?;
+    let mut n = 0_u64;
+    let mut counted = |raw| {
+        let at = n;
+        n += 1;
+        f(at, raw)
+    };
     match format {
-        Format::Pts | Format::Xyz => text(bytes, format == Format::Pts, f),
-        Format::Ply => ply(bytes, f),
-        Format::Las => las(bytes, f),
-        Format::E57 => e57::read(bytes, f),
+        Format::Pts | Format::Xyz => text(&mut BufReader::with_capacity(BLOCK, src), format == Format::Pts, &mut counted),
+        Format::Ply => ply(src, size, every, f),
+        Format::Las | Format::Laz => las(src, size, every, f),
+        Format::E57 => e57::read(src, size, &mut counted),
     }
+}
+
+/// What a read that failed says.
+fn unread(e: std::io::Error) -> String {
+    format!("it can't be read: {e}")
+}
+
+/// The next line of `r` in `buf`, without its end; false at the end of the file. A line longer than [`MAX_LINE`] is refused
+/// rather than held.
+fn line(r: &mut impl BufRead, buf: &mut Vec<u8>, n: usize) -> Result<bool, String> {
+    buf.clear();
+    if r.by_ref().take(MAX_LINE as u64 + 1).read_until(b'\n', buf).map_err(unread)? == 0 {
+        return Ok(false);
+    }
+    if buf.last() == Some(&b'\n') {
+        buf.pop();
+    } else if buf.len() > MAX_LINE {
+        return Err(format!("line {n} is longer than {MAX_LINE} bytes, far more than a point"));
+    }
+    Ok(true)
+}
+
+/// Hands `count` records of `size` bytes from byte `start` (which the caller has found within the file) to `f`, with their
+/// place: every `every`th of them, stepped to one by one when they lie far apart, else read a block at a time.
+fn records(
+    src: &mut dyn Source,
+    start: u64,
+    count: u64,
+    size: usize,
+    every: u64,
+    f: &mut impl FnMut(u64, &[u8]) -> Result<(), String>,
+) -> Result<(), String> {
+    if size == 0 || count == 0 {
+        return Ok(());
+    }
+    let every = every.max(1);
+    let cut = |e: std::io::Error| format!("its points are cut short: {e}");
+    let wide = size as u64;
+    if every > 1 && every.saturating_mul(wide) >= (BLOCK as u64) / 16 {
+        let mut r = vec![0; size];
+        let mut i = 0;
+        while i < count {
+            src.seek(SeekFrom::Start(start.saturating_add(i.saturating_mul(wide)))).map_err(cut)?;
+            src.read_exact(&mut r).map_err(cut)?;
+            f(i, &r)?;
+            i = i.saturating_add(every);
+        }
+        return Ok(());
+    }
+    src.seek(SeekFrom::Start(start)).map_err(cut)?;
+    let per = (BLOCK / size).max(1) as u64;
+    let mut block = Vec::new();
+    let mut i = 0;
+    while i < count {
+        let n = per.min(count - i);
+        block.resize(n as usize * size, 0);
+        src.read_exact(&mut block).map_err(cut)?;
+        for (k, r) in block.chunks_exact(size).enumerate() {
+            let at = i + k as u64;
+            if at.is_multiple_of(every) {
+                f(at, r)?;
+            }
+        }
+        i += n;
+    }
+    Ok(())
 }
 
 /// Rows of `x y z`, then an intensity, a colour, or both, parted by spaces, tabs or commas. In PTS a row of one
 /// number is the count of the scan that follows.
-fn text(bytes: &[u8], pts: bool, f: &mut impl FnMut(Raw) -> Result<(), String>) -> Result<(), String> {
-    for (n, line) in bytes.split(|b| *b == b'\n').enumerate() {
-        let n = n + 1;
-        let line = std::str::from_utf8(line).map_err(|_| format!("line {n} isn't text"))?.trim();
+fn text(r: &mut impl BufRead, pts: bool, f: &mut impl FnMut(Raw) -> Result<(), String>) -> Result<(), String> {
+    let mut buf = Vec::new();
+    let mut n = 0;
+    while line(r, &mut buf, n + 1)? {
+        n += 1;
+        let line = std::str::from_utf8(&buf).map_err(|_| format!("line {n} isn't text"))?.trim();
         if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
             continue;
         }
@@ -794,14 +1188,15 @@ impl Element {
 const PLY_HEADER: usize = 1 << 20;
 
 /// The Polygon File Format: a text header, then its elements as text or binary. Only the vertices are read.
-fn ply(bytes: &[u8], f: &mut impl FnMut(Raw) -> Result<(), String>) -> Result<(), String> {
-    if !bytes.starts_with(b"ply") {
+fn ply(src: &mut dyn Source, size: u64, every: u64, f: &mut impl FnMut(u64, Raw) -> Result<(), String>) -> Result<(), String> {
+    let mut head = Vec::new();
+    (&mut *src).take(PLY_HEADER as u64).read_to_end(&mut head).map_err(unread)?;
+    if !head.starts_with(b"ply") {
         return Err("it isn't a PLY file: it doesn't start with ply".into());
     }
-    let head = bytes.get(..PLY_HEADER.min(bytes.len())).unwrap_or(bytes);
     let end = head.windows(10).position(|w| w == b"end_header").ok_or("its header has no end_header")?;
-    let body = bytes.get(end..).unwrap_or(&[]);
-    let body = body.get(body.iter().position(|b| *b == b'\n').map_or(body.len(), |i| i + 1)..).unwrap_or(&[]);
+    let after = head.get(end..).unwrap_or(&[]);
+    let body = (end + after.iter().position(|b| *b == b'\n').map_or(after.len(), |i| i + 1)) as u64;
     let header = std::str::from_utf8(head.get(..end).unwrap_or(&[])).map_err(|_| "its header isn't text")?;
     let mut form = None;
     let mut elements: Vec<Element> = Vec::new();
@@ -870,21 +1265,41 @@ fn ply(bytes: &[u8], f: &mut impl FnMut(Raw) -> Result<(), String>) -> Result<()
     };
     match big {
         None => {
-            let mut lines = body.split(|b| *b == b'\n').map(|l| l.trim_ascii()).filter(|l| !l.is_empty());
+            src.seek(SeekFrom::Start(body)).map_err(unread)?;
+            let mut r = BufReader::with_capacity(BLOCK, &mut *src);
+            let (mut buf, mut n) = (Vec::new(), 0);
+            // The next line that isn't empty, or none at the end of the file.
+            let mut next = |buf: &mut Vec<u8>| -> Result<bool, String> {
+                loop {
+                    n += 1;
+                    if !line(&mut r, buf, n)? {
+                        return Ok(false);
+                    }
+                    let trimmed = buf.trim_ascii();
+                    if !trimmed.is_empty() {
+                        *buf = trimmed.to_vec();
+                        return Ok(true);
+                    }
+                }
+            };
             for e in before {
                 for _ in 0..e.count {
-                    lines.next().ok_or_else(|| format!("it's cut short in its {} elements", e.name))?;
+                    if !next(&mut buf)? {
+                        return Err(format!("it's cut short in its {} elements", e.name));
+                    }
                 }
             }
             for n in 0..vertex.count {
-                let line = lines.next().ok_or_else(|| format!("it's cut short: {} vertices of {}", n, vertex.count))?;
-                let line = std::str::from_utf8(line).map_err(|_| format!("vertex {} isn't text", n + 1))?;
+                if !next(&mut buf)? {
+                    return Err(format!("it's cut short: {} vertices of {}", n, vertex.count));
+                }
+                let line = std::str::from_utf8(&buf).map_err(|_| format!("vertex {} isn't text", n + 1))?;
                 let words: Vec<f64> = line
                     .split_whitespace()
                     .map(|w| w.parse::<f64>().map_err(|_| format!("vertex {}: {w} isn't a number", n + 1)))
                     .collect::<Result<_, _>>()?;
                 let raw = point(&|i| words.get(i).copied()).ok_or_else(|| format!("vertex {} has too few values", n + 1))?;
-                f(raw)?;
+                f(n as u64, raw)?;
             }
         }
         Some(big) => {
@@ -905,17 +1320,18 @@ fn ply(bytes: &[u8], f: &mut impl FnMut(Raw) -> Result<(), String>) -> Result<()
                     Some(at)
                 })
                 .collect();
-            let need = vertex.count.checked_mul(stride).and_then(|b| b.checked_add(skip));
-            let rows = need
-                .and_then(|need| body.get(skip..need))
-                .ok_or_else(|| format!("it's cut short: {} vertices don't fit in it", vertex.count))?;
-            for row in rows.chunks_exact(stride.max(1)) {
+            let start = body.checked_add(skip as u64);
+            let fits = vertex.count.checked_mul(stride).and_then(|need| start?.checked_add(need as u64)).is_some_and(|end| end <= size);
+            let (Some(start), true) = (start, fits) else {
+                return Err(format!("it's cut short: {} vertices don't fit in it", vertex.count));
+            };
+            records(src, start, vertex.count as u64, stride, every, &mut |at, row| {
                 let v = |i: usize| -> Option<f64> {
                     let t = vertex.props.get(i)?.1?;
                     t.read(row.get(*offsets.get(i)?..)?, big)
                 };
-                f(point(&v).ok_or("a vertex can't be read")?)?;
-            }
+                f(at, point(&v).ok_or("a vertex can't be read")?)
+            })?;
         }
     }
     Ok(())
@@ -924,78 +1340,124 @@ fn ply(bytes: &[u8], f: &mut impl FnMut(Raw) -> Result<(), String>) -> Result<()
 /// The smallest record each LAS point format takes, bytes, from format 0 to 10.
 const LAS_RECORD: [usize; 11] = [20, 28, 26, 34, 57, 63, 30, 36, 38, 59, 67];
 
-/// ASPRS LAS 1.0 to 1.4: a header, records of its own, then the points, each scaled and moved by the header.
-fn las(bytes: &[u8], f: &mut impl FnMut(Raw) -> Result<(), String>) -> Result<(), String> {
-    if !bytes.starts_with(b"LASF") {
-        return Err("it isn't a LAS file: it doesn't start with LASF".into());
-    }
-    let short = || "its header is cut short".to_string();
-    let u8_at = |i: usize| bytes.get(i).copied().ok_or_else(short);
-    let u16_at = |i: usize| bytes.get(i..i + 2).and_then(|b| b.try_into().ok()).map(u16::from_le_bytes).ok_or_else(short);
-    let u32_at = |i: usize| bytes.get(i..i + 4).and_then(|b| b.try_into().ok()).map(u32::from_le_bytes).ok_or_else(short);
-    let u64_at = |i: usize| bytes.get(i..i + 8).and_then(|b| b.try_into().ok()).map(u64::from_le_bytes).ok_or_else(short);
-    let f64_at = |i: usize| bytes.get(i..i + 8).and_then(|b| b.try_into().ok()).map(f64::from_le_bytes).ok_or_else(short);
-    if bytes.len() < 227 {
-        return Err(short());
-    }
-    let (major, minor) = (u8_at(24)?, u8_at(25)?);
-    if major != 1 || minor > 4 {
-        return Err(format!("it's LAS {major}.{minor}; BIMCraft reads 1.0 to 1.4"));
-    }
-    let header = usize::from(u16_at(94)?);
-    if header < 227 || header > bytes.len() {
-        return Err(short());
-    }
-    let start = u32_at(96)? as usize;
-    let format = u8_at(104)?;
-    if format & 0xC0 != 0 {
-        return Err("its points are compressed (LAZ): decompress it to LAS first (laszip or PDAL)".into());
-    }
-    let need = *LAS_RECORD.get(usize::from(format)).ok_or_else(|| format!("its point format {format} isn't one LAS has (0 to 10)"))?;
-    let len = usize::from(u16_at(105)?);
-    if len < need {
-        return Err(format!("its point records are {len} bytes; point format {format} needs {need}"));
-    }
-    let legacy = u64::from(u32_at(107)?);
-    let count = if minor >= 4 && header >= 255 && (legacy == 0 || format >= 6) { u64_at(247)? } else { legacy };
-    let mut scale = [0.0; 3];
-    let mut offset = [0.0; 3];
-    for k in 0..3 {
-        scale[k] = f64_at(131 + 8 * k)?;
-        offset[k] = f64_at(155 + 8 * k)?;
-        if !(scale[k].is_finite() && scale[k] != 0.0) {
-            return Err(format!("its scale along {} is {}", ["x", "y", "z"][k], scale[k]));
+/// What a LAS file's header says of its points, as far as they are read; a LAZ file's too.
+pub(super) struct LasHead {
+    /// Where its records of its own start: right after the header, bytes.
+    #[cfg_attr(not(feature = "laz"), allow(dead_code))]
+    pub(super) header: u64,
+    /// Where its points start, bytes.
+    pub(super) start: u64,
+    /// How many records of its own it has.
+    #[cfg_attr(not(feature = "laz"), allow(dead_code))]
+    pub(super) vlrs: u32,
+    /// Whether LASzip compressed its points (LAZ).
+    pub(super) compressed: bool,
+    /// How long each record is, bytes.
+    pub(super) len: usize,
+    /// How many points it holds.
+    pub(super) count: u64,
+    scale: [f64; 3],
+    offset: [f64; 3],
+    /// Where in a record its colour is, if the format has one.
+    colour: Option<usize>,
+}
+
+impl LasHead {
+    /// The 375 bytes at most of a LAS file's header, read from the start of `src`, checked against the file's `size`.
+    fn read(src: &mut dyn Source, size: u64) -> Result<LasHead, String> {
+        let mut head = Vec::new();
+        (&mut *src).take(375).read_to_end(&mut head).map_err(unread)?;
+        let bytes = head.as_slice();
+        if !bytes.starts_with(b"LASF") {
+            return Err("it isn't a LAS file: it doesn't start with LASF".into());
         }
-        if !offset[k].is_finite() {
-            return Err(format!("its offset along {} is {}", ["x", "y", "z"][k], offset[k]));
+        let short = || "its header is cut short".to_string();
+        let u8_at = |i: usize| bytes.get(i).copied().ok_or_else(short);
+        let u16_at = |i: usize| bytes.get(i..i + 2).and_then(|b| b.try_into().ok()).map(u16::from_le_bytes).ok_or_else(short);
+        let u32_at = |i: usize| bytes.get(i..i + 4).and_then(|b| b.try_into().ok()).map(u32::from_le_bytes).ok_or_else(short);
+        let u64_at = |i: usize| bytes.get(i..i + 8).and_then(|b| b.try_into().ok()).map(u64::from_le_bytes).ok_or_else(short);
+        let f64_at = |i: usize| bytes.get(i..i + 8).and_then(|b| b.try_into().ok()).map(f64::from_le_bytes).ok_or_else(short);
+        if bytes.len() < 227 {
+            return Err(short());
         }
+        let (major, minor) = (u8_at(24)?, u8_at(25)?);
+        if major != 1 || minor > 4 {
+            return Err(format!("it's LAS {major}.{minor}; BIMCraft reads 1.0 to 1.4"));
+        }
+        let header = u64::from(u16_at(94)?);
+        if header < 227 || header > size {
+            return Err(short());
+        }
+        let start = u64::from(u32_at(96)?);
+        let vlrs = u32_at(100)?;
+        // LASzip marks a compressed file's point format with its top bit (and the one below it, in its compatibility mode).
+        let byte = u8_at(104)?;
+        let (format, compressed) = (byte & 0x3F, byte & 0xC0 != 0);
+        let need = *LAS_RECORD.get(usize::from(format)).ok_or_else(|| format!("its point format {format} isn't one LAS has (0 to 10)"))?;
+        let len = usize::from(u16_at(105)?);
+        if len < need {
+            return Err(format!("its point records are {len} bytes; point format {format} needs {need}"));
+        }
+        let legacy = u64::from(u32_at(107)?);
+        let count = if minor >= 4 && header >= 255 && (legacy == 0 || format >= 6) { u64_at(247)? } else { legacy };
+        let mut scale = [0.0; 3];
+        let mut offset = [0.0; 3];
+        for k in 0..3 {
+            scale[k] = f64_at(131 + 8 * k)?;
+            offset[k] = f64_at(155 + 8 * k)?;
+            if !(scale[k].is_finite() && scale[k] != 0.0) {
+                return Err(format!("its scale along {} is {}", ["x", "y", "z"][k], scale[k]));
+            }
+            if !offset[k].is_finite() {
+                return Err(format!("its offset along {} is {}", ["x", "y", "z"][k], offset[k]));
+            }
+        }
+        if start < header || start > size {
+            return Err(format!("its points are cut short: they start at byte {start} of {size}"));
+        }
+        let colour = match format {
+            2 => Some(20),
+            3 | 5 => Some(28),
+            7 | 8 | 10 => Some(30),
+            _ => None,
+        };
+        Ok(LasHead { header, start, vlrs, compressed, len, count, scale, offset, colour })
     }
-    let end = usize::try_from(count).ok().and_then(|c| c.checked_mul(len)).and_then(|b| b.checked_add(start));
-    let points = end
-        .filter(|_| start >= header)
-        .and_then(|end| bytes.get(start..end))
-        .ok_or_else(|| format!("its points are cut short: {count} of {len} bytes from byte {start} don't fit in {} bytes", bytes.len()))?;
-    let colour = match format {
-        2 => Some(20),
-        3 | 5 => Some(28),
-        7 | 8 | 10 => Some(30),
-        _ => None,
-    };
-    for r in points.chunks_exact(len) {
+
+    /// The point a record of this file holds.
+    pub(super) fn point(&self, r: &[u8]) -> Result<Raw, String> {
         let i32_at = |i: usize| r.get(i..i + 4).and_then(|b| b.try_into().ok()).map(i32::from_le_bytes).map(f64::from);
         let u16_in = |i: usize| r.get(i..i + 2).and_then(|b| b.try_into().ok()).map(u16::from_le_bytes).map(f64::from);
         let xyz = [i32_at(0), i32_at(4), i32_at(8)];
         let [Some(x), Some(y), Some(z)] = xyz else {
             return Err("a point record is cut short".into());
         };
+        let (scale, offset) = (self.scale, self.offset);
         let p = [x * scale[0] + offset[0], y * scale[1] + offset[1], z * scale[2] + offset[2]];
-        let rgb = match colour.map(|at| [u16_in(at), u16_in(at + 2), u16_in(at + 4)]) {
+        let rgb = match self.colour.map(|at| [u16_in(at), u16_in(at + 2), u16_in(at + 4)]) {
             Some([Some(r), Some(g), Some(b)]) => Some([r, g, b]),
             _ => None,
         };
-        f(Raw { p, intensity: u16_in(12), rgb })?;
+        Ok(Raw { p, intensity: u16_in(12), rgb })
     }
-    Ok(())
+}
+
+/// ASPRS LAS 1.0 to 1.4: a header, records of its own, then the points, each scaled and moved by the header. A file whose
+/// points LASzip compressed (LAZ, COPC) is read by `laz` (without the `laz` feature, refused), whatever its name says.
+fn las(src: &mut dyn Source, size: u64, every: u64, f: &mut impl FnMut(u64, Raw) -> Result<(), String>) -> Result<(), String> {
+    let h = LasHead::read(src, size)?;
+    if h.compressed {
+        #[cfg(feature = "laz")]
+        return laz::read(src, size, &h, f);
+        #[cfg(not(feature = "laz"))]
+        return Err(NO_LAZ.into());
+    }
+    let (start, count, len) = (h.start, h.count, h.len);
+    let end = count.checked_mul(len as u64).and_then(|b| b.checked_add(start));
+    if !end.is_some_and(|end| end <= size) {
+        return Err(format!("its points are cut short: {count} of {len} bytes from byte {start} don't fit in {size} bytes"));
+    }
+    records(src, start, count, len, every, &mut |at, r| f(at, h.point(r)?))
 }
 
 #[cfg(test)]
@@ -1016,7 +1478,7 @@ mod tests {
 
     /// A LAS file: `minor` version, point format, scale and offset, and each point's record numbers, its
     /// intensity and its colour; `gap` bytes of variable length records between the header and the points.
-    fn las(minor: u8, format: u8, scale: [f64; 3], offset: [f64; 3], gap: usize, pts: &[([i32; 3], u16, [u16; 3])]) -> Vec<u8> {
+    pub(super) fn las(minor: u8, format: u8, scale: [f64; 3], offset: [f64; 3], gap: usize, pts: &[([i32; 3], u16, [u16; 3])]) -> Vec<u8> {
         let header = if minor >= 4 { 375 } else { 227 };
         let len: usize = match format {
             0 => 20,
@@ -1098,11 +1560,17 @@ mod tests {
             ("ply", Format::Ply),
             (".las", Format::Las),
             ("E57", Format::E57),
+            #[cfg(feature = "laz")]
+            ("laz", Format::Laz),
+            #[cfg(feature = "laz")]
+            ("LAZ", Format::Laz),
         ];
         for (ext, f) in known {
             assert_eq!(Format::from_extension(ext), Ok(f), "{ext}");
         }
-        for (ext, says) in [("laz", "LAZ"), ("rcp", "ReCap"), ("rcs", "ReCap"), ("dwg", "dwg")] {
+        #[cfg(not(feature = "laz"))]
+        assert!(Format::from_extension("laz").unwrap_err().contains("`laz` feature"));
+        for (ext, says) in [("rcp", "ReCap"), ("rcs", "ReCap"), ("dwg", "dwg")] {
             let e = Format::from_extension(ext).unwrap_err();
             assert!(e.contains(says), "{ext}: {e}");
         }
@@ -1256,7 +1724,7 @@ mod tests {
         let mut nan = good.clone();
         nan[163..171].copy_from_slice(&f64::NAN.to_le_bytes());
         for (bytes, says) in [
-            (laz, "LAZ"),
+            (laz, if cfg!(feature = "laz") { "LASzip" } else { "`laz` feature" }),
             (short, "record"),
             (many, "short"),
             (past, "short"),
@@ -1366,5 +1834,81 @@ mod tests {
         assert_eq!(scans_in(&scans_text(MAX_CLOUDS, ""), MAX_CLOUDS, MAX_CLOUD_POINTS), Ok(MAX_CLOUDS));
         // Something that isn't a map of scans is no map of scans.
         assert!(scans_in("[1]", 2, 4).is_err() && scans_in("{\"s\":1}", 2, 4).is_err());
+    }
+
+    /// A reader that counts the bytes read through it, as a file on disk would hand them.
+    struct Counted<R> {
+        inner: R,
+        read: u64,
+    }
+
+    impl<R: Read> Read for Counted<R> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let n = self.inner.read(buf)?;
+            self.read += n as u64;
+            Ok(n)
+        }
+    }
+
+    impl<R: Seek> Seek for Counted<R> {
+        fn seek(&mut self, to: std::io::SeekFrom) -> std::io::Result<u64> {
+            self.inner.seek(to)
+        }
+    }
+
+    fn sample_files() -> Vec<(Format, Vec<u8>)> {
+        let pts: Vec<([f32; 3], [u8; 3])> = (0..500).map(|i| ([i as f32, (i * 7 % 13) as f32, 0.5 * i as f32], [i as u8, 3, 9])).collect();
+        let records: Vec<([i32; 3], u16, [u16; 3])> =
+            (0..500).map(|i| ([i, -i, 2 * i], i as u16, [256 * (i as u16 % 200), 0, 9])).collect();
+        let text: String = (0..500).map(|i| format!("{i} {} 1.5 {} 10 20 30\n", i % 7, i % 100)).collect();
+        vec![
+            (Format::Pts, format!("500\n{text}").into_bytes()),
+            (Format::Xyz, text.into_bytes()),
+            (Format::Ply, ply("ascii", &pts)),
+            (Format::Ply, ply("binary_little_endian", &pts)),
+            (Format::Ply, ply("binary_big_endian", &pts)),
+            (Format::Las, las(2, 3, [0.01; 3], [5.0, 6.0, 7.0], 33, &records)),
+            (Format::Las, las(4, 7, [0.001; 3], [0.0; 3], 0, &records)),
+        ]
+    }
+
+    #[test]
+    fn a_file_read_from_disk_a_piece_at_a_time_reads_as_its_bytes_do() {
+        let dir = tempfile::tempdir().unwrap();
+        for (k, (format, bytes)) in sample_files().into_iter().enumerate() {
+            for o in [mm(), Options { cap: 37, ..mm() }, Options { spacing: 3.0, ..mm() }] {
+                let whole = read(&bytes, format, &o).unwrap();
+                let path = dir.path().join(format!("{k}"));
+                std::fs::write(&path, &bytes).unwrap();
+                let mut file = std::fs::File::open(&path).unwrap();
+                let piecewise = read_from(&mut file, format, &o, None).unwrap();
+                assert_eq!(whole, piecewise, "{format:?} {k} {o:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_las_file_thinned_hard_reads_only_the_records_it_keeps_the_second_time() {
+        // 400 000 records of 20 bytes, kept to 100: every 4000th, 80 000 bytes apart.
+        let records: Vec<([i32; 3], u16, [u16; 3])> = (0..400_000).map(|i| ([i, i % 1000, 0], 0, [0; 3])).collect();
+        let bytes = las(2, 0, [0.001; 3], [0.0; 3], 0, &records);
+        let mut r = Counted { inner: std::io::Cursor::new(&bytes), read: 0 };
+        let s = read_from(&mut r, Format::Las, &Options { cap: 100, ..mm() }, None).unwrap();
+        assert_eq!((s.points.len(), s.read), (100, 400_000));
+        assert_eq!(s, read(&bytes, Format::Las, &Options { cap: 100, ..mm() }).unwrap());
+        // One pass to measure it, and of the second only the records kept.
+        assert!(r.read < bytes.len() as u64 * 11 / 10, "{} bytes read of a file of {}", r.read, bytes.len());
+    }
+
+    #[test]
+    fn a_line_longer_than_any_point_is_refused_not_held() {
+        let long = format!("1 2 3\n{}\n", "1".repeat(MAX_LINE + 10));
+        let e = read(long.as_bytes(), Format::Xyz, &mm()).unwrap_err();
+        assert!(e.contains("line 2") && e.contains("longer"), "{e}");
+    }
+
+    #[test]
+    fn a_file_larger_than_memory_need_be_is_no_longer_refused_for_its_size() {
+        const { assert!(MAX_BYTES >= 1 << 40, "a scan's size is capped below a terabyte") };
     }
 }

@@ -272,6 +272,26 @@ impl BimApp {
         self.run("graphics", json!({"view": view, "categories": {graphics::SCANS[0]: {"projection": {"fill": fill}}}}));
     }
 
+    /// Point Cloud Colours: what the view colours its point clouds by (Revit's Color Mode), the category's override. Normal takes
+    /// the mode away; the heights an elevation's ramp runs between stay. One `graphics` command, one undo step.
+    fn scan_colour_menu(&mut self, ui: &mut Ui, set_by: Option<&str>) {
+        let Some(view) = self.graphic_view() else { return };
+        let now = self.graphics_shown().categories.get(graphics::SCANS[0]).and_then(|o| o.scan);
+        let tip = msg!("Point Cloud Colours: draw this view's scans in their own colours, by their height, or by their intensity");
+        let r = menu_button(ui, msg!("Point Cloud Colours"), crate::clouds::scan_mode_name(now), tip, set_by);
+        Popup::menu(&r).show(|ui| {
+            for (by, name) in crate::clouds::SCAN_MODES {
+                if ui.selectable_label(now.map(|c| c.by).unwrap_or_default() == by, t(name)).clicked() {
+                    let scan = match by {
+                        graphics::ScanBy::Normal => Value::Null,
+                        _ => json!({"by": by}),
+                    };
+                    self.run("graphics", json!({"view": view, "categories": {graphics::SCANS[0]: {"scan": scan}}}));
+                }
+            }
+        });
+    }
+
     /// Whether the view fills its point clouds with a colour, whoever set it. That is the category's override, which a scan's own
     /// (or a view filter's) comes after: a scan with its own colour is lit here and keeps it.
     fn scans_filled(&self) -> bool {
@@ -489,13 +509,14 @@ impl BimApp {
                                 small_button(ui, Icon::PointCloud, "High Contrast Point Clouds", filled, tip)
                             })
                             .inner;
-                        let r = match set_by {
-                            Some(template) => r.on_disabled_hover_text(controlled_note(&template)),
+                        let r = match &set_by {
+                            Some(template) => r.on_disabled_hover_text(controlled_note(template)),
                             None => r,
                         };
                         if r.clicked() {
                             self.toggle_scan_contrast();
                         }
+                        self.scan_colour_menu(ui, set_by.as_deref());
                     }
                     if temp.hides() || temp.reveal {
                         ui.add_space(8.0);

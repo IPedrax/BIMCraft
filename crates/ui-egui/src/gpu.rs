@@ -449,6 +449,14 @@ pub struct Gpu {
     segments: (wgpu::Buffer, u64),
     /// The section box's caps drawn last, over the surfaces it cuts.
     caps: Option<CapsUp>,
+    /// The nodes of scans' indexes, drawn beside the mesh's own points, and how.
+    nodes: Nodes,
+    node_pipeline: wgpu::RenderPipeline,
+    node_layout: wgpu::BindGroupLayout,
+    /// Eye-dome lighting in a parallel view: the nearest depth of the picture, found on the card, and how.
+    near: wgpu::Buffer,
+    near_pipeline: wgpu::ComputePipeline,
+    near_bind: wgpu::BindGroup,
     mesh: Option<Uploaded>,
     /// A second mesh kept on the card beside the one drawn: what [`park`](Self::park) set aside, so that a view showing it again
     /// (another document's tab gone back to) draws it without uploading it again. The two share [`card_bytes`](Self::card_bytes).
@@ -511,6 +519,102 @@ type Words = Vec<u8>;
 /// The first plane number a section box's cap takes, each its own from here up: past any the scene numbers, short of a scan's
 /// point's (`DOT_PLANE` in `gpu.wgsl`).
 const CAP_PLANE: u32 = 0x8000_0000;
+
+/// A point of a scan's index's node on the card (see `view3d::NodeDots`): its place in the node as three 16-bit numbers in two
+/// words, and its colour.
+const NODE: u64 = 12;
+/// A node's own numbers, as `gpu.wgsl`'s `Node`: its least corner, its step and its owner, a vec4 each.
+const NODE_PARAMS: u64 = 48;
+/// Where in the view's numbers the nearest depth goes (the section box's greatest corner's w): 11th vec4, last float.
+const NEAREST_AT: u64 = 10 * 16 + 12;
+/// The most bytes of nodes the card keeps, unless it says it holds less: those wanted now, and those wanted lately.
+pub(crate) const NODE_BYTES: u64 = 1 << 30;
+
+/// A node of a scan's index on the card: its points, and where they are (from the mesh's origin, mm), and its owner as the
+/// mesh numbers them.
+struct NodeUp {
+    buffer: wgpu::Buffer,
+    min: [f32; 3],
+    step: [f32; 3],
+    owner: u32,
+    count: u32,
+}
+
+/// The nodes of scans' indexes the card keeps (`stream.rs`), by node, within a budget, those used longest ago let go first.
+struct Nodes {
+    held: crate::stream::Resident<crate::stream::Key, NodeUp>,
+    /// How they were packed (`stream::Packing`): another packing lets them all go.
+    packing: Option<u64>,
+    budget: u64,
+    /// The nodes the picture draws, in the order wanted, as a set too; and how often that has changed.
+    drawn: Vec<crate::stream::Key>,
+    drawn_set: std::collections::HashSet<crate::stream::Key>,
+    version: u64,
+    /// The nodes drawn in the targets now, which a frame that only adds nodes draws over.
+    in_targets: std::collections::HashSet<crate::stream::Key>,
+    /// Each node's numbers drawn, a slot each `stride` bytes apart, bound at its slot; and how many slots it has room for.
+    params: Option<(wgpu::Buffer, u64, wgpu::BindGroup)>,
+    stride: u64,
+}
+
+impl Nodes {
+    fn new(budget: u64, stride: u64) -> Nodes {
+        Nodes {
+            held: crate::stream::Resident::default(),
+            packing: None,
+            budget,
+            drawn: Vec::new(),
+            drawn_set: std::collections::HashSet::new(),
+            version: 0,
+            in_targets: std::collections::HashSet::new(),
+            params: None,
+            stride,
+        }
+    }
+
+    /// The numbers of nodes `keys`, a slot each in that order, for a pass to bind each at its own.
+    fn write_params(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout, keys: &[crate::stream::Key]) {
+        if keys.is_empty() {
+            return;
+        }
+        let slots = keys.len() as u64;
+        if self.params.as_ref().is_none_or(|(_, room, _)| *room < slots) {
+            let room = slots.next_power_of_two().max(64);
+            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("bimcraft-3d-nodes"),
+                size: room * self.stride,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("bimcraft-3d-nodes"),
+                layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &buffer,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(NODE_PARAMS),
+                    }),
+                }],
+            });
+            self.params = Some((buffer, room, bind));
+        }
+        let Some((buffer, _, _)) = &self.params else { return };
+        let stride = self.stride as usize;
+        let mut bytes = vec![0u8; keys.len() * stride];
+        for (slot, key) in keys.iter().enumerate() {
+            let Some(n) = self.held.get(key) else { continue };
+            let mut one = Words::with_capacity(NODE_PARAMS as usize);
+            put(&mut one, &[n.min[0], n.min[1], n.min[2], 0.0, n.step[0], n.step[1], n.step[2], 0.0]);
+            put_words(&mut one, &[n.owner, 0, 0, 0]);
+            if let Some(at) = bytes.get_mut(slot * stride..slot * stride + one.len()) {
+                at.copy_from_slice(&one);
+            }
+        }
+        queue.write_buffer(buffer, 0, &bytes);
+    }
+}
 
 /// A section box's caps on the card: what they are of (the caps, and the mesh whose elements they name), and their vertices.
 struct CapsUp {
@@ -835,7 +939,8 @@ impl Gpu {
         });
         let texture = |binding: u32, sample_type| wgpu::BindGroupLayoutEntry {
             binding,
-            visibility: fragment,
+            // The opaque depth is read by eye-dome lighting's measure of the nearest too.
+            visibility: fragment | wgpu::ShaderStages::COMPUTE,
             ty: wgpu::BindingType::Texture { sample_type, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
             count: None,
         };
@@ -998,6 +1103,61 @@ impl Gpu {
             wgpu::VertexBufferLayout { array_stride: DOT, step_mode: wgpu::VertexStepMode::Instance, attributes: &dot_attributes };
         let dots =
             pipeline("bimcraft-3d-dots", &surface_layout, "vs_dot", "fs_dot", &[Some(dot_layout)], &[target(COLOR), target(IDS)], true);
+        // The nodes of scans' indexes: a point in 12 bytes, and the node's numbers bound at its slot for each draw.
+        let node_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("bimcraft-3d-node"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: vertex,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: true,
+                    min_binding_size: wgpu::BufferSize::new(NODE_PARAMS),
+                },
+                count: None,
+            }],
+        });
+        let nodes_layout = layout("bimcraft-3d-nodes", &[Some(&group0), Some(&node_layout)]);
+        let node_attributes = wgpu::vertex_attr_array![0 => Uint32, 1 => Uint32, 2 => Uint32];
+        let node_vertices =
+            wgpu::VertexBufferLayout { array_stride: NODE, step_mode: wgpu::VertexStepMode::Instance, attributes: &node_attributes };
+        let node_pipeline =
+            pipeline("bimcraft-3d-nodes", &nodes_layout, "vs_node", "fs_dot", &[Some(node_vertices)], &[target(COLOR), target(IDS)], true);
+        let align = u64::from(limits.min_uniform_buffer_offset_alignment.max(1));
+        let stride = NODE_PARAMS.div_ceil(align) * align;
+        // Eye-dome lighting's nearest depth, found over the opaque depth.
+        let near_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("bimcraft-3d-near"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let near = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bimcraft-3d-near"),
+            size: 4,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let near_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("bimcraft-3d-near"),
+            layout: &near_layout,
+            entries: &[entry(2, &near)],
+        });
+        let near_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("bimcraft-3d-near"),
+            layout: Some(&layout("bimcraft-3d-near", &[Some(&group0), Some(&group1), Some(&near_layout)])),
+            module: &module,
+            entry_point: Some("cs_near"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("bimcraft-3d-globals"),
             size: GLOBALS,
@@ -1027,6 +1187,12 @@ impl Gpu {
             globals,
             segments,
             caps: None,
+            nodes: Nodes::new(NODE_BYTES.min(limits.max_buffer_size.saturating_mul(4)), stride),
+            node_pipeline,
+            node_layout,
+            near,
+            near_pipeline,
+            near_bind,
             mesh: None,
             parked: None,
             owner: None,
@@ -1245,6 +1411,126 @@ impl Gpu {
         true
     }
 
+    /// The nodes of scans' indexes from now on packed as `packing` says (`stream::Packing`; none where no scan's index is
+    /// open): those packed otherwise are let go, and the picture drawn again.
+    pub(crate) fn node_packing(&mut self, packing: Option<u64>) {
+        if self.nodes.packing == packing {
+            return;
+        }
+        let n = &mut self.nodes;
+        (n.packing, n.drawn, n.version) = (packing, Vec::new(), n.version + 1);
+        n.held.clear();
+        n.drawn_set.clear();
+        self.forget_progress();
+    }
+
+    /// Whether the card holds node `key`.
+    pub(crate) fn has_node(&self, key: &crate::stream::Key) -> bool {
+        self.nodes.held.contains(key)
+    }
+
+    /// Sends the nodes waiting in `ready` to the card, first come first, till `most` bytes are sent this frame: those `wanted`
+    /// still, for which there is room once the nodes used longest ago and not wanted are let go. What there's no room for is
+    /// dropped (the view asks for it again when it moves); where the card runs out, it keeps no more than it holds. How many
+    /// went.
+    pub(crate) fn upload_nodes(
+        &mut self,
+        ready: &mut std::collections::VecDeque<crate::stream::Ready>,
+        wanted: &std::collections::HashSet<crate::stream::Key>,
+        most: u64,
+    ) -> usize {
+        if ready.is_empty() {
+            return 0;
+        }
+        let guard = scopes(&self.device);
+        let (mut sent, mut fresh) = (0, Vec::new());
+        let before = self.nodes.held.bytes();
+        while sent < most {
+            let Some(crate::stream::Ready { key, owner, dots }) = ready.pop_front() else { break };
+            let bytes = dots.words.len() as u64 * 4;
+            if bytes == 0 || dots.count == 0 || !wanted.contains(&key) || self.nodes.held.contains(&key) {
+                continue;
+            }
+            if u64::from(dots.count) * NODE != bytes || !self.nodes.held.make_room(bytes, self.nodes.budget, &|k| wanted.contains(k)) {
+                continue;
+            }
+            if self.full_at.is_some_and(|at| self.nodes.held.bytes() + bytes > at) {
+                self.nodes.budget = self.nodes.held.bytes();
+                continue;
+            }
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("bimcraft-3d-node"),
+                size: bytes,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let mut words = Words::with_capacity(bytes as usize);
+            put_words(&mut words, &dots.words);
+            self.queue.write_buffer(&buffer, 0, &words);
+            let node = NodeUp { buffer, min: dots.min, step: dots.step, owner, count: dots.count };
+            self.nodes.held.insert(key, node, bytes);
+            fresh.push(key);
+            sent += bytes;
+        }
+        self.queue.submit([]);
+        match out_of_memory(guard) {
+            Ok(false) => fresh.len(),
+            // The card holds no more than it did: from here on, no more than that is asked of it.
+            Ok(true) | Err(_) => {
+                for key in &fresh {
+                    self.nodes.held.remove(key);
+                }
+                self.nodes.budget = self.nodes.budget.min(before.max(self.nodes.held.bytes()));
+                0
+            }
+        }
+    }
+
+    /// The nodes the picture draws from now on: those of `wanted` the card holds, in that order. The version of what it draws,
+    /// which changes when that does.
+    pub(crate) fn draw_nodes(&mut self, wanted: &[crate::stream::Key]) -> u64 {
+        let n = &mut self.nodes;
+        let drawn: Vec<crate::stream::Key> = wanted.iter().filter(|k| n.held.contains(k)).copied().collect();
+        for k in &drawn {
+            n.held.touch(k);
+        }
+        if drawn != n.drawn {
+            n.drawn_set = drawn.iter().copied().collect();
+            n.drawn = drawn;
+            n.version += 1;
+        }
+        // Past the budget (lowered, or a view before this one's nodes): what this picture doesn't draw goes, longest unused first;
+        // then, still past it, what it draws least needs, from the end of its ranking.
+        n.held.make_room(0, n.budget, &|k| n.drawn_set.contains(k));
+        while n.held.bytes() > n.budget {
+            let Some(k) = n.drawn.pop() else { break };
+            n.held.remove(&k);
+            n.drawn_set.remove(&k);
+            n.version += 1;
+        }
+        n.version
+    }
+
+    /// What the card holds of nodes, bytes, and how many.
+    #[cfg(test)]
+    pub(crate) fn node_bytes(&self) -> (u64, usize) {
+        (self.nodes.held.bytes(), self.nodes.held.len())
+    }
+
+    /// The most bytes of nodes the card keeps, for a test.
+    #[cfg(test)]
+    pub(crate) fn set_node_budget(&mut self, bytes: u64) {
+        self.nodes.budget = bytes;
+        let n = &mut self.nodes;
+        n.held.make_room(0, n.budget, &|k| n.drawn_set.contains(k));
+        while n.held.bytes() > n.budget {
+            let Some(k) = n.drawn.pop() else { break };
+            n.held.remove(&k);
+            n.drawn_set.remove(&k);
+            n.version += 1;
+        }
+    }
+
     /// The targets hold another mesh's surfaces: the one drawn starts its picture again.
     fn forget_progress(&mut self) {
         if let Some(up) = &mut self.mesh {
@@ -1412,12 +1698,16 @@ impl Gpu {
         // The view's edges, silhouettes and ambient shadows, as the processor draws them.
         let d = mesh.display;
         let silhouette = d.silhouette.min(bimcraft_core::view3d::MAX_SILHOUETTE) as f32;
-        put(&mut globals, &[if d.edges { 1.0 } else { 0.0 }, silhouette, if d.ambient_shadows { 1.0 } else { 0.0 }, 0.0]);
+        put(
+            &mut globals,
+            &[if d.edges { 1.0 } else { 0.0 }, silhouette, if d.ambient_shadows { 1.0 } else { 0.0 }, if d.eye_dome { 1.0 } else { 0.0 }],
+        );
         // The section box from the mesh's origin, as a surface's point is.
         let (lo, hi) = cut.unwrap_or_default();
         let from = |p: [f64; 3]| std::array::from_fn::<f32, 3, _>(|i| (p[i] - mesh.origin[i]) as f32);
         let (lo, hi) = (from(lo), from(hi));
         put(&mut globals, &[lo[0], lo[1], lo[2], if cut.is_some() { 1.0 } else { 0.0 }]);
+        // The nearest depth in the picture, which eye-dome lighting in a parallel view finds on the card (`cs_near`).
         put(&mut globals, &[hi[0], hi[1], hi[2], 0.0]);
         // The marks, from the mesh's origin; a mark not there is drawn nowhere.
         for k in 0..MARKS {
@@ -1440,6 +1730,14 @@ impl Gpu {
         }
         let marked = !self.marks.is_empty();
         write(&self.globals, &globals);
+        // Nodes of scans' indexes the picture draws and the targets don't hold yet are drawn over them; but the picture is drawn
+        // again where the view sees through something (what is seen through lies over what is opaque in front of it), and
+        // where it no longer draws a node the targets hold.
+        let nodes_shown = !mesh.wireframe;
+        let fresh = nodes_shown && self.nodes.drawn.iter().any(|k| !self.nodes.in_targets.contains(k));
+        if (fresh && through) || self.nodes.in_targets.iter().any(|k| !self.nodes.drawn_set.contains(k)) {
+            up.progress = None;
+        }
         // What this frame draws of the surfaces: nothing where they are drawn already for this camera (a tint changes only the
         // picture); the next part of the exact drawing while the camera stays; else, the camera moved, all it sees if that fits
         // in a frame, or the nearest of it and a box for each of the rest, finished exactly once the camera stays.
@@ -1508,6 +1806,16 @@ impl Gpu {
                 (surfaces(mesh, up, queue, device, &near.seen, &near.stand_ins, limit), true)
             }
         };
+        let node_draws: Vec<crate::stream::Key> = match (nodes_shown, first) {
+            (false, _) => Vec::new(),
+            (true, true) => self.nodes.drawn.clone(),
+            (true, false) => self.nodes.drawn.iter().filter(|k| !self.nodes.in_targets.contains(k)).copied().collect(),
+        };
+        if first {
+            self.nodes.in_targets.clear();
+        }
+        self.nodes.in_targets.extend(node_draws.iter().copied());
+        self.nodes.write_params(device, queue, &self.node_layout, &node_draws);
         let complete = matches!(up.progress, Some((_, _, Stage::Exact { done, total })) if done >= total);
         // The picture is made again when the surfaces are whole, exact or standing in; while the exact ones are on their way it
         // stays what the camera last showed.
@@ -1537,7 +1845,7 @@ impl Gpu {
         for (clear, color, ids, z) in
             [(false, &targets.color, &targets.ids, &targets.depth), (true, &targets.clear_color, &targets.clear_ids, &targets.clear_depth)]
         {
-            if (clear && !through) || (!first && !draws.iter().any(|(c, _)| *c == clear)) {
+            if (clear && !through) || (!first && !draws.iter().any(|(c, _)| *c == clear) && (clear || node_draws.is_empty())) {
                 continue;
             }
             let attachment = |view| wgpu::RenderPassColorAttachment {
@@ -1631,6 +1939,18 @@ impl Gpu {
                 pass.set_bind_group(0, &bind, &[]);
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 pass.draw(0..*count, 0..1);
+            }
+            // The nodes of scans' indexes, after the mesh's own points and cut as theirs are: all of them in a picture's first
+            // part, else those not in the targets yet, drawn over what is there.
+            if !clear && let Some((_, _, params)) = self.nodes.params.as_ref().filter(|_| !node_draws.is_empty()) {
+                pass.set_pipeline(&self.node_pipeline);
+                pass.set_bind_group(0, &bind, &[]);
+                for (slot, key) in node_draws.iter().enumerate() {
+                    let Some(node) = self.nodes.held.get(key) else { continue };
+                    pass.set_bind_group(1, params, &[(slot as u64 * self.nodes.stride) as u32]);
+                    pass.set_vertex_buffer(0, node.buffer.slice(..));
+                    pass.draw(0..6, 0..node.count);
+                }
             }
         }
         if !picture {
@@ -1731,6 +2051,21 @@ impl Gpu {
             for k in 0..up.wires.buffers.len() {
                 up.bring_in((device, queue), mesh, (Kind::Wires, k), &keep, full_at)?;
             }
+        }
+        // Eye-dome lighting in a parallel view measures the distance of each point from the nearest thing in the picture: found
+        // here, and put in the view's numbers for the edges' pass to read.
+        let points = !mesh.dots.is_empty() || !self.nodes.drawn.is_empty();
+        if d.eye_dome && points && view.perspective.is_none() {
+            encoder.clear_buffer(&self.near, 0, None);
+            {
+                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("nearest"), timestamp_writes: None });
+                pass.set_pipeline(&self.near_pipeline);
+                pass.set_bind_group(0, &bind, &[]);
+                pass.set_bind_group(1, &targets.bind, &[]);
+                pass.set_bind_group(2, &self.near_bind, &[]);
+                pass.dispatch_workgroups(w.div_ceil(8), h.div_ceil(8), 1);
+            }
+            encoder.copy_buffer_to_buffer(&self.near, 0, &self.globals, NEAREST_AT, 4);
         }
         for (name, pipeline, load, instances) in
             [("edges", &self.post, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), 1), ("levels", &self.lines, wgpu::LoadOp::Load, count)]
@@ -2165,6 +2500,19 @@ mod tests {
             .map(|(line, _)| line + 1)
             .collect();
         assert!(ends.is_empty(), "gpu.wgsl: a function ends in a discard at line {ends:?}");
+    }
+
+    /// The shader is whole and valid WGSL, as the card's compiler would find it: checked here without a card.
+    #[test]
+    fn the_shader_parses_and_validates_without_a_card() {
+        use wgpu::naga;
+        let module = naga::front::wgsl::parse_str(include_str!("gpu.wgsl"))
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(include_str!("gpu.wgsl"))));
+        let mut validator = naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::default());
+        validator.validate(&module).unwrap_or_else(|e| panic!("{e:?}"));
+        for entry in ["vs_node", "vs_dot", "fs_dot", "fs_post", "cs_near"] {
+            assert!(module.entry_points.iter().any(|e| e.name == entry), "{entry}");
+        }
     }
 
     /// The picture's pixels as rows of red, green, blue and alpha.
@@ -2833,6 +3181,8 @@ floor {}"#,
             .collect();
         std::fs::write(&path, text).unwrap();
         s.execute("point_cloud", &serde_json::json!({"path": path, "at": [4000, 3000]})).unwrap();
+        // The points' own colours, to the pixel: eye-dome lighting, which shades them, off (its test has it on).
+        s.execute("graphic_display_options", &serde_json::json!({"eye_dome": false})).unwrap();
         s.model.elements.iter().rev().find(|(_, e)| e.category() == "pointcloud").map(|(id, _)| *id).unwrap()
     }
 
@@ -2886,6 +3236,149 @@ floor {}"#,
         // What the view hides.
         s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"pointcloud": {"hidden": true}}})).unwrap();
         dots_as_the_processor(&mut gpu, &s, &[], flat, false);
+    }
+
+    /// Streams the nodes `cam` wants of `model`'s indexes to the card, packed for `mesh`, until none is left to come.
+    fn stream_all(
+        gpu: &mut Gpu,
+        stream: &mut crate::stream::Stream,
+        model: &Arc<bimcraft_core::model::Model>,
+        mesh: &Arc<Mesh>,
+        cam: Camera,
+    ) {
+        let ctx = egui::Context::default();
+        for _ in 0..1000 {
+            let on = crate::stream::On::Card(mesh);
+            stream.frame(&ctx, model, None, &cam, None, 10_000_000, on, &|k| gpu.has_node(k));
+            gpu.node_packing(stream.pack());
+            let (ready, wanted) = stream.waiting();
+            gpu.upload_nodes(ready, wanted, crate::stream::FRAME_BYTES);
+            gpu.draw_nodes(stream.wanted());
+            if !stream.busy() {
+                return;
+            }
+        }
+        panic!("the nodes never all came");
+    }
+
+    /// Draws `mesh` through `cam` until the picture is the exact one, and reads it.
+    fn settled(gpu: &mut Gpu, mesh: &Arc<Mesh>, cam: &Camera) -> Vec<u8> {
+        for _ in 0..1000 {
+            if gpu.draw(mesh, cam, &[], PAPER).unwrap() {
+                return read(gpu);
+            }
+        }
+        panic!("the picture never settled");
+    }
+
+    #[test]
+    fn the_card_draws_the_nodes_of_a_scan_s_index_it_streams_as_the_processor_draws_them_read() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = sample();
+        crate::stream::testing::indexed_scan(&mut s, dir.path(), [4000.0, 3000.0]);
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"roofs": {"hidden": true}}})).unwrap();
+        let model = Arc::clone(&s.model);
+        let (scene, look) = (Scene::new(&model), Look::of_3d(&model));
+        let far = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let red = |c: &[u8; 4]| c[0] > 200 && c[1] < 60 && c[2] < 60;
+        for cam in [
+            Camera { scale: far.scale * 3.0, target: [6000.0, 3000.0, 1500.0], ..far },
+            Camera { lens: Some(bimcraft_core::view3d::LENS), ..far },
+        ] {
+            let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+            let mut stream = crate::stream::Stream::default();
+            let top = settled(&mut gpu, &mesh, &cam);
+            stream_all(&mut gpu, &mut stream, &model, &mesh, cam);
+            // Every node wanted is on the card (those of a view before it may stay there too, within the budget).
+            assert!(stream.wanted().iter().all(|k| gpu.has_node(k)), "every node wanted is on the card");
+            let card = settled(&mut gpu, &mesh, &cam);
+            let detail = bimcraft_core::view3d::scan_detail(&model, &cam, &look, 10_000_000, true);
+            let cpu = scene.render_detailed(&cam, &[], &look, &detail);
+            let count = |p: &[u8]| p.as_chunks::<4>().0.iter().filter(|c| red(c)).count();
+            // Near, the nodes add many points; far, in perspective, a node or so, much of it where the top's are.
+            if cam.lens.is_none() {
+                assert!(count(&card) > count(&top) + 500, "the nodes add points: {} {}", count(&top), count(&card));
+            }
+            let (card, cpu) = (card.as_chunks::<4>().0, cpu.rgba.as_chunks::<4>().0);
+            let both = card.iter().zip(cpu).filter(|(a, b)| red(a) && red(b)).count();
+            let one = card.iter().zip(cpu).filter(|(a, b)| red(a) != red(b)).count();
+            // A node's points are 16-bit places in its box: a pixel here and there lands on its neighbour.
+            assert!(one * 50 <= both, "{one} red pixels in one picture only, {both} in both");
+        }
+    }
+
+    #[test]
+    fn the_card_keeps_no_more_nodes_than_its_budget_letting_go_of_those_used_longest_ago() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here");
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Session::new();
+        crate::stream::testing::indexed_scan(&mut s, dir.path(), [0.0, 0.0]);
+        let model = Arc::clone(&s.model);
+        let (scene, look) = (Scene::new(&model), Look::of_3d(&model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let far = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let near = Camera { scale: far.scale * 4.0, ..far };
+        let mut stream = crate::stream::Stream::default();
+        stream_all(&mut gpu, &mut stream, &model, &mesh, near);
+        let (all, nodes) = gpu.node_bytes();
+        assert!(nodes > 2, "{nodes} nodes");
+        // Half as much room: the nodes of another view take the place of those wanted no longer, never past it.
+        gpu.set_node_budget(all / 2);
+        let mut fresh = crate::stream::Stream::default();
+        for cam in [far, Camera { target: [1500.0, 0.0, 2500.0], ..near }, near] {
+            stream_all(&mut gpu, &mut fresh, &model, &mesh, cam);
+            assert!(gpu.node_bytes().0 <= all / 2, "{} bytes of {}", gpu.node_bytes().0, all / 2);
+            assert!(gpu.node_bytes().1 > 0);
+        }
+    }
+
+    #[test]
+    fn eye_dome_lighting_on_the_card_darkens_a_scan_s_edges_as_the_processor_does() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here");
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("two.xyz");
+        // Two red sheets 2 m square, one a metre in front of the other and half over it.
+        let mut text = String::new();
+        for i in 0..=100 {
+            for k in 0..=100 {
+                let (x, z) = (f64::from(i) * 0.02, f64::from(k) * 0.02);
+                text += &format!("{x} 0 {z} 255 0 0\n{} -1 {} 255 0 0\n", x + 1.0, z + 1.0);
+            }
+        }
+        std::fs::write(&path, text).unwrap();
+        let mut s = Session::new();
+        s.execute("point_cloud", &serde_json::json!({"path": path})).unwrap();
+        let dark = |p: &[[u8; 4]]| p.iter().filter(|c| c[0] < 120 && c[1] < 40 && c[2] < 40).count();
+        let pictures = |s: &Session, gpu: &mut Gpu, perspective: bool| {
+            let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+            let flat = scene.fit_in(AZIMUTH, ELEVATION, 320, 240, &look);
+            let cam = if perspective { scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..flat }, &look) } else { flat };
+            let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+            let card = settled(gpu, &mesh, &cam);
+            let cpu = scene.render_in(&cam, &[], &look);
+            (dark(card.as_chunks::<4>().0), dark(cpu.rgba.as_chunks::<4>().0))
+        };
+        for perspective in [false, true] {
+            s.execute("graphic_display_options", &serde_json::json!({"eye_dome": false})).unwrap();
+            let (card_before, cpu_before) = pictures(&s, &mut gpu, perspective);
+            s.execute("graphic_display_options", &serde_json::json!({"eye_dome": true})).unwrap();
+            let (card, cpu) = pictures(&s, &mut gpu, perspective);
+            s.execute("graphic_display_options", &serde_json::json!({"eye_dome": false})).unwrap();
+            assert!(cpu > cpu_before + 50, "the processor darkens: {cpu_before} {cpu}");
+            assert!(card > card_before + 50, "the card darkens: {card_before} {card}");
+            assert!(card.abs_diff(cpu) * 5 <= cpu, "as much: {card} on the card, {cpu} on the processor");
+            assert_eq!(pictures(&s, &mut gpu, perspective).0, card_before, "off again, as it was");
+        }
     }
 
     #[test]

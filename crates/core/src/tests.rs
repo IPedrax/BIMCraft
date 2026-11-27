@@ -2509,6 +2509,8 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"view": 100000, "source": "Level 2", "rotate": 33, "about": [9e8, 9e8], "front": "yes", "reset": []}),
         json!({"view": 100000, "on": true, "fills": 5}),
         json!({"elevation": "high"}),
+        json!({"cloud": "x", "path": 5, "index": "maybe"}),
+        json!({"path": "/nowhere/scan.las", "index": true}),
         json!({"elevation": 1e300}),
         json!({"crs": "EPSG:31983", "eastings": 1e300, "rotation": "x", "scale": -1, "clear": "yes", "map_zone": 5}),
         json!({"crs": "EPSG:31983", "northings": 1e12, "height": -1e12, "rotation": 359, "scale": 1e-300, "description": "a\nb"}),

@@ -50,12 +50,12 @@ fn insert_point_cloud_brings_the_files_picked_in_as_one_scan_and_selects_it() {
 #[test]
 fn a_scan_that_cant_come_in_says_why_in_its_box() {
     let mut h = app(BOX);
-    let bad = face("bad", "scan.laz", 0.0);
+    let bad = face("bad", "scan.rcp", 0.0);
     h.state_mut().point_cloud_paths(vec![bad]);
     h.run();
     press(&mut h, "OK");
     assert!(scans(&h).is_empty());
-    assert!(h.query_by_label_contains("decompress it to LAS").is_some(), "the reason shows in the box, which stays open");
+    assert!(h.query_by_label_contains("export the scan from ReCap").is_some(), "the reason shows in the box, which stays open");
     press(&mut h, "Cancel");
     assert!(h.query_by_label("OK").is_none());
 }
@@ -417,4 +417,289 @@ fn a_scan_with_a_colour_of_its_own_keeps_it_and_the_buttons_tip_says_so() {
     }
     let said = painted_text(&h).into_iter().find(|t| t.starts_with("High Contrast Point Clouds:")).unwrap_or_default();
     assert!(said.contains("a colour of its own in Visibility/Graphics keeps it"), "{said:?}");
+}
+
+/// A scan file big enough to be read on a thread of its own: a wall face like [`face`]'s, its points 1 cm apart.
+fn big_face(test: &str, name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-clouds-{}-{test}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(name);
+    let text: String =
+        (0..=200).flat_map(|i| (0..=200).map(move |k| format!("{} 0 {}\n", f64::from(i) * 0.01, f64::from(k) * 0.01))).collect();
+    std::fs::write(&path, text).unwrap();
+    assert!(std::fs::metadata(&path).unwrap().len() >= crate::clouds::IN_BACKGROUND, "the test's file is read in the frame");
+    path
+}
+
+#[test]
+fn a_big_scan_is_read_on_a_thread_of_its_own_with_its_progress_and_comes_in_as_one_undo_step() {
+    let mut h = app(BOX);
+    let before = h.state().session.history().len();
+    h.state_mut().point_cloud_paths(vec![big_face("big", "survey.xyz")]);
+    h.run();
+    press(&mut h, "OK");
+    // The window goes on drawing while the file is read, and the box says so, until the scan comes in.
+    let mut frames = 0;
+    while h.state().cloud_reading.is_some() {
+        assert!(h.query_by_label_contains("Reading survey.xyz").is_some(), "the progress box shows while it's read");
+        h.run();
+        frames += 1;
+        assert!(frames < 2000, "it was never read");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let placed = scans(&h);
+    assert_eq!(placed.len(), 1, "{}", h.state().status.text);
+    assert_eq!(h.state().session.model.clouds.get("survey").map(|c| c.read()), Some(201 * 201));
+    assert_eq!(h.state().selection, placed, "what was brought in is selected");
+    assert_eq!(h.state().session.history().len(), before + 1, "one undo step");
+    assert!(h.query_by_label_contains("Reading survey.xyz").is_none() && h.query_by_label("OK").is_none(), "both boxes closed");
+}
+
+#[test]
+fn a_big_scan_that_cant_come_in_says_why_in_its_box_once_read() {
+    let mut h = app(BOX);
+    h.state_mut().point_cloud_paths(vec![big_face("big-bad", "survey.xyz")]);
+    h.run();
+    type_into(&mut h, "Spacing (mm)", "-5");
+    press(&mut h, "OK");
+    for _ in 0..2000 {
+        if h.state().cloud_reading.is_none() {
+            break;
+        }
+        h.run();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    h.run();
+    assert!(scans(&h).is_empty());
+    assert!(h.query_by_label_contains("spacing").is_some(), "the reason shows in the box, which stays open");
+    press(&mut h, "Cancel");
+    assert!(h.query_by_label("OK").is_none());
+}
+
+/// What the view colours its point clouds by, as the category's override says.
+fn scan_mode(h: &Harness<BimApp>) -> Option<bimcraft_core::graphics::ScanColour> {
+    h.state().graphics_shown().categories.get("pointcloud").and_then(|o| o.scan)
+}
+
+#[test]
+fn the_view_control_bar_colours_a_views_point_clouds_by_height_or_intensity() {
+    use bimcraft_core::graphics::{ScanBy, ScanColour};
+    let h = app(BOX);
+    assert!(h.query_by_label("Point Cloud Colours").is_none(), "with no scan there is nothing to colour");
+    let mut h = app(&format!("point_cloud {}", json!({"path": face("modes", "face.xyz", 0.0)})));
+    press(&mut h, "Point Cloud Colours");
+    press(&mut h, "Elevation");
+    assert_eq!(scan_mode(&h), Some(ScanColour { by: ScanBy::Elevation, ..ScanColour::default() }));
+    press(&mut h, "Point Cloud Colours");
+    press(&mut h, "Intensity");
+    assert_eq!(scan_mode(&h).map(|c| c.by), Some(ScanBy::Intensity));
+    // Normal takes the mode away: the scans' own colours.
+    press(&mut h, "Point Cloud Colours");
+    press(&mut h, "Normal");
+    assert_eq!(scan_mode(&h), None);
+    // One step each.
+    h.state_mut().run("undo", json!({}));
+    h.run();
+    assert_eq!(scan_mode(&h).map(|c| c.by), Some(ScanBy::Intensity));
+}
+
+#[test]
+fn visibility_graphics_sets_the_point_clouds_colours_and_the_heights_their_ramp_runs_between() {
+    use bimcraft_core::graphics::{ScanBy, ScanColour};
+    let mut h = app(&format!("point_cloud {}", json!({"path": face("vg-modes", "face.xyz", 0.0)})));
+    shortcut(&mut h, "VG");
+    assert!(h.query_by_role_and_label(Role::ComboBox, "Color Mode").is_some(), "the Model Categories tab has the scans' colours");
+    choose(&mut h, "Color Mode", "Elevation");
+    type_into(&mut h, "Low", "500");
+    type_into(&mut h, "High", "1500");
+    press(&mut h, "OK");
+    assert_eq!(scan_mode(&h), Some(ScanColour { by: ScanBy::Elevation, low: Some(500.0), high: Some(1500.0) }));
+}
+
+/// Frames until the scan being read on a thread of its own has come in.
+fn read_in(h: &mut Harness<BimApp>) {
+    for _ in 0..4000 {
+        if h.state().cloud_reading.is_none() {
+            break;
+        }
+        h.run();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(h.state().cloud_reading.is_none(), "it was never read");
+    h.run();
+}
+
+const KEEP: &str = "Keep full detail (index beside the project)";
+
+#[test]
+fn keep_full_detail_brings_a_scan_in_with_its_index_beside_the_saved_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("house.bimc");
+    let mut h = app(BOX);
+    assert!(h.state_mut().save_to(&project));
+    h.state_mut().point_cloud_paths(vec![face("keep", "survey.xyz", 0.0)]);
+    h.run();
+    // A small scan is held whole at first; asked, it keeps every point in an index.
+    assert!(!h.state().cloud_box.as_ref().unwrap().index, "off for small files");
+    pick(&mut h, Role::CheckBox, KEEP);
+    assert!(h.state().cloud_box.as_ref().unwrap().index);
+    press(&mut h, "OK");
+    read_in(&mut h);
+    assert_eq!(scans(&h).len(), 1, "{}", h.state().status.text);
+    let cloud = h.state().session.model.clouds.get("survey").unwrap();
+    assert!(cloud.index().is_some() && cloud.indexed().is_some(), "the scan has its index, open");
+    assert!(dir.path().join("house_clouds").join("survey.bimpc").is_file(), "beside the project");
+    // The plan and the 3D view draw it.
+    h.run();
+    h.state_mut().open_3d(None);
+    h.run();
+}
+
+#[test]
+fn keep_full_detail_in_a_project_without_a_file_keeps_the_index_beside_the_scan() {
+    let mut h = app(BOX);
+    let scan = face("unsaved", "survey.xyz", 0.0);
+    h.state_mut().point_cloud_paths(vec![scan.clone()]);
+    h.run();
+    pick(&mut h, Role::CheckBox, KEEP);
+    assert!(h.query_by_label("The project has no file yet: the index is kept beside the scan's file.").is_some());
+    press(&mut h, "OK");
+    read_in(&mut h);
+    let cloud = h.state().session.model.clouds.get("survey").unwrap();
+    assert!(cloud.indexed().is_some(), "indexed beside the scan");
+    assert!(scan.with_file_name("survey.bimpc").exists());
+}
+
+#[test]
+fn a_scan_whose_index_is_missing_says_so_in_the_browser_and_find_index_reads_it_where_it_went() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("house.bimc");
+    let mut h = app(BOX);
+    assert!(h.state_mut().save_to(&project));
+    h.state_mut().point_cloud_paths(vec![face("missing", "survey.xyz", 0.0)]);
+    h.run();
+    pick(&mut h, Role::CheckBox, KEEP);
+    press(&mut h, "OK");
+    read_in(&mut h);
+    assert!(h.state_mut().save_to(&project));
+    type_into(&mut h, "Search the Project Browser", "survey");
+    assert!(h.query_by_label("Point Clouds").is_some(), "the browser lists the scans");
+    // The index is moved away, and the project opened again.
+    let (was, moved) = (dir.path().join("house_clouds").join("survey.bimpc"), dir.path().join("moved.bimpc"));
+    std::fs::rename(&was, &moved).unwrap();
+    assert!(h.state_mut().open_path(&project));
+    h.run();
+    type_into(&mut h, "Search the Project Browser", "survey");
+    assert!(h.query_by_label("survey (index missing)").is_some(), "the browser says the index is missing");
+    // Reload Index looks where the project had it, and says it isn't there.
+    h.get_by_label("survey (index missing)").click_secondary();
+    h.run();
+    press(&mut h, "Reload Index");
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert!(h.query_by_label("survey (index missing)").is_some());
+    // Find Index… asks for the file and reads it there.
+    h.get_by_label("survey (index missing)").click_secondary();
+    h.run();
+    press(&mut h, "Find Index…");
+    let tx = crate::dialog::BEGUN.with(|b| b.borrow_mut().pop()).expect("a file dialog was begun");
+    tx.send(Some(vec![moved.clone()])).unwrap();
+    h.run();
+    h.run();
+    let cloud = h.state().session.model.clouds.get("survey").unwrap();
+    assert!(cloud.indexed().is_some(), "{}", h.state().status.text);
+    assert!(h.query_by_label("survey (index missing)").is_none() && h.query_by_label("Point Clouds").is_some());
+    // Open, the browser says what its file takes; Delete Index… asks, then deletes the file and lets the index go.
+    let label = format!("survey ({})", bimcraft_core::memory::bytes(std::fs::metadata(&moved).unwrap().len()));
+    h.get_by_label(&label).click_secondary();
+    h.run();
+    press(&mut h, "Delete Index…");
+    assert!(h.query_by_label("Delete Index").is_some(), "it asks first");
+    assert!(moved.exists());
+    press(&mut h, "Delete");
+    let cloud = h.state().session.model.clouds.get("survey").unwrap();
+    assert!(cloud.index().is_none() && !moved.exists(), "{}", h.state().status.text);
+    assert!(h.query_by_label("survey").is_some());
+}
+
+#[test]
+fn point_cloud_memory_and_points_drawn_in_3d_are_kept_in_settings_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let mut h = app("");
+    h.state_mut().use_settings(file.clone());
+    assert_eq!((h.state().scan_memory_mb, h.state().scan_points), (None, None), "Auto at first");
+    press(&mut h, "Settings");
+    h.state_mut().settings_page = Some(crate::settings::Page::Graphics);
+    h.run();
+    assert!(h.query_by_label("Point cloud memory").is_some() && h.query_by_label("Points drawn in 3D").is_some());
+    // Auto turned off takes a number, kept in the settings file.
+    h.state_mut().scan_memory_mb = Some(2048);
+    h.state_mut().scan_points = Some(5_000_000);
+    assert!(h.query_by_label("Beside each project").is_some(), "indexes beside each project at first");
+    h.state_mut().session.index_dir = Some(dir.path().join("indexes"));
+    h.run();
+    press(&mut h, "Close");
+    let kept: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let folder = dir.path().join("indexes").to_string_lossy().into_owned();
+    assert_eq!(kept["point_clouds"], json!({"memory_mb": 2048, "points_3d": 5_000_000, "index_dir": folder}));
+    // Another window starts with them, the memory given to the scans' caches.
+    let mut again = app("");
+    again.state_mut().use_settings(file.clone());
+    assert_eq!((again.state().scan_memory_mb, again.state().scan_points), (Some(2048), Some(5_000_000)));
+    assert_eq!(again.state().session.index_dir, Some(dir.path().join("indexes")), "the session looks in the folder of indexes");
+    assert_eq!(bimcraft_core::cloud::lod::memory(), 2048 << 20);
+    // Null is Auto; what isn't a number in range keeps what it had.
+    for (text, memory, points) in [
+        (r#"{"point_clouds": {"memory_mb": null, "points_3d": null}}"#, None, None),
+        (r#"{"point_clouds": {"memory_mb": 1, "points_3d": "many"}}"#, None, None),
+        (r#"{"point_clouds": {"memory_mb": 512, "points_3d": 1e12}}"#, Some(512), None),
+        (r#"{"point_clouds": 7}"#, None, None),
+    ] {
+        std::fs::write(&file, text).unwrap();
+        let mut fresh = app("");
+        fresh.state_mut().use_settings(file.clone());
+        assert_eq!((fresh.state().scan_memory_mb, fresh.state().scan_points), (memory, points), "{text}");
+    }
+    bimcraft_core::cloud::lod::set_memory(None);
+}
+
+#[test]
+fn the_3d_view_streams_the_nodes_of_an_indexed_scan_as_it_moves_and_its_picture_draws_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app(BOX);
+    crate::stream::testing::indexed_scan(&mut h.state_mut().session, dir.path(), [2000.0, 2000.0]);
+    h.state_mut().open_3d(None);
+    h.run();
+    let at = h.state().orbit.rect.center();
+    let wheel = |h: &mut Harness<BimApp>, by: f32| {
+        for _ in 0..4 {
+            h.hover_at(at);
+            h.event(egui::Event::MouseWheel {
+                phase: egui::TouchPhase::Move,
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0.0, by),
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.step();
+        }
+        h.run();
+    };
+    // Far off, the view wants few of the nodes below the top the project holds, and reads them as it stands.
+    wheel(&mut h, -300.0);
+    let wanted = h.state().orbit.stream.wanted().len();
+    let read = h.state().orbit.stream.arrived();
+    assert!(wanted > 0 && read as usize >= wanted, "read as the view stands: {read} of {wanted}");
+    // Zoomed in, it wants more, and has read them as it moved, with no wait for the camera to stand still: the picture finds
+    // every node it wants read.
+    let before = h.state().orbit.camera.unwrap().scale;
+    wheel(&mut h, 300.0);
+    wheel(&mut h, 300.0);
+    let state = h.state();
+    let cam = state.orbit.camera.unwrap();
+    assert!(cam.scale > before * 1.5, "zoomed in");
+    assert!(state.orbit.stream.wanted().len() > wanted, "more wanted near: {} and {wanted}", state.orbit.stream.wanted().len());
+    let look = bimcraft_core::graphics::Look::of_3d(&state.session.model);
+    let detail = bimcraft_core::view3d::scan_detail(&state.session.model, &cam, &look, crate::orbit::DETAIL_PROCESSOR, false);
+    assert_eq!(detail.missing, 0, "every node wanted is read");
+    assert!(detail.points() > 0 && !state.orbit.stream.busy());
 }
