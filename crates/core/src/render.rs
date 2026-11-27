@@ -945,7 +945,16 @@ fn plan_candidates<'a>(
 /// The tags that may be in plan `key` of `level` with no view of their own, by id: those of what is of the level
 /// (`Model::level_of`), what points at it, the doors and windows in its walls, the railings on its stairs and ramps, and
 /// the annotation in its plan views.
-fn tags_of_level(m: &Model, lookup: &crate::derived::Lookup, level: Guid) -> std::collections::BTreeSet<Id> {
+pub(crate) fn tags_of_level(m: &Model, lookup: &crate::derived::Lookup, level: Guid) -> std::collections::BTreeSet<Id> {
+    // Kept with the model for the state of its elements: a plan asks at each draw, a snap at each move of the pointer.
+    let kept = m.derived.level_tags(&m.elements, level, || find_tags_of_level(m, lookup, level));
+    #[cfg(test)]
+    assert_eq!(*kept, find_tags_of_level(m, lookup, level), "the kept tags of a level aren't those found again");
+    (*kept).clone()
+}
+
+/// [`tags_of_level`] found.
+fn find_tags_of_level(m: &Model, lookup: &crate::derived::Lookup, level: Guid) -> std::collections::BTreeSet<Id> {
     let mut hosts: Vec<Id> = lookup.referrers(&level).collect();
     let mut more = Vec::new();
     for &id in &hosts {

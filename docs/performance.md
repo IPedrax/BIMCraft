@@ -340,6 +340,25 @@ Release, Apple M4 Pro, median of three, each edit undone after it:
 The plans, schedules, checks and files are the ones before: the full check still runs after every command in tests and
 is held to the incremental one, and each lookup query is tested against the loop it replaced.
 
+### Snapping near the pointer (2026-11-27)
+
+A point being drawn is snapped at every move of the pointer (`snap::snap`, `snap::in_sketch`). It went through every
+element of the project to find what is near, then made the tile index of every wall and run to outline the walls near:
+164 ms a move on the annotated 100-storey tower, ten frames a second at best. It now asks the lookup for what may be near
+(the walls at the plan's cut in the tiles near, their doors and windows, the level's components in the tiles near, what
+points at the view and the level, and the kinds a plan finds among all of them), and outlines the walls through the
+lookup's tiles and heights. What every dimension of the view snaps to and the level's tags of no view are kept with the
+model for its elements' state (and, the anchors, its types and families), so moving the pointer over the same model asks
+them once. In tests each snap is also made among every element and held to the same scene, and the kept anchors and tags
+to those found again.
+
+Release, Apple M4 Pro, 20 snaps near Level 1's walls:
+
+| | 360,031 elements, before | after | 1,200,101 elements, before | after |
+|---|---:|---:|---:|---:|
+| A snap, median | 48 ms | 2.9 ms | 164 ms | 6.4 ms |
+| The first snap after an edit | 67 ms | 27 ms | 229 ms | 77 ms |
+
 ## 3D on the graphics card
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model on a view worker), and

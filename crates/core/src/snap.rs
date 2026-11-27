@@ -6,6 +6,8 @@
 
 use bimcraft_i18n::ui_msg;
 
+use std::collections::BTreeSet;
+
 use crate::curves::Curve;
 use crate::geom::{self, P2, micron};
 use crate::graphics::Look;
@@ -287,6 +289,37 @@ impl<'a> Scene<'a> {
     /// What `level`'s plan has within `window` mm of `p`, but for what `look` hides: a cheap look at
     /// each element's extent first, so a plan of thousands of walls costs a few microseconds a wall.
     fn of(m: &'a Model, level: Id, p: P2, window: f64, look: &'a Look, skip: Option<Id>, stair_corners: bool) -> Scene<'a> {
+        let near = candidates(m, level, p, window);
+        let s =
+            Scene::of_among(m, level, p, window, look, skip, stair_corners, near.iter().filter_map(|id| Some((id, m.elements.get(*id)?))));
+        // Its twin, which tests hold it to: every element of the model, each asked the same.
+        #[cfg(test)]
+        {
+            let every = Scene::of_among(m, level, p, window, look, skip, stair_corners, m.elements.iter());
+            assert!(
+                s.points == every.points
+                    && s.lines == every.lines
+                    && s.walls == every.walls
+                    && s.curves == every.curves
+                    && s.chords == every.chords,
+                "what a snap at {p:?} finds among the lookup's candidates isn't what it finds among every element"
+            );
+        }
+        s
+    }
+
+    /// [`Scene::of`] among `elements`, in order of id.
+    #[allow(clippy::too_many_arguments)]
+    fn of_among<'e>(
+        m: &'a Model,
+        level: Id,
+        p: P2,
+        window: f64,
+        look: &'a Look,
+        skip: Option<Id>,
+        stair_corners: bool,
+        elements: impl Iterator<Item = (&'e Id, &'e Element)>,
+    ) -> Scene<'a> {
         let mut s = Scene {
             points: Vec::new(),
             lines: Vec::new(),
@@ -308,7 +341,7 @@ impl<'a> Scene<'a> {
             });
             p.0 >= lo.0 - window && p.0 <= hi.0 + window && p.1 >= lo.1 - window && p.1 <= hi.1 + window
         };
-        for (&id, e) in m.elements.iter().filter(|(id, _)| look.shows(**id) && skip != Some(**id)) {
+        for (&id, e) in elements.filter(|(id, _)| look.shows(**id) && skip != Some(**id)) {
             let of = Some(id);
             let ring = |pts: &[P2]| if near(pts) { pts.iter().map(|q| (*q, Kind::Endpoint, of)).collect::<Vec<_>>() } else { Vec::new() };
             match e {
@@ -345,9 +378,17 @@ impl<'a> Scene<'a> {
                 }
                 Element::Dimension(d) if m.annotation_in(e, view) => {
                     s.points.push((d.at, Kind::Anchor, of));
-                    let (along, stations) = m.stations(d);
-                    for (at, _, _) in stations {
-                        s.points.push((d.at + along * at, Kind::Anchor, of));
+                    // Kept with the model: finding them asks each reference's line, a wall's outline, at every move.
+                    let find = || {
+                        let (along, stations) = m.stations(d);
+                        (along, stations.into_iter().map(|(at, _, _)| at).collect::<Vec<f64>>())
+                    };
+                    let anchors = m.derived.anchors(m, id, find);
+                    #[cfg(test)]
+                    assert_eq!(*anchors, find(), "dimension {id}'s kept anchors aren't those found again");
+                    let (along, places) = &*anchors;
+                    for at in places {
+                        s.points.push((d.at + *along * *at, Kind::Anchor, of));
                     }
                 }
                 Element::DetailGroup(g) if m.annotation_in(e, view) => s.points.push((g.at, Kind::Anchor, of)),
@@ -508,6 +549,38 @@ impl<'a> Scene<'a> {
         }
         s
     }
+}
+
+/// The elements [`Scene::of`] may find within `window` of `p` in `view`, from the model's lookup rather than every element,
+/// by id: every one it finds, and others. What a view draws of its own points at the view (or, a plan of a level, at the
+/// level), as do a level's own kinds; walls come from the tiles near, with their doors and windows; components from the
+/// level's tiles near; columns, ceilings and the kinds a plan finds among all of them (grids, floors, roofs, stairs, views,
+/// imports…) whole.
+fn candidates(m: &Model, view: Id, p: P2, window: f64) -> BTreeSet<Id> {
+    let lookup = m.lookup();
+    let key = m.guid(view);
+    let level = m.guid(m.plan_level(view).unwrap_or(view));
+    let mut out: BTreeSet<Id> = lookup.other().collect();
+    let b = [p.0 - window, p.1 - window, p.0 + window, p.1 + window];
+    // A wall shows where it spans the plan's cut ([`Model::cut_by`]): those at its height, a millimetre either side.
+    let cut = m.plan_range(view).cut;
+    for wall in lookup.walls_near_at(&[(b, cut - 1.0, cut + 1.0)], 1.0) {
+        out.insert(wall);
+        let g = m.guid(wall);
+        out.extend(lookup.referrers(&g).filter(|id| matches!(m.elements.get(*id), Some(Element::Door(_) | Element::Window(_)))));
+    }
+    // A component's point within `window` of `p` each way is within `window` times the root of two.
+    out.extend(lookup.components_near(level, p, window * std::f64::consts::SQRT_2 + 1.0));
+    out.extend(lookup.referrers(&key));
+    if let Some(Element::PlanView(crate::model::PlanView { parent: Some(parent), .. })) = m.elements.get(view) {
+        out.extend(lookup.referrers(parent));
+    }
+    out.extend(lookup.referrers(&level));
+    out.extend(crate::render::tags_of_level(m, &lookup, level));
+    for kind in ["column", "structuralcolumn", "ceiling", "stair", "shaft", "mass", "cadimport", "image", "refplane"] {
+        out.extend(lookup.rare(kind));
+    }
+    out
 }
 
 /// The corners of stair `st`'s parts as section or elevation `v` sees them, along its line from its start and up, within
@@ -936,33 +1009,47 @@ fn outlines(m: &Model, view: Id, p: P2, window: f64, look: &Look, editing: Optio
     let level = m.guid(m.plan_level(view).unwrap_or(view));
     let edge = |ring: &[P2]| geom::ring_edges(ring).map(|(a, b)| geom::dist_to_segment(p, a, b)).fold(f64::INFINITY, f64::min);
     let edges = |outline: &[P2], holes: &[Vec<P2>]| holes.iter().map(|h| edge(h)).fold(edge(outline), f64::min);
-    let mut near: Vec<(f64, Id)> = m
-        .elements
-        .iter()
-        .filter(|(id, _)| look.shows(**id) && editing != Some(**id))
-        .filter_map(|(id, e)| match e {
-            Element::Wall(w) => {
-                let d = crate::walls::Axis::of(w).distance(p, 0.0);
-                let within = if slabs { d <= window } else { d - m.thickness(w) / 2.0 <= reach };
-                (within && m.cut_by(w, view)).then_some((d, *id))
-            }
-            // Near an edge of its outline or of any opening: a big slab's hole in its middle is far from its outer edge.
-            Element::Floor(f) if slabs && f.level == level => Some((edges(&f.boundary, &f.openings), *id)),
-            Element::Ceiling(c) if slabs && c.level == level => Some((edges(&c.boundary, &c.openings), *id)),
-            _ => None,
-        })
-        .filter(|(d, _)| *d <= window)
-        .collect();
+    // The walls near from the lookup's tiles, the floors among the kinds it keeps apart and the ceilings it keeps: not every
+    // element of the project, at each move of the pointer. In order of id, as every element would give them.
+    let lookup = m.lookup();
+    let b = [p.0 - window, p.1 - window, p.0 + window, p.1 + window];
+    // The walls at the plan's cut, which those it outlines span ([`Model::cut_by`]).
+    let cut = m.plan_range(view).cut;
+    let mut ids: BTreeSet<Id> = lookup.walls_near_at(&[(b, cut - 1.0, cut + 1.0)], 1.0);
+    if slabs {
+        ids.extend(lookup.other().filter(|id| matches!(m.elements.get(*id), Some(Element::Floor(_)))));
+        ids.extend(lookup.rare("ceiling"));
+    }
+    let among = |elements: &mut dyn Iterator<Item = (&Id, &Element)>| -> Vec<(f64, Id)> {
+        elements
+            .filter(|(id, _)| look.shows(**id) && editing != Some(**id))
+            .filter_map(|(id, e)| match e {
+                Element::Wall(w) => {
+                    let d = crate::walls::Axis::of(w).distance(p, 0.0);
+                    let within = if slabs { d <= window } else { d - m.thickness(w) / 2.0 <= reach };
+                    (within && m.cut_by(w, view)).then_some((d, *id))
+                }
+                // Near an edge of its outline or of any opening: a big slab's hole in its middle is far from its outer edge.
+                Element::Floor(f) if slabs && f.level == level => Some((edges(&f.boundary, &f.openings), *id)),
+                Element::Ceiling(c) if slabs && c.level == level => Some((edges(&c.boundary, &c.openings), *id)),
+                _ => None,
+            })
+            .filter(|(d, _)| *d <= window)
+            .collect()
+    };
+    let mut near = among(&mut ids.iter().filter_map(|id| Some((id, m.elements.get(*id)?))));
+    // Its twin, which tests hold it to: every element.
+    #[cfg(test)]
+    assert_eq!(near, among(&mut m.elements.iter()), "the outlines near {p:?} from the lookup aren't every element's");
     near.sort_by(|a, b| a.0.total_cmp(&b.0));
     near.truncate(MAX_OUTLINES);
-    // One index for all of them, so each wall's joins are found among the walls its height meets.
-    let index = near.iter().any(|(_, id)| matches!(m.elements.get(*id), Some(Element::Wall(_)))).then(|| crate::walls::Index::new(m));
     for (_, id) in near {
         #[cfg(test)]
         BUILT.with(|n| n.set(n.get() + 1));
         match m.elements.get(id) {
             Some(Element::Wall(_)) => {
-                let ring = crate::walls::outline_in(m, id, index.as_ref());
+                // Its joins from the lookup's tiles and heights, as the plan finds them: not an index made of every element.
+                let ring = crate::walls::outline_in(m, id, None);
                 if slabs {
                     scene.polyline(&ring, true, Some(id));
                 } else {
@@ -1277,6 +1364,38 @@ mod tests {
 
     fn at(m: &Model, p: P2, from: &[P2], o: &Snaps) -> Found {
         snap(m, 100000, p, REACH, from, false, o)
+    }
+
+    #[test]
+    fn a_dimensions_kept_anchors_follow_a_wall_type_changed_on_the_model_itself() {
+        // Two walls 6 m apart and a dimension between their faces: its anchors are kept with the model between snaps. A
+        // thicker wall type, changed on the model and not by a command, moves the faces, so the anchors are found again
+        // (each snap in tests holds what it kept to what it finds anew).
+        let mut s = Session::new();
+        s.script(
+            r#"wall {"points": [[0, 0], [0, 6000]]}
+            wall {"points": [[6000, 0], [6000, 6000]]}
+            dimension {"refs": [[100, 3000], [5900, 3000]], "at": [3000, 4000]}"#,
+        )
+        .unwrap();
+        let p = P2(3000.0, 4000.0);
+        at(&s.model, p, &[], &Snaps::default());
+        let dimension = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Dimension(_))).map(|(id, _)| *id).unwrap();
+        let before = s.model.derived.anchors(&s.model, dimension, || (P2(0.0, 0.0), Vec::new())).1.clone();
+        assert_eq!(before.len(), 2, "{before:?}");
+        let m = std::sync::Arc::make_mut(&mut s.model);
+        for t in m.types.wall.values_mut() {
+            t.thickness *= 2.0;
+            for l in &mut t.layers {
+                l.thickness *= 2.0;
+            }
+        }
+        at(&s.model, p, &[], &Snaps::default());
+        let Some(Element::Dimension(d)) = s.model.elements.get(dimension) else { panic!("no dimension") };
+        let (_, places) = &*s.model.derived.anchors(&s.model, dimension, || (P2(0.0, 0.0), Vec::new()));
+        let found: Vec<f64> = s.model.stations(d).1.into_iter().map(|(at, _, _)| at).collect();
+        assert_eq!(places, &found);
+        assert_ne!(places, &before, "the faces moved, and the anchors with them");
     }
 
     fn degrees(from: P2, to: P2) -> f64 {

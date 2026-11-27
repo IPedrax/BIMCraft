@@ -654,6 +654,12 @@ pub struct Derived {
     plans: Mutex<Option<KeptPlans>>,
     /// Each schedule's table, with the token and version of the elements it is of.
     tables: Mutex<Option<KeptTables>>,
+    /// Each dimension's direction and where its references stand along it ([`crate::model::Model::stations`]), with what they
+    /// were found from: a snap asks every dimension of the view at each move of the pointer.
+    anchors: Mutex<Option<KeptAnchors>>,
+    /// Each level's tags of no view ([`crate::render::tags_of_level`]), with the token and version of the elements they are
+    /// of: a plan and a snap ask them at each draw and each move of the pointer.
+    level_tags: Mutex<Option<KeptLevelTags>>,
 }
 
 /// A model's box, with the token and version of its elements and the types, families and materials it was made of.
@@ -670,6 +676,16 @@ type KeptShafts = (u64, u64, Arc<Vec<ShaftReach>>);
 type KeptIndex = (u64, u64, crate::shared::Identity<crate::model::Types>, Arc<crate::walls::Index>);
 type KeptPlans = (u64, u64, HashMap<(Guid, bool), Arc<crate::rooms::Plan>>);
 type KeptTables = (u64, u64, HashMap<crate::schedule::TableKey, Arc<crate::schedule::Table>>);
+/// A dimension's direction and its references' places along it, from its line's point.
+pub(crate) type Anchors = Arc<(crate::geom::P2, Vec<f64>)>;
+type KeptAnchors = (
+    u64,
+    u64,
+    crate::shared::Identity<crate::model::Types>,
+    crate::shared::Identity<BTreeMap<String, crate::family::Family>>,
+    HashMap<Id, Anchors>,
+);
+type KeptLevelTags = (u64, u64, HashMap<Guid, Arc<BTreeSet<Id>>>);
 
 /// A shaft as a slab asks of it: its span, its plan box [x0, y0, x1, y1] and its outline.
 #[derive(Debug)]
@@ -801,13 +817,67 @@ impl Derived {
         Ok(made)
     }
 
-    /// Let go of the kept plans and tables: what a model on its way into the undo history need not carry.
+    /// Dimension `id`'s direction and its references' places along it in `m`, found by `make` and kept until the elements,
+    /// the types or the families change (a reference's line may be a wall's face or a family's plane).
+    pub(crate) fn anchors(&self, m: &crate::model::Model, id: Id, make: impl FnOnce() -> (crate::geom::P2, Vec<f64>)) -> Anchors {
+        let (token, version) = m.elements.state();
+        let kept = |t: &u64, v: &u64, types: &crate::shared::Identity<_>, families: &crate::shared::Identity<_>| {
+            (*t, *v) == (token, version) && types.is_of(&m.types) && families.is_of(&m.families)
+        };
+        if let Ok(now) = self.anchors.lock()
+            && let Some((t, v, types, families, all)) = now.as_ref()
+            && kept(t, v, types, families)
+            && let Some(a) = all.get(&id)
+        {
+            return Arc::clone(a);
+        }
+        let made = Arc::new(make());
+        if let Ok(mut now) = self.anchors.lock() {
+            if now.as_ref().is_none_or(|(t, v, types, families, _)| !kept(t, v, types, families)) {
+                *now = Some((token, version, m.types.identity(), m.families.identity(), HashMap::new()));
+            }
+            if let Some((.., all)) = now.as_mut() {
+                all.insert(id, Arc::clone(&made));
+            }
+        }
+        made
+    }
+
+    /// What `make` finds of `level`'s tags of no view, kept until the elements change.
+    pub(crate) fn level_tags(&self, elements: &Elements, level: Guid, make: impl FnOnce() -> BTreeSet<Id>) -> Arc<BTreeSet<Id>> {
+        let (token, version) = elements.state();
+        if let Ok(now) = self.level_tags.lock()
+            && let Some((t, v, all)) = now.as_ref()
+            && (*t, *v) == (token, version)
+            && let Some(tags) = all.get(&level)
+        {
+            return Arc::clone(tags);
+        }
+        let made = Arc::new(make());
+        if let Ok(mut now) = self.level_tags.lock() {
+            if now.as_ref().is_none_or(|(t, v, _)| (*t, *v) != (token, version)) {
+                *now = Some((token, version, HashMap::new()));
+            }
+            if let Some((_, _, all)) = now.as_mut() {
+                all.insert(level, Arc::clone(&made));
+            }
+        }
+        made
+    }
+
+    /// Let go of the kept plans, tables, anchors and tags: what a model on its way into the undo history need not carry.
     pub(crate) fn forget(&self) {
         if let Ok(mut plans) = self.plans.lock() {
             *plans = None;
         }
         if let Ok(mut tables) = self.tables.lock() {
             *tables = None;
+        }
+        if let Ok(mut anchors) = self.anchors.lock() {
+            *anchors = None;
+        }
+        if let Ok(mut tags) = self.level_tags.lock() {
+            *tags = None;
         }
     }
 
@@ -849,6 +919,8 @@ impl Clone for Derived {
             model_box: Mutex::new(None),
             plans: Mutex::new(None),
             tables: Mutex::new(None),
+            anchors: Mutex::new(None),
+            level_tags: Mutex::new(None),
         }
     }
 }
