@@ -1,5 +1,5 @@
-//! The other placed elements (fittings, fixtures, equipment, terminals, generic models): each comes in as a box-shaped component of
-//! a family of its category.
+//! The other placed elements (fittings, accessories, fixtures, equipment, terminals, generic models): each comes in as a box-shaped
+//! component of a family of its category. A space is no body, and is left out ([`NO_BODY`]).
 //!
 //! The file's record says where an element is and the box that holds it, in project axes; its connectors are not read here, and its
 //! shape only from its graphics (below). A component is of a family of the category's kind (`Category::PipeFitting`, `Plumbing`, `Generic`...): a box whose width,
@@ -72,9 +72,11 @@ const FRAMES: &[i64] = &[crate::framing::OST_STRUCTURAL_FRAMING];
 
 /// The categories whose placed elements come in as boxes: Revit's id, the family's name and kind, what one is called in the notes, and
 /// how its box stands for it.
-pub(crate) const KINDS: [(i64, &str, Category, &str, Shape); 38] = [
+pub(crate) const KINDS: [(i64, &str, Category, &str, Shape); 40] = [
     (-2_008_049, "Pipe Fittings", Category::PipeFitting, "pipe fitting", Shape::Envelope),
+    (-2_008_055, "Pipe Accessories", Category::PipeAccessory, "pipe accessory", Shape::Envelope),
     (-2_008_010, "Duct Fittings", Category::Generic, "duct fitting", Shape::Envelope),
+    (-2_008_016, "Duct Accessories", Category::Generic, "duct accessory", Shape::Envelope),
     (-2_008_020, "Flex Ducts", Category::Generic, "flex duct", Shape::Envelope),
     (-2_008_013, "Air Terminals", Category::Generic, "air terminal", Shape::Envelope),
     (-2_008_099, "Sprinklers", Category::Generic, "sprinkler", Shape::Envelope),
@@ -113,6 +115,16 @@ pub(crate) const KINDS: [(i64, &str, Category, &str, Shape); 38] = [
     (-2_001_354, "Structural Stiffeners", Category::Generic, "stiffener", Shape::Envelope),
     (-2_009_030, "Structural Connections", Category::Generic, "structural connection", Shape::Envelope),
 ];
+
+/// The categories whose elements are no body: Revit's id, what one and many are called in the notes, and why. A space (`OST_MEPSpaces`)
+/// is the air of the room it is in, which Revit draws in no 3D view; its graphics draw that air as a solid, from floor to floor,
+/// that would hide the pipes, ducts and fittings in it.
+pub(crate) const NO_BODY: [(i64, &str, &str, &str); 1] = [(
+    -2_003_600,
+    "space",
+    "spaces",
+    "it is a space, the air of the room it is in, which Revit draws in no 3D view: as a body it would hide what runs through it",
+)];
 
 /// A category the table has no name for: its elements come in as boxes named by its id. Every category with a reader is named.
 fn by_id(category: i64) -> bool {

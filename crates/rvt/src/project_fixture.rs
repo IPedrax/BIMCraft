@@ -791,7 +791,7 @@ fn room_object(id: u32, number: &str, name: &str, wide: bool) -> Vec<u8> {
 
 /// The graphics classes the fixture's schema has after the ones above, in order (their tags from 26), named and laid out as
 /// Revit's own schema has them, but for fields the reader skips.
-pub const GRAPHICS: [&str; 37] = [
+pub const GRAPHICS: [&str; 56] = [
     "Identifier",
     "ElementId",
     "GInfo",
@@ -829,6 +829,27 @@ pub const GRAPHICS: [&str; 37] = [
     "SplineSrfNode",
     "HermiteSurf",
     "CurtainGridLine",
+    "GArc",
+    // An MEP system type, its name and the colour its graphic overrides give lines; a system; and the elements that name it in
+    // their cells and connectors, a few of each real class's fields by their names.
+    "SymbolInfo",
+    "GStyleColorOverrider",
+    "OverrideGraphicSettings",
+    "SystemOverrides",
+    "RbsSystemType",
+    "RbsHvacSystemType",
+    "RbsPipingSystemType",
+    "RbsSystem",
+    "RbsHvacSystem",
+    "RbsPipingSystem",
+    "GUIDvalue",
+    "ESEntity",
+    "std::pair< GUIDvalue, ESEntity >",
+    "ESEntityCell",
+    "MEPAnalyticalModelCell",
+    "MEPFamilyConnectorCalculationHvac",
+    "RbsDuctCurve",
+    "FamilyInstance",
 ];
 
 /// The tag of a graphics class of the fixture's schema.
@@ -850,6 +871,7 @@ fn graphics_classes() -> Vec<u8> {
     let owned = Ty::object(1, None);
     let weak = Ty::object(3, None);
     let list = Ty::object(0x51, None);
+    let text = Ty { kind: 8, modifier: 0x60, count: None, inner: None, class: None };
     let by = |n: &str| Ty::object(0, t(n));
     let class = |name, base: Option<&str>, fields| TypedClass { name, base: base.map(tag), fields };
     fixture::typed_classes(&[
@@ -943,7 +965,51 @@ fn graphics_classes() -> Vec<u8> {
         ),
         // A curtain wall's grid line, an element's class (not a graphics one) the fixture's records may be of.
         class("CurtainGridLine", None, &[("m_flags", Ty::plain(4))]),
+        class("GArc", Some("GCurve"), &[("m_xVec", three), ("m_yVec", three), ("m_radius", Ty::plain(7)), ("m_center", three)]),
+        class("SymbolInfo", None, &[("m_name", text)]),
+        class("GStyleColorOverrider", None, &[("m_color", Ty::plain(5))]),
+        class("OverrideGraphicSettings", None, &[("m_bHalftone", Ty::plain(1)), ("m_oProjPenColor", owned), ("m_oCutPenColor", owned)]),
+        class("SystemOverrides", None, &[("m_oOverrideGraphicSettings", Ty::object(2, None)), ("m_visible", Ty::plain(1))]),
+        class(
+            "RbsSystemType",
+            None,
+            &[
+                ("m_id", by("ElementId")),
+                ("m_symbolInfo", Ty::object(2, None)),
+                ("m_renderStyleId", by("ElementId")),
+                ("m_abbreviation", text),
+                ("m_oSystemOverrides", owned),
+            ],
+        ),
+        class("RbsHvacSystemType", Some("RbsSystemType"), &[("m_RiseDropSettings", Ty::plain(4))]),
+        class("RbsPipingSystemType", Some("RbsSystemType"), &[("m_fluidTemperature", Ty::plain(7))]),
+        class("RbsSystem", None, &[("m_id", by("ElementId")), ("m_strName", text), ("m_typeId", by("ElementId"))]),
+        class("RbsHvacSystem", Some("RbsSystem"), &[]),
+        class("RbsPipingSystem", Some("RbsSystem"), &[]),
+        class("GUIDvalue", None, &[("m_guid", Ty::plain(9))]),
+        class("ESEntity", None, &[("m_blob", owned)]),
+        class("std::pair< GUIDvalue, ESEntity >", None, &[("first", by("GUIDvalue")), ("second", by("ESEntity"))]),
+        class("ESEntityCell", None, &[("m_entityMap", Ty::object(0x50, t("std::pair< GUIDvalue, ESEntity >")))]),
+        class("MEPAnalyticalModelCell", None, &[("m_equipmentGroupId", by("ElementId")), ("m_systemId", by("ElementId"))]),
+        class("MEPFamilyConnectorCalculationHvac", None, &[("m_dFlow", Ty::plain(7)), ("m_idSystem", by("ElementId"))]),
+        class("RbsDuctCurve", None, &[("m_id", by("ElementId")), ("m_cells", list), ("m_dHeight", Ty::plain(7))]),
+        class("FamilyInstance", None, &[("m_id", by("ElementId")), ("m_cells", list), ("m_connectors", list)]),
     ])
+}
+
+/// An element's own object as a partition holds it: its id as a `u64`, eight bytes, the tag of its class `class` and the tree
+/// whose root (index 2) is the object.
+pub fn object_block(id: u32, class: &str, objects: &Objects) -> Vec<u8> {
+    let mut out = u64::from(id).to_le_bytes().to_vec();
+    out.extend_from_slice(&[0; 8]);
+    out.extend_from_slice(&tag(class).to_le_bytes());
+    out.extend_from_slice(&tree_bytes(objects));
+    out
+}
+
+/// A text value: its count and its UTF-16 units.
+pub fn text(s: &str) -> V {
+    V::Counted(s.encode_utf16().map(V::U16).collect())
 }
 
 /// A value of a graphics object, as the fixture writes it.

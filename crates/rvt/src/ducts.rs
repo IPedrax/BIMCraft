@@ -5,10 +5,12 @@
 //! are a round duct's diameter twice. The run's section is those
 //! two, its width across and its height deep; a duct of one number twice is round. Its heights are the line's (the centre line's),
 //! its level the highest at or below its start. Where the section is turned about the line (a tray rolled on its side) the data
-//! says so elsewhere, which is not read. The system, the name of the type and the material are not read, and the notes say so.
+//! says so elsewhere, which is not read. The name of the type and the material are not read, and the notes say so; its system is
+//! read with the others' ([`crate::systems`]).
 //!
-//! Found in the data of a Revit 2018 file; no other release's was seen, so an element whose data holds no such line and section is
-//! left out and listed.
+//! Found in the data of a Revit 2018 file; no other release's was seen. An element whose data holds no such line and section (every
+//! one of the 2025 samples') runs along the middle of what its graphics draw ([`crate::framing::centre_line`]), of the section it
+//! draws: round where it draws a cylinder. One whose graphics draw no straight run of one section is left out and listed.
 
 use std::collections::BTreeSet;
 
@@ -49,17 +51,31 @@ fn read(data: &[u8]) -> Option<Read> {
     Some((line.start(), line.end(), section(data)?))
 }
 
+/// The ends of element `r`'s line, feet, its section, feet, and whether it is round and read from its graphics: from its data, else
+/// from what its graphics draw; or why not.
+fn line(g: &Gathered, r: &crate::records::Record) -> Result<(Read, Option<bool>), String> {
+    let reason = "its line and section are not in the record";
+    if let Some(read) = g.data.get(&r.id).and_then(|copies| newest(copies, read)).map(|(c, _)| c) {
+        return Ok((read, None));
+    }
+    match crate::framing::centre_line(g, r) {
+        Ok(c) => Ok(((c.start, c.end, (c.width, c.depth)), Some(c.round))),
+        Err(why) if why == crate::generic::NO_GRAPHICS => Err(reason.to_string()),
+        Err(why) => Err(format!("{reason}, nor is its line read from its graphics: {why}")),
+    }
+}
+
 pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
     for (category, run_category, label) in KINDS {
         for r in f.of_category(category) {
+            let mut drawn = false;
             let made = (|| -> Result<Run, String> {
-                let reason = "its line and section are not in the record";
-                let copies = g.data.get(&r.id).ok_or(reason)?;
-                let (a, b, (w, h)) = newest(copies, read).map(|(c, _)| c).ok_or(reason)?;
+                let ((a, b, (w, h)), graphics) = line(g, r)?;
+                drawn = graphics.is_some();
                 let (level, elevation) = level_at(cx, f, a[2])?;
                 let (width, depth) = (micron(mm(w)), micron(mm(h)));
-                // A duct of one number twice is round.
-                let round = category == OST_DUCTS && (w - h).abs() < 1e-9;
+                // A duct of one number twice is round, and one whose graphics draw a cylinder.
+                let round = category == OST_DUCTS && graphics.unwrap_or((w - h).abs() < 1e-9);
                 let name = if round {
                     format!("Round duct {width:.1} mm")
                 } else if category == OST_DUCTS {
@@ -96,7 +112,13 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     if let Some(element) = element {
                         let id = cx.model.insert(element);
                         cx.from.insert(id, format!("{label} {}", r.id));
-                        cx.note(label, r.id, "its system, type name and material are not read, and it is not turned about its line");
+                        let note = if drawn {
+                            "comes in along the line its graphics draw, of the section they draw: its type name and material are not \
+                             read, and it is not turned about its line"
+                        } else {
+                            "its type name and material are not read, and it is not turned about its line"
+                        };
+                        cx.note(label, r.id, note);
                     }
                 }
                 Err(why) => cx.left_out(label, r.id, why.as_str()),

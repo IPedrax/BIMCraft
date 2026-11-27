@@ -65,10 +65,33 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   (`generic::member_drawn`). Any other member is a beam along its box's longer side, through the middle of the box across it, its top
   the box's top on the level at or below it, its section the box across it; one whose box runs across the axes in plan (wider than a
   third of its length) or stands (as deep as it is long) is left out, since its box would make a beam of another width and
-  direction. Across the twelve 2025 samples, 2,196 of the 2,357 members come in along their graphics' line (938 of Snowdon's
-  structural sample's 942, 996 of the Japanese structural sample's 1,079, 262 of Golden Nugget's architecture's 336), 77 along
-  their box, and 84 are left out: most where their graphics do not read or are not the box they give, and one that stands, which
-  a beam may not. Structural foundations are isolated footings of their
+  direction. A face is along the line within a third of a degree (a small round run's two end circles are drawn each on its own,
+  a little turned, so its sides twist), and a short run is one where all else it draws is its two caps, flat or a shallow cone,
+  at its ends. A round run shorter than it is wide (a pipe's or a duct's stub between two fittings, whose caps outweigh its sides,
+  so the way its faces weigh least lies across it) runs the way its flat caps face (the way most of its area faces; where it is
+  about as long as it is wide its faces weigh about the same every way, and uneven sides pull the ways they weigh in off its line),
+  where its sides are round about that and all else it draws is those caps (`framing::stub`); its sides are then all but its caps, since its two end circles, turned a little
+  from each other, lean them well off its line over so short a length. A square stub as short has no line: its shape does not say
+  which way it runs. Across the twelve 2025 samples, 2,206 of the 2,358 members come in along their graphics' line (939 of
+  Snowdon's structural sample's 942, 1,003 of the Japanese structural sample's 1,079, 264 of Golden Nugget's architecture's 336), 70
+  along their box, and 82 are left out: most where their graphics do not read or are not the box they give, and one that stands, which
+  a beam may not. A pipe, a duct or a cable tray whose data holds no line (every one in the 2025 samples: the findings on their
+  data are 2018's) runs along the middle of what its graphics draw (`framing::centre_line`, the same reading): a pipe of the
+  outside diameter of the cylinder it draws (one that draws none is left out), a duct round where it draws a cylinder and else as
+  wide and as deep as it draws, a cable tray as wide and as deep. Across the samples, 6,580 of the 6,593 pipes and all 2,303 ducts
+  and 59 cable trays come in so; the 13 pipes left out draw no cylinder. Pipe and duct accessories (valves, dampers: `OST_PipeAccessory`, `OST_DuctAccessory`) come in as
+  components of a family of their category, as fittings do. Each duct, pipe, flexible run, fitting and accessory is drawn in its
+  system's colour (`systems.rs`): the systems its own object names (its analytical cell, its connectors) give their type, and the
+  type its material or, where it names none (no sample's does), the colour its graphic overrides give lines, Revit's colour for the
+  system: a material named for the type in that colour (Supply Air blue, Return Air magenta, Exhaust Air green, Domestic Hot Water
+  red in Snowdon's samples; Golden Nugget's services and the Japanese services sample have schemes of their own). A run's shape
+  takes it, and a fitting's or an accessory's forms that have no material of their own, through its family's `System Material`
+  parameter, set on each component; a run takes its system's name. One that joins systems of two types takes neither's colour,
+  and one whose type gives none (Hydronic Supply) keeps its family's; each says so. Across the samples 17,047 of the elements that
+  come in are drawn so: all of Snowdon's HVAC (2,081) and of Golden Nugget's services (5,091), 6,156 of Snowdon's Plumbing and
+  3,719 of the Japanese services'; 24 are in systems whose type gives no colour and 9 name no system. A space (`OST_MEPSpaces`) is left out and listed: it is the air of the
+  room it is in, which Revit draws in no 3D view, and as its box or the solid its graphics draw (floor to floor) it would hide the
+  pipes, ducts and fittings that run through it, as all 410 of the samples' spaces hid their models' services. Structural foundations are isolated footings of their
   box (a wall foundation or a mat too). Stairs' runs, landings and supports, ramps, railings, curtain panels and mullions, wall sweeps, slab
   edges, conduits, furniture systems (of the furniture category), site pads, masses, trusses, beam systems, stiffeners and
   connections come in as boxes of a family of their category, as fittings do, each saying so (a model group, class
@@ -135,7 +158,7 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   box, and the note says why. The hole is the rectangle of its box: an arched one's arch is not read. A door or a window whose nearest wall is a curtain wall (a door panel of the grid) is set
   in no other wall: a BIMCraft curtain wall holds one only in a wall in its cell, so it comes in as a component of a generic family
   of its Revit family's name, with its shape (`openings::in_curtain`, `Import::in_curtain`, `generic::Scope::Only`). A curtain grid
-  line (class `CurtainGridLine`) is left out, its box being no body. A wall, a floor, a roof, a ceiling, a column or a beam made (all but a curtain wall) is **drawn in 3D as
+  line (class `CurtainGridLine`) is left out, its box being no body. A wall, a floor, a roof, a ceiling, a column, a beam, a pipe, a duct or a cable tray made (all but a curtain wall) is **drawn in 3D as
   its own graphics draw it** (`imported.rs`, once the walls, floors, roofs, openings, columns and framing are made):
   `generic::drawn_where_it_stands`, the components' reading and checks, gives its triangles in the project's axes, kept as the
   element's `imported` shape by material (Revit's corners as its joins cut them, a wall's lean and edited outline and the holes of
@@ -145,7 +168,8 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   graphics do not read, or are not the box they give round their solids, keeps its own geometry, with a note why; one the file
   holds no graphics of, with none; a floor or a ceiling whose sketch came in as one element for each loop keeps them, each drawn
   from its own geometry. Across the twelve 2025 samples, so drawn: 2,648 of 2,882 walls, 966 of 1,030 floors, 151 of 156
-  ceilings, 43 of 46 roofs, 124 of 137 columns, 386 of 435 structural columns and 2,259 of 2,273 beams.
+  ceilings, 43 of 46 roofs, 124 of 137 columns, 386 of 435 structural columns, 2,261 of 2,275 beams, and every pipe, duct and
+  cable tray read from its graphics.
 
   Every note of an element left out reads `N kinds left out, why (ids …)` (`Import::left_out`; an element the model's rules drop
   after it was made goes through `Import::dropped`), because the desktop adds those numbers up for its status line

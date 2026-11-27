@@ -8,7 +8,7 @@
 //! a queue. Each object is its class's fields in the order the file's own schema lists them (`Formats/Latest`, [`crate::schema`]),
 //! its bases' first. A field's type says how it is written:
 //!
-//! - a byte (kinds 1 and 2), a `u32` (4 and 5), an `f64` (6 and 7), a `u64` (11);
+//! - a byte (kinds 1 and 2), a `u32` (4 and 5), an `f64` (6 and 7), a GUID's sixteen bytes (9), a `u64` (11);
 //! - so many side by side (modifier `0x10` and a count), or a `u32` count and that many (`0x50`, `0x60`);
 //! - an array (13) as its inner type, an object by value (14, modifier 0) as its class's fields;
 //! - an owned object (14, modifier 1) as a `u32` index, 0 for none, and the `u16` tag of its class: it is written in its turn in
@@ -51,6 +51,8 @@ pub(crate) enum Value {
     /// An owned object written inline: its place in its owner's `inline`.
     Inline(usize),
     Weak(u32),
+    /// A GUID (kind 9), its sixteen bytes as written.
+    Guid([u8; 16]),
     Null,
 }
 
@@ -126,6 +128,11 @@ impl<'s> Layouts<'s> {
             fields.insert(class.tag, flat);
         }
         Some(Layouts { schema, fields, element })
+    }
+
+    /// The tag of the class named `name`.
+    pub(crate) fn tag(&self, name: &str) -> Option<u16> {
+        self.schema.tag(name)
     }
 
     /// The name of a class.
@@ -222,6 +229,7 @@ impl Decoder<'_, '_, '_> {
             6 => Value::Real(f64::from(f32::from_le_bytes(self.take()?))),
             7 => Value::Real(f64::from_le_bytes(self.take()?)),
             11 => Value::Int(u64::from_le_bytes(self.take()?)),
+            9 => Value::Guid(self.take()?),
             8 => Value::Int(u64::from(self.u16()?)),
             0x0d => {
                 let inner = t.inner.as_deref().ok_or_else(|| format!("an array with no inner type at {at:#x}"))?;
@@ -232,7 +240,7 @@ impl Decoder<'_, '_, '_> {
                     let class = class.ok_or_else(|| format!("an object by value of no class at {at:#x}"))?;
                     Value::Object(class, self.object(class, depth + 1)?)
                 }
-                1 => self.owned()?,
+                1 | 2 => self.owned()?,
                 3 => Value::Weak(self.u32()?),
                 m => return Err(format!("an object of modifier {m} at {at:#x}")),
             },
@@ -265,11 +273,25 @@ impl Decoder<'_, '_, '_> {
     fn object(&mut self, tag: u16, depth: usize) -> Step<Vec<Value>> {
         let layouts = self.layouts;
         let fields = layouts.fields.get(&tag).ok_or_else(|| format!("an object of class {tag}, which the schema does not have"))?;
+        let blob = layouts.name(tag) == "ESEntity";
         let mut out = Vec::with_capacity(fields.len());
         for f in fields {
+            if blob && f.name == "m_blob" {
+                out.push(self.blob()?);
+                continue;
+            }
             out.push(self.value(&f.ty, f.ty.modifier, f.ty.class, depth)?);
         }
         Ok(out)
+    }
+
+    /// An extensible-storage entity's blob, which names no class of the schema: a `u32` index, 0 for none, else the GUID of the
+    /// storage schema it follows, read as that GUID.
+    fn blob(&mut self) -> Step<Value> {
+        if self.u32()? == 0 {
+            return Ok(Value::Null);
+        }
+        Ok(Value::Guid(self.take()?))
     }
 }
 
@@ -295,6 +317,11 @@ impl Tree {
     pub(crate) fn get(&self, index: u32) -> Option<&Obj> {
         self.objects.get(&index)
     }
+
+    /// The root object.
+    pub(crate) fn root(&self) -> Option<&Obj> {
+        self.get(ROOT)
+    }
 }
 
 /// Where an inline object belongs: the object of the tree that owns it, and its place down that object's inline objects.
@@ -302,17 +329,29 @@ type Owner = (u32, Vec<usize>);
 
 /// Reads the tree whose root object starts at `at` (right after the tag of the class `GElement`).
 pub(crate) fn read(bytes: &[u8], at: usize, layouts: &Layouts) -> Step<Tree> {
-    let mut d = Decoder {
-        bytes,
-        at,
-        values: 0,
-        layouts,
-        kinds: BTreeMap::from([(ROOT, layouts.element)]),
-        children: Vec::new(),
-        inline: Vec::new(),
-    };
-    let mut queue = VecDeque::from([ROOT]);
+    read_as(bytes, at, layouts, layouts.element)
+}
+
+/// Reads the tree whose root object, of class `tag`, starts at `at`.
+pub(crate) fn read_as(bytes: &[u8], at: usize, layouts: &Layouts, tag: u16) -> Step<Tree> {
+    match read_some(bytes, at, layouts, tag) {
+        (tree, None) => Ok(tree),
+        (_, Some(why)) => Err(why),
+    }
+}
+
+/// Reads as much of the tree whose root object, of class `tag`, starts at `at` as can be read: the objects read whole before
+/// the read stopped, and why it stopped, where it did not reach the end. What an object holds is read in the order it is
+/// written, so the objects kept were read from where the file puts them; past the first that does not read, nothing is.
+pub(crate) fn read_some(bytes: &[u8], at: usize, layouts: &Layouts, tag: u16) -> (Tree, Option<String>) {
     let mut objects: BTreeMap<u32, Obj> = BTreeMap::new();
+    let stopped = walk(bytes, at, layouts, tag, &mut objects).err();
+    (Tree { objects }, stopped)
+}
+
+fn walk(bytes: &[u8], at: usize, layouts: &Layouts, tag: u16, objects: &mut BTreeMap<u32, Obj>) -> Step<()> {
+    let mut d = Decoder { bytes, at, values: 0, layouts, kinds: BTreeMap::from([(ROOT, tag)]), children: Vec::new(), inline: Vec::new() };
+    let mut queue = VecDeque::from([ROOT]);
     // The inline objects to read after the object of an index: whose they are, and their class.
     let mut pending: BTreeMap<u32, Vec<(Owner, u16)>> = BTreeMap::new();
     while let Some(i) = queue.pop_front() {
@@ -367,7 +406,7 @@ pub(crate) fn read(bytes: &[u8], at: usize, layouts: &Layouts) -> Step<Tree> {
     if !pending.is_empty() {
         return Err("an inline object comes after an object the tree does not hold".to_string());
     }
-    Ok(Tree { objects })
+    Ok(())
 }
 
 /// The id inside an `ElementId` (an object holding an object holding the number).
@@ -383,7 +422,7 @@ pub(crate) fn element_id(v: &Value) -> Option<u64> {
 }
 
 /// Every object of a tree, those it holds inline too.
-fn every(tree: &Tree) -> Vec<&Obj> {
+pub(crate) fn every(tree: &Tree) -> Vec<&Obj> {
     let mut all: Vec<&Obj> = tree.objects.values().collect();
     let mut k = 0;
     while let Some(o) = all.get(k).copied() {

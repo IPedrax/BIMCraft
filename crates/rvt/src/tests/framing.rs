@@ -343,3 +343,116 @@ fn a_rafters_line_is_where_its_sides_run_though_its_end_is_cut_plumb_and_level()
     assert!(near(line.start, [0.0; 3]) && near(line.end, axis.map(|v| v * 5000.0)), "{line:?}");
     assert!((line.width - 80.0).abs() < 0.01 && (line.depth - 300.0).abs() < 0.01, "{line:?}");
 }
+
+#[test]
+fn a_cylinders_line_is_its_axis_and_its_section_round_and_a_square_ones_is_not() {
+    use crate::framing::line_of;
+    // A cylinder of 24 sides, 100 mm across, 3 m along x at 2.5 m up: round, 100 mm, its top's middle 50 mm over its axis.
+    let ring: Vec<[f64; 2]> = (0..24)
+        .map(|k| {
+            let a = std::f64::consts::TAU * f64::from(k) / 24.0;
+            [50.0 * a.cos(), 50.0 * a.sin() - 50.0]
+        })
+        .collect();
+    let line = line_of(&prism(&ring, [0.0, 0.0, 2550.0], [1.0, 0.0, 0.0], 3000.0, 1.0)).unwrap_or_else(|| panic!("a cylinder"));
+    assert_eq!(line.diameter, Some(100.0), "{line:?}");
+    assert!((line.start[2] - 2550.0).abs() < 0.01 && (line.end[0] - 3000.0).abs() < 0.01, "{line:?}");
+    // A square duct 300 by 300: its corners lie on one circle, but its faces look four ways.
+    let square = [[-150.0, 0.0], [150.0, 0.0], [150.0, -300.0], [-150.0, -300.0]];
+    let duct = line_of(&prism(&square, [0.0; 3], [0.0, 1.0, 0.0], 4000.0, 1.0)).unwrap_or_else(|| panic!("a duct"));
+    assert_eq!(duct.diameter, None);
+}
+
+#[test]
+fn a_short_run_cut_square_at_both_ends_has_its_line() {
+    use crate::framing::line_of;
+    // A pipe stub of 24 sides, 100 mm across and 250 long between two fittings: its caps are a sixth of what it draws, so the
+    // faces along it are less than most of it, and its ends leave no length between them; but all else is its two square caps.
+    let ring: Vec<[f64; 2]> = (0..24)
+        .map(|k| {
+            let a = std::f64::consts::TAU * f64::from(k) / 24.0;
+            [50.0 * a.cos(), 50.0 * a.sin() - 50.0]
+        })
+        .collect();
+    let stub = line_of(&prism(&ring, [0.0; 3], [0.0, 1.0, 0.0], 250.0, 1.0)).unwrap_or_else(|| panic!("a stub"));
+    assert_eq!((stub.diameter, stub.end[1]), (Some(100.0), 250.0), "{stub:?}");
+    // A deep I section as short: its inner flanges' faces are no caps, so it is no post standing.
+    assert_eq!(line_of(&prism(&I_SECTION, [0.0; 3], [1.0, 0.0, 0.0], 300.0, 1.0)), None);
+    // A duct of 24 sides 102 mm across and 200 long whose far circle is drawn a sixth of a step round from its near one, its sides
+    // twisted a little off its line, and whose far end is a shallow cone 2 mm deep: a run as straight, its line its axis.
+    let near: Vec<[f64; 3]> = (0..24).map(|k| circle(51.0, f64::from(k), 0.0)).collect();
+    let far: Vec<[f64; 3]> = (0..24).map(|k| circle(51.0, f64::from(k) + 1.0 / 6.0, 200.0)).collect();
+    let mut tris = Vec::new();
+    for k in 0..24 {
+        let j = (k + 1) % 24;
+        tris.push([near[k], near[j], far[j]]);
+        tris.push([near[k], far[j], far[k]]);
+        tris.push([[0.0, -51.0, 0.0], near[j], near[k]]);
+        tris.push([[0.0, -51.0, 202.0], far[k], far[j]]);
+    }
+    let duct = line_of(&tris).unwrap_or_else(|| panic!("a twisted duct"));
+    assert!(duct.diameter.is_some_and(|d| (d - 102.0).abs() < 0.5) && (duct.end[2] - 202.0).abs() < 0.01, "{duct:?}");
+}
+
+#[test]
+fn a_round_stub_shorter_than_it_is_wide_runs_the_way_its_caps_face_and_a_square_one_has_no_line() {
+    use crate::framing::line_of;
+    // A pipe stub of 24 sides, 114 mm across and 46 long between two fittings, standing: its caps outweigh its sides, so the way
+    // its faces weigh least lies across it; but its sides are round about the way its caps face, and all else is those caps.
+    let ring: Vec<[f64; 2]> = (0..24)
+        .map(|k| {
+            let a = std::f64::consts::TAU * f64::from(k) / 24.0;
+            [57.0 * a.cos(), 57.0 * a.sin() - 57.0]
+        })
+        .collect();
+    let stub = line_of(&prism(&ring, [0.0; 3], [0.0, 0.0, 1.0], 46.0, 1.0)).unwrap_or_else(|| panic!("a stub"));
+    assert_eq!((stub.diameter, stub.start[2].min(stub.end[2]), stub.start[2].max(stub.end[2])), (Some(114.0), 0.0, 46.0), "{stub:?}");
+    // Lying east, as short.
+    let east = line_of(&prism(&ring, [0.0; 3], [1.0, 0.0, 0.0], 30.0, 1.0)).unwrap_or_else(|| panic!("a stub lying east"));
+    assert_eq!((east.diameter, (east.end[0] - east.start[0]).abs()), (Some(114.0), 30.0), "{east:?}");
+    // A round duct stub 250 mm across and 36 long whose far circle is drawn a sixth of a step round from its near one: over so
+    // short a length its sides lean far off its line, but they are round about it and all else is its caps.
+    let near: Vec<[f64; 3]> = (0..24).map(|k| circle(125.0, f64::from(k), 0.0)).collect();
+    let far: Vec<[f64; 3]> = (0..24).map(|k| circle(125.0, f64::from(k) + 1.0 / 6.0, 36.0)).collect();
+    let mut tris = Vec::new();
+    for k in 0..24 {
+        let j = (k + 1) % 24;
+        tris.push([near[k], near[j], far[j]]);
+        tris.push([near[k], far[j], far[k]]);
+        tris.push([[0.0, -125.0, 0.0], near[j], near[k]]);
+        tris.push([[0.0, -125.0, 36.0], far[k], far[j]]);
+    }
+    let twisted = line_of(&tris).unwrap_or_else(|| panic!("a twisted stub"));
+    assert!(twisted.diameter.is_some_and(|d| (d - 250.0).abs() < 0.5) && (twisted.end[2] - twisted.start[2]).abs() == 36.0, "{twisted:?}");
+    // A round duct stub 203 mm across and as long, half its far circle drawn half a step round from its near one, turned off the
+    // axes (tilted 30° and turned 40°): its faces weigh about the same every way, and its uneven sides pull the ways they weigh in
+    // off its line, so only its flat caps say which way it runs.
+    let near: Vec<[f64; 3]> = (0..24).map(|k| circle(101.5, f64::from(k), 0.0)).collect();
+    let far: Vec<[f64; 3]> = (0..24).map(|k| circle(101.5, f64::from(k) + if k < 12 { 0.5 } else { 0.0 }, 203.0)).collect();
+    let (tilt, turn) = (30f64.to_radians(), 40f64.to_radians());
+    let place = |p: [f64; 3]| {
+        let (y, z) = (p[1] * tilt.cos() - p[2] * tilt.sin(), p[1] * tilt.sin() + p[2] * tilt.cos());
+        [p[0] * turn.cos() - y * turn.sin(), p[0] * turn.sin() + y * turn.cos(), z]
+    };
+    let mut tris = Vec::new();
+    for k in 0..24 {
+        let j = (k + 1) % 24;
+        tris.push([near[k], near[j], far[j]]);
+        tris.push([near[k], far[j], far[k]]);
+        tris.push([[0.0, -101.5, 0.0], near[j], near[k]]);
+        tris.push([[0.0, -101.5, 203.0], far[k], far[j]]);
+    }
+    let tris: Vec<[[f64; 3]; 3]> = tris.into_iter().map(|t| t.map(place)).collect();
+    let even = line_of(&tris).unwrap_or_else(|| panic!("a stub as long as it is wide"));
+    let length = (0..3).map(|k| (even.end[k] - even.start[k]).powi(2)).sum::<f64>().sqrt();
+    assert!(even.diameter.is_some_and(|d| (d - 203.0).abs() < 1.0) && (length - 203.0).abs() < 0.5, "{even:?}");
+    // A square duct as short has no line: its shape does not say which way it runs.
+    let square = [[-50.0, 0.0], [50.0, 0.0], [50.0, -100.0], [-50.0, -100.0]];
+    assert_eq!(line_of(&prism(&square, [0.0; 3], [1.0, 0.0, 0.0], 60.0, 1.0)), None);
+}
+
+/// A point of the circle of radius `r` round the axis x = 0, y = -r, at step `k` of 24 round it and `z` along it.
+fn circle(r: f64, k: f64, z: f64) -> [f64; 3] {
+    let a = std::f64::consts::TAU * k / 24.0;
+    [r * a.cos(), r * a.sin() - r, z]
+}

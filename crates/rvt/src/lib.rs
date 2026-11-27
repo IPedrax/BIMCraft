@@ -37,6 +37,7 @@ mod rooms;
 pub mod schema;
 mod shapes;
 mod sketch;
+mod systems;
 pub mod types;
 mod walls;
 

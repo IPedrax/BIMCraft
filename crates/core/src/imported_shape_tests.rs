@@ -1,5 +1,5 @@
 //! An element's imported shape (`Element::imported`): another program's own geometry of a wall, a floor, a roof, a ceiling, a
-//! column or a beam, drawn in 3D while it is the element it was drawn for, and its own geometry again once it is edited.
+//! column, a beam, a pipe, a duct or a cable tray, drawn in 3D while it is the element it was drawn for, and its own geometry again once it is edited.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -36,6 +36,9 @@ fn kinds() -> Vec<(&'static str, Value)> {
         ("column", json!({"at": [0, 0]})),
         ("structural_column", json!({"at": [500, 500]})),
         ("beam", json!({"points": [[0, 0], [5000, 2000]], "offset": 3000})),
+        ("pipe", json!({"points": [[0, 0], [4000, 0]], "offset": 2500})),
+        ("duct", json!({"points": [[0, 0], [0, 4000]], "offset": 2800})),
+        ("cable_tray", json!({"points": [[0, 0], [3000, 3000]], "offset": 3000})),
     ]
 }
 
@@ -133,13 +136,13 @@ fn a_shapes_material_is_named_anew_when_the_material_is_renamed_and_is_in_use() 
 }
 
 #[test]
-fn a_run_other_than_a_beam_carrying_an_imported_shape_is_refused() {
+fn a_run_other_than_a_beam_a_pipe_a_duct_or_a_cable_tray_carrying_an_imported_shape_is_refused() {
     let mut s = Session::new();
-    let id = made(&run(&mut s, "pipe", json!({"points": [[0, 0], [5000, 0]], "offset": 2500})));
+    let id = made(&run(&mut s, "conduit", json!({"points": [[0, 0], [5000, 0]], "offset": 2500})));
     let shape = ImportedShape { key: 0, parts: vec![ImportedPart { material: String::new(), tris: Arc::new(cuboid([0.0; 3], [1.0; 3])) }] };
-    if let Some(Element::Pipe(r)) = s.model_mut().elements.get_mut(id) {
+    if let Some(Element::Conduit(r)) = s.model_mut().elements.get_mut(id) {
         r.imported = Some(shape);
     }
     let why = s.model.check().unwrap_err();
-    assert!(why.contains("only a beam"), "{why}");
+    assert!(why.contains("only a beam, a pipe, a duct or a cable tray"), "{why}");
 }

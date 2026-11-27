@@ -1,4 +1,4 @@
-//! Each wall, floor, roof, ceiling, column and beam made, drawn in 3D as its own graphics draw it ([`bimcraft_core::model::ImportedShape`]):
+//! Each wall, floor, roof, ceiling, column, beam, pipe, duct and cable tray made, drawn in 3D as its own graphics draw it ([`bimcraft_core::model::ImportedShape`]):
 //! Revit's corners as its joins cut them, a wall's lean, an outline as it was edited, the holes its doors and windows cut, a roof's
 //! and a floor's slopes, a column's and a beam's section. The element stays BIMCraft's, made by its own module from its record, which plans,
 //! schedules and IFC read; the model draws its shape in 3D while it is as it came in (its key is set once the model is checked,
@@ -16,10 +16,10 @@ use bimcraft_core::model::{Id, ImportedPart, ImportedShape, MAX_IMPORTED_PARTS, 
 use crate::import::{Facts, Import, origin};
 use crate::inventory::Gathered;
 use crate::records::Record;
-use crate::{columns, floors, framing, roofs, walls};
+use crate::{columns, ducts, floors, framing, pipes, roofs, walls};
 
 /// The categories whose elements are drawn as their graphics draw them.
-const CATEGORIES: [i64; 7] = [
+const CATEGORIES: [i64; 10] = [
     walls::OST_WALLS,
     floors::OST_FLOORS,
     floors::OST_CEILINGS,
@@ -27,7 +27,13 @@ const CATEGORIES: [i64; 7] = [
     columns::OST_COLUMNS,
     columns::OST_STRUCTURAL_COLUMNS,
     framing::OST_STRUCTURAL_FRAMING,
+    pipes::OST_PIPES,
+    ducts::OST_DUCTS,
+    ducts::OST_CABLE_TRAYS,
 ];
+
+/// The categories whose record's box holds their location line, which runs on past what they draw ([`crate::generic::member_drawn`]).
+const RUNS: [i64; 4] = [framing::OST_STRUCTURAL_FRAMING, pipes::OST_PIPES, ducts::OST_DUCTS, ducts::OST_CABLE_TRAYS];
 
 /// The elements whose graphics are read for the shape each is drawn in: those of [`CATEGORIES`], but for the walls a curtain wall's
 /// parts name as their host (a curtain wall draws nothing of its own).
@@ -39,11 +45,7 @@ pub(crate) fn wanted(f: &Facts) -> Vec<u32> {
 /// The shape record `r`'s graphics draw, its triangles by the material each is drawn in, as `g` names the file's materials; or
 /// why not.
 fn shape_of(g: &Gathered, r: &Record) -> Result<ImportedShape, String> {
-    let drawn = if r.category == framing::OST_STRUCTURAL_FRAMING {
-        crate::generic::member_drawn(g, r)?
-    } else {
-        crate::generic::drawn_where_it_stands(g, r)?
-    };
+    let drawn = if RUNS.contains(&r.category) { crate::generic::member_drawn(g, r)? } else { crate::generic::drawn_where_it_stands(g, r)? };
     if drawn.triangles.len() > MAX_IMPORTED_TRIANGLES {
         return Err(format!("it draws {} triangles, past the {MAX_IMPORTED_TRIANGLES} one may hold", drawn.triangles.len()));
     }

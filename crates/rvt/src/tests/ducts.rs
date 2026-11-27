@@ -110,3 +110,43 @@ fn a_mutation_sweep_over_a_project_of_ducts_never_panics_and_what_comes_in_check
         });
     }
 }
+
+/// A run's start and end in plan, its offset, end offset and level, and its type's width, depth and roundness.
+type Drawn = (f64, f64, f64, f64, f64, Option<f64>, bimcraft_core::ids::Guid, (f64, f64, bool));
+
+#[test]
+fn a_run_whose_data_holds_no_line_comes_in_along_the_middle_of_what_its_graphics_draw() {
+    use crate::project_fixture::{box_tree, graphics_block, tree_bytes};
+    let mut p = base(2024);
+    // A duct 10 ft along x, 1 ft wide and half a foot deep, on level 1; a cable tray 8 ft long, 2 ft wide and a quarter deep; and
+    // a pipe whose graphics draw that same box, no cylinder. None holds its line in its data.
+    for (id, category, size) in [(300, DUCTS, [10.0, 1.0, 0.5]), (301, CABLE_TRAYS, [8.0, 2.0, 0.25]), (302, -2_008_044, [10.0, 1.0, 0.5])]
+    {
+        p.recs.push(Rec::new(id, category).at([0.0, 0.0, 0.0, size[0], size[1], size[2]], &[]));
+        p.graphics.extend(graphics_block(id, &tree_bytes(&box_tree(id, size, None))));
+    }
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let l1 = level_named(&i, "Level 1");
+    let got = |category: &str| -> Vec<Drawn> {
+        runs(&i, category)
+            .iter()
+            .map(|r| {
+                let t = &i.model.types.runs[category][&r.type_name];
+                (r.start.0, r.start.1, r.end.0, r.end.1, r.offset, r.end_offset, r.level, (t.width, t.depth, t.round))
+            })
+            .collect()
+    };
+    // Along the middle of its box, its heights its middle's.
+    assert_eq!(got("duct"), [(0.0, 152.4, 3048.0, 152.4, 76.2, None, l1, (304.8, 152.4, false))], "{:?}", i.skipped);
+    assert_eq!(got("cabletray"), [(0.0, 304.8, 2438.4, 304.8, 38.1, None, l1, (609.6, 76.2, false))], "{:?}", i.skipped);
+    assert!(i.model.elements.values().all(|e| !matches!(e, Element::Pipe(_))), "{:?}", i.skipped);
+    let says = |what: &str| i.skipped.iter().any(|s| s.contains(what));
+    assert!(says("1 duct: comes in along the line its graphics draw") && says("1 cable tray: comes in along the line"), "{:?}", i.skipped);
+    assert!(says("1 duct: it is drawn in 3D as its own graphics draw it"), "{:?}", i.skipped);
+    assert!(
+        says("1 pipe left out, its two connectors are not in the record, and what its graphics draw is no round pipe"),
+        "{:?}",
+        i.skipped
+    );
+}
