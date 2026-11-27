@@ -3455,8 +3455,8 @@ other_files(
          surfaces meet in Shaded (on unless turned off; Hidden Line always draws them); `silhouette`, an outline that many \
          pixels wide (a whole number, 0 to 10; 0, the default, for none) round what stands in front of what is further off \
          or of nothing; `ambient_shadows`, soft shadows where faces meet inside a corner (off unless turned on); `eye_dome`, \
-         eye-dome lighting, a point cloud's points darkened where they lie behind their neighbours, so its edges read (off \
-         unless turned on). What is left \
+         eye-dome lighting, a point cloud's points darkened where they lie behind their neighbours, so its edges read (on \
+         unless turned off). What is left \
          out stays as it was; with none of them it only says what the view has",
         graphic_display_options,
     ),

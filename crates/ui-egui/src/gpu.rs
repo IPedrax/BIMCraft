@@ -3181,6 +3181,8 @@ floor {}"#,
             .collect();
         std::fs::write(&path, text).unwrap();
         s.execute("point_cloud", &serde_json::json!({"path": path, "at": [4000, 3000]})).unwrap();
+        // The points' own colours, to the pixel: eye-dome lighting, which shades them, off (its test has it on).
+        s.execute("graphic_display_options", &serde_json::json!({"eye_dome": false})).unwrap();
         s.model.elements.iter().rev().find(|(_, e)| e.category() == "pointcloud").map(|(id, _)| *id).unwrap()
     }
 
@@ -3367,6 +3369,7 @@ floor {}"#,
             (dark(card.as_chunks::<4>().0), dark(cpu.rgba.as_chunks::<4>().0))
         };
         for perspective in [false, true] {
+            s.execute("graphic_display_options", &serde_json::json!({"eye_dome": false})).unwrap();
             let (card_before, cpu_before) = pictures(&s, &mut gpu, perspective);
             s.execute("graphic_display_options", &serde_json::json!({"eye_dome": true})).unwrap();
             let (card, cpu) = pictures(&s, &mut gpu, perspective);

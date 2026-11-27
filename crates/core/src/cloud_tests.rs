@@ -318,6 +318,8 @@ fn a_scan_shows_in_the_3d_view_in_its_own_colours_fitted_and_picked_as_its_eleme
 fn a_scan_with_no_colours_is_grey_and_a_view_can_colour_or_hide_it() {
     let mut s = Session::new();
     let id = run(&mut s, "point_cloud", json!({"path": scan("grey", "sheet.xyz", &sheet(None))}))["id"].as_u64().unwrap();
+    // The colours exactly: eye-dome lighting, which shades a surface turned away a little, off.
+    run(&mut s, "graphic_display_options", json!({"eye_dome": false}));
     let scene = Scene::new(&s.model);
     let cam = scene.fit(AZIMUTH, ELEVATION, 320, 240);
     let grey = |c: Rgb| c == Rgb(160, 160, 160);
@@ -940,18 +942,18 @@ fn eye_dome_lighting_darkens_what_lies_behind_its_neighbours_and_leaves_a_flat_s
     // Two planes facing a parallel camera: the left half a metre nearer than the right.
     let (w, h) = (20, 10);
     let depth: Vec<f32> = (0..w * h).map(|k| if k % w < 10 { 500.0 } else { 0.0 }).collect();
-    let lit = crate::view3d::eye_dome(&depth, (w, h), None);
+    let lit = crate::view3d::eye_dome(&depth, (w, h), None, 10_000.0);
     let at = |x: usize, y: usize| lit[y * w + x];
     // The far plane's pixels beside the near one are dark; the rest of both, flat, are lit whole.
     assert!(at(10, 5) < 0.2 && at(11, 5) < 0.2, "{} {}", at(10, 5), at(11, 5));
     assert!((at(15, 5) - 1.0).abs() < 1e-6 && (at(3, 5) - 1.0).abs() < 1e-6 && (at(9, 5) - 1.0).abs() < 1e-6);
     // Nothing at a pixel: lit, untouched.
     let empty = vec![f32::NEG_INFINITY; w * h];
-    assert!(crate::view3d::eye_dome(&empty, (w, h), Some(5000.0)).iter().all(|&l| l == 1.0));
+    assert!(crate::view3d::eye_dome(&empty, (w, h), Some(5000.0), 10_000.0).iter().all(|&l| l == 1.0));
 }
 
 #[test]
-fn a_3d_view_with_eye_dome_lighting_draws_a_scan_s_edges_dark_and_says_so() {
+fn a_3d_view_draws_a_scan_s_edges_dark_with_eye_dome_lighting_unless_it_is_turned_off() {
     let mut s = Session::new();
     // Two red sheets, one a metre in front of the other and half over it.
     let mut text = sheet(Some([255, 0, 0]));
@@ -965,14 +967,18 @@ fn a_3d_view_with_eye_dome_lighting_draws_a_scan_s_edges_dark_and_says_so() {
         scene.render_in(&scene.fit(AZIMUTH, ELEVATION, 320, 240), &[], &Look::of_3d(&s.model))
     };
     let dark = |img: &Image| pixels(img, |c| c.0 < 120 && c.1 < 40 && c.2 < 40);
-    let before = dark(&picture(&s));
-    let r = run(&mut s, "graphic_display_options", json!({"eye_dome": true}));
-    assert_eq!(r["eye_dome"], true, "{r}");
-    let after = dark(&picture(&s));
-    assert!(after > before + 50, "{before} {after}");
-    // Off again, as it was.
-    run(&mut s, "graphic_display_options", json!({"eye_dome": false}));
-    assert_eq!(dark(&picture(&s)), before);
+    // On unless turned off.
+    let on = dark(&picture(&s));
+    assert_eq!(run(&mut s, "graphic_display_options", json!({}))["eye_dome"], true);
+    let r = run(&mut s, "graphic_display_options", json!({"eye_dome": false}));
+    assert_eq!(r["eye_dome"], false, "{r}");
+    let off = dark(&picture(&s));
+    assert!(on > off + 50, "{off} {on}");
+    // Turned off, a file says so, and the view keeps it; on again, as it was.
+    let file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    assert!(file.to_string().contains("\"eye_dome\":false"));
+    run(&mut s, "graphic_display_options", json!({"eye_dome": true}));
+    assert_eq!(dark(&picture(&s)), on);
 }
 
 #[test]

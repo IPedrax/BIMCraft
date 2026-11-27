@@ -74,13 +74,17 @@ pub struct DisplayOptions {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ambient_shadows: bool,
     /// Eye-dome lighting: a scan's points shaded where they lie behind their neighbours on the screen, so its edges read without
-    /// normals (Boucheny's, as Potree and CloudCompare draw it).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    /// normals (Boucheny's, as Potree and CloudCompare draw it). On unless turned off, as theirs is: a file says so only when off.
+    #[serde(default = "shown", skip_serializing_if = "is_shown")]
     pub eye_dome: bool,
 }
 
 fn shown() -> bool {
     true
+}
+
+fn is_shown(on: &bool) -> bool {
+    *on
 }
 
 fn is_none(px: &u32) -> bool {
@@ -89,7 +93,7 @@ fn is_none(px: &u32) -> bool {
 
 impl Default for DisplayOptions {
     fn default() -> DisplayOptions {
-        DisplayOptions { edges: true, silhouette: 0, ambient_shadows: false, eye_dome: false }
+        DisplayOptions { edges: true, silhouette: 0, ambient_shadows: false, eye_dome: true }
     }
 }
 
@@ -2768,8 +2772,10 @@ const DOME: f64 = 300.0;
 /// How lit each pixel of a picture whose depths are `depth` is by eye-dome lighting, 0 to 1: of its four neighbours two pixels
 /// off, how far (in the log of the distance from the eye) it lies behind those nearer, averaged, and shaded by `exp(-DOME x)`.
 /// A depth is nearness as a picture keeps it: `d² / a - d` in perspective, with the eye `eye` from the target, else mm toward
-/// the camera. A pixel with nothing at it, or whose neighbours all lie behind it, is lit whole.
-pub fn eye_dome(depth: &[f32], (w, h): (usize, usize), eye: Option<f64>) -> Vec<f32> {
+/// the camera, where the distance is taken from an eye `span` mm before the nearest thing in the picture (ten widths of the
+/// view, so a surface's slope across it isn't a step). A pixel with nothing at it, or whose neighbours all lie behind it, is
+/// lit whole.
+pub fn eye_dome(depth: &[f32], (w, h): (usize, usize), eye: Option<f64>, span: f64) -> Vec<f32> {
     let near = depth.iter().copied().filter(|z| z.is_finite()).fold(f32::NEG_INFINITY, f32::max);
     // The distance from the eye, mm, which the log is taken of.
     let far = |z: f32| -> Option<f64> {
@@ -2780,7 +2786,7 @@ pub fn eye_dome(depth: &[f32], (w, h): (usize, usize), eye: Option<f64>) -> Vec<
         let a = match eye {
             Some(e) if z + e > 0.0 => e * e / (z + e),
             Some(_) => return None,
-            None => f64::from(near) - z + 1000.0,
+            None => f64::from(near) - z + span.max(1.0),
         };
         (a > 0.0).then(|| a.ln())
     };
@@ -4369,7 +4375,7 @@ impl Scene {
         let mut dots = self.dots((cam, clip, cut), (w, h), |s| plain || look.shows(s.owner), (plain, look, more), (&mut depth, &mut hit));
         // Eye-dome lighting: each point darkened by how far it lies behind its neighbours on the screen.
         if display.eye_dome && !dots.is_empty() {
-            let dome = eye_dome(&depth, (w, h), cam.eye_distance());
+            let dome = eye_dome(&depth, (w, h), cam.eye_distance(), 10.0 * w as f64 / cam.scale.max(1e-9));
             for (k, c) in dots.iter_mut().enumerate() {
                 if hit.get(k).is_some_and(|&t| t as usize >= first && t != u32::MAX)
                     && let Some(&l) = dome.get(k)
@@ -7384,17 +7390,17 @@ mod tests {
     fn graphic_display_options_are_set_read_kept_in_the_file_undone_and_refused_when_wrong() {
         use serde_json::json;
         let mut s = house();
-        let none = json!({"view": null, "edges": true, "silhouette": 0, "ambient_shadows": false, "eye_dome": false});
+        let none = json!({"view": null, "edges": true, "silhouette": 0, "ambient_shadows": false, "eye_dome": true});
         assert_eq!(s.execute("graphic_display_options", &json!({})).unwrap(), none);
         assert!(s.model.default_3d().is_none(), "reading makes no view");
         let r = s.execute("graphic_display_options", &json!({"silhouette": 3, "ambient_shadows": true})).unwrap();
         let v = s.model.default_3d().unwrap();
-        assert_eq!(r, json!({"view": v, "edges": true, "silhouette": 3, "ambient_shadows": true, "eye_dome": false}));
+        assert_eq!(r, json!({"view": v, "edges": true, "silhouette": 3, "ambient_shadows": true, "eye_dome": true}));
         // What is left out stays; by GD, as Revit's shortcut, and by the view's name.
         let r = s.execute("GD", &json!({"view": "{3D}", "edges": false})).unwrap();
-        assert_eq!(r, json!({"view": v, "edges": false, "silhouette": 3, "ambient_shadows": true, "eye_dome": false}));
+        assert_eq!(r, json!({"view": v, "edges": false, "silhouette": 3, "ambient_shadows": true, "eye_dome": true}));
         let shown = Look::of_3d(&s.model).display();
-        assert_eq!(shown, DisplayOptions { edges: false, silhouette: 3, ambient_shadows: true, eye_dome: false });
+        assert_eq!(shown, DisplayOptions { edges: false, silhouette: 3, ambient_shadows: true, eye_dome: true });
         // Kept in the file, and read back.
         let (m, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
         assert!(left_out.is_empty(), "{left_out:?}");
@@ -7422,7 +7428,7 @@ mod tests {
         assert!(wide.check().unwrap_err().contains("silhouette 40 px wide"));
         // Undone, a step at a time.
         s.execute("undo", &json!({})).unwrap();
-        assert_eq!(Look::of_3d(&s.model).display(), DisplayOptions { edges: true, silhouette: 3, ambient_shadows: true, eye_dome: false });
+        assert_eq!(Look::of_3d(&s.model).display(), DisplayOptions { edges: true, silhouette: 3, ambient_shadows: true, eye_dome: true });
         s.execute("undo", &json!({})).unwrap();
         assert_eq!(Look::of_3d(&s.model).display(), DisplayOptions::default());
     }

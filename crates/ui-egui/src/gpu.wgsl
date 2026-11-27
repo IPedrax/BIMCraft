@@ -542,12 +542,12 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
 }
 
 // How far from the eye, mm, what a pixel of opaque depth `d` shows lies, as the core's `eye_dome` takes it: in perspective
-// how far ahead of the eye; in a parallel view how far behind the nearest thing in the picture, and a metre more.
+// how far ahead of the eye; in a parallel view how far behind the nearest thing in the picture, and ten widths of the view more.
 fn dome_distance(d: f32) -> f32 {
     if g.lens.x > 0.0 {
         return g.lens.w / (d - g.lens.z);
     }
-    return (g.cut_hi.w - d) / g.back.w + 1000.0;
+    return (g.cut_hi.w - d) / g.back.w + 20.0 / g.right.w;
 }
 
 // How lit by eye-dome lighting the point at a pixel is, 0 to 1, as the core's `eye_dome`: of the four pixels two off, how far

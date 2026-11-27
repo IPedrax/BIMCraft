@@ -355,7 +355,7 @@ msgid "Gate Valve"
 msgstr "Šoupátko"
 
 #: crates/core/src/family.rs:3515
-#: crates/core/src/view3d.rs:2035
+#: crates/core/src/view3d.rs:2039
 msgid "Glass"
 msgstr "Sklo"
 

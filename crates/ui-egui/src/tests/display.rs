@@ -38,7 +38,7 @@ fn graphic_display_options_open_by_gd_and_from_the_visual_style_menu_in_both_loo
         choose(&mut h, "Silhouettes", "3 px");
         pick(&mut h, Role::CheckBox, "Show Ambient Shadows");
         button_of_dialog(&mut h, "Apply");
-        let set = DisplayOptions { edges: false, silhouette: 3, ambient_shadows: true, eye_dome: false };
+        let set = DisplayOptions { edges: false, silhouette: 3, ambient_shadows: true, eye_dome: true };
         assert_eq!(options(&h), set, "rev {rev}");
         assert!(open(&h));
         assert_eq!(h.state().session.history().last(), Some(&"Graphic Display Options"));
@@ -56,7 +56,7 @@ fn graphic_display_options_open_by_gd_and_from_the_visual_style_menu_in_both_loo
         choose(&mut h, "Silhouettes", "<None>");
         button_of_dialog(&mut h, "OK");
         assert!(!open(&h));
-        assert_eq!(options(&h), DisplayOptions { edges: true, silhouette: 0, ambient_shadows: true, eye_dome: false }, "rev {rev}");
+        assert_eq!(options(&h), DisplayOptions { edges: true, silhouette: 0, ambient_shadows: true, eye_dome: true }, "rev {rev}");
         // OK with nothing changed is no step to undo.
         let steps = h.state().session.history().len();
         shortcut(&mut h, "GD");
