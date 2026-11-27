@@ -791,7 +791,7 @@ fn room_object(id: u32, number: &str, name: &str, wide: bool) -> Vec<u8> {
 
 /// The graphics classes the fixture's schema has after the ones above, in order (their tags from 26), named and laid out as
 /// Revit's own schema has them, but for fields the reader skips.
-pub const GRAPHICS: [&str; 37] = [
+pub const GRAPHICS: [&str; 56] = [
     "Identifier",
     "ElementId",
     "GInfo",
@@ -829,6 +829,27 @@ pub const GRAPHICS: [&str; 37] = [
     "SplineSrfNode",
     "HermiteSurf",
     "CurtainGridLine",
+    "GArc",
+    // An MEP system type, its name and the colour its graphic overrides give lines; a system; and the elements that name it in
+    // their cells and connectors, a few of each real class's fields by their names.
+    "SymbolInfo",
+    "GStyleColorOverrider",
+    "OverrideGraphicSettings",
+    "SystemOverrides",
+    "RbsSystemType",
+    "RbsHvacSystemType",
+    "RbsPipingSystemType",
+    "RbsSystem",
+    "RbsHvacSystem",
+    "RbsPipingSystem",
+    "GUIDvalue",
+    "ESEntity",
+    "std::pair< GUIDvalue, ESEntity >",
+    "ESEntityCell",
+    "MEPAnalyticalModelCell",
+    "MEPFamilyConnectorCalculationHvac",
+    "RbsDuctCurve",
+    "FamilyInstance",
 ];
 
 /// The tag of a graphics class of the fixture's schema.
@@ -850,6 +871,7 @@ fn graphics_classes() -> Vec<u8> {
     let owned = Ty::object(1, None);
     let weak = Ty::object(3, None);
     let list = Ty::object(0x51, None);
+    let text = Ty { kind: 8, modifier: 0x60, count: None, inner: None, class: None };
     let by = |n: &str| Ty::object(0, t(n));
     let class = |name, base: Option<&str>, fields| TypedClass { name, base: base.map(tag), fields };
     fixture::typed_classes(&[
@@ -902,7 +924,7 @@ fn graphics_classes() -> Vec<u8> {
         class("Trf", None, &[("m_3x3", rows), ("m_or", three)]),
         class("InstInfoBase", None, &[("m_Trf", by("Trf")), ("m_symbolId", by("ElementId")), ("m_GRepId", Ty::plain(4))]),
         class("InstanceInfo", Some("InstInfoBase"), &[]),
-        class("GInstance", Some("GNode"), &[("m_instanceInfo", owned)]),
+        class("GInstance", Some("GNode"), &[("m_instanceInfo", owned), ("m_oEmbeddedSymbolGRep", owned)]),
         class("GFilling", Some("GNode"), &[("m_pattern", owned)]),
         class("FillPatternData", None, &[("m_scale", Ty::plain(7)), ("m_grids", list)]),
         class("FillGrid", None, &[("m_angle", Ty::plain(7))]),
@@ -943,7 +965,51 @@ fn graphics_classes() -> Vec<u8> {
         ),
         // A curtain wall's grid line, an element's class (not a graphics one) the fixture's records may be of.
         class("CurtainGridLine", None, &[("m_flags", Ty::plain(4))]),
+        class("GArc", Some("GCurve"), &[("m_xVec", three), ("m_yVec", three), ("m_radius", Ty::plain(7)), ("m_center", three)]),
+        class("SymbolInfo", None, &[("m_name", text)]),
+        class("GStyleColorOverrider", None, &[("m_color", Ty::plain(5))]),
+        class("OverrideGraphicSettings", None, &[("m_bHalftone", Ty::plain(1)), ("m_oProjPenColor", owned), ("m_oCutPenColor", owned)]),
+        class("SystemOverrides", None, &[("m_oOverrideGraphicSettings", Ty::object(2, None)), ("m_visible", Ty::plain(1))]),
+        class(
+            "RbsSystemType",
+            None,
+            &[
+                ("m_id", by("ElementId")),
+                ("m_symbolInfo", Ty::object(2, None)),
+                ("m_renderStyleId", by("ElementId")),
+                ("m_abbreviation", text),
+                ("m_oSystemOverrides", owned),
+            ],
+        ),
+        class("RbsHvacSystemType", Some("RbsSystemType"), &[("m_RiseDropSettings", Ty::plain(4))]),
+        class("RbsPipingSystemType", Some("RbsSystemType"), &[("m_fluidTemperature", Ty::plain(7))]),
+        class("RbsSystem", None, &[("m_id", by("ElementId")), ("m_strName", text), ("m_typeId", by("ElementId"))]),
+        class("RbsHvacSystem", Some("RbsSystem"), &[]),
+        class("RbsPipingSystem", Some("RbsSystem"), &[]),
+        class("GUIDvalue", None, &[("m_guid", Ty::plain(9))]),
+        class("ESEntity", None, &[("m_blob", owned)]),
+        class("std::pair< GUIDvalue, ESEntity >", None, &[("first", by("GUIDvalue")), ("second", by("ESEntity"))]),
+        class("ESEntityCell", None, &[("m_entityMap", Ty::object(0x50, t("std::pair< GUIDvalue, ESEntity >")))]),
+        class("MEPAnalyticalModelCell", None, &[("m_equipmentGroupId", by("ElementId")), ("m_systemId", by("ElementId"))]),
+        class("MEPFamilyConnectorCalculationHvac", None, &[("m_dFlow", Ty::plain(7)), ("m_idSystem", by("ElementId"))]),
+        class("RbsDuctCurve", None, &[("m_id", by("ElementId")), ("m_cells", list), ("m_dHeight", Ty::plain(7))]),
+        class("FamilyInstance", None, &[("m_id", by("ElementId")), ("m_cells", list), ("m_connectors", list)]),
     ])
+}
+
+/// An element's own object as a partition holds it: its id as a `u64`, eight bytes, the tag of its class `class` and the tree
+/// whose root (index 2) is the object.
+pub fn object_block(id: u32, class: &str, objects: &Objects) -> Vec<u8> {
+    let mut out = u64::from(id).to_le_bytes().to_vec();
+    out.extend_from_slice(&[0; 8]);
+    out.extend_from_slice(&tag(class).to_le_bytes());
+    out.extend_from_slice(&tree_bytes(objects));
+    out
+}
+
+/// A text value: its count and its UTF-16 units.
+pub fn text(s: &str) -> V {
+    V::Counted(s.encode_utf16().map(V::U16).collect())
 }
 
 /// A value of a graphics object, as the fixture writes it.
@@ -985,11 +1051,14 @@ pub fn ginfo(tag: u32) -> V {
 /// The objects of a tree, by index: their class and their fields' values, bases' first.
 pub type Objects = BTreeMap<u32, (&'static str, Vec<V>)>;
 
-/// A tree's bytes, from its root object (index 2) on, breadth first: each object's owned objects in turn, and its inline ones
-/// right after the last object queued once it is written (the last it owns, else the queue's last, else itself). An inline
-/// object's own inline objects follow the same rule, next where nothing is queued.
+/// An inline object to write: its class, its fields, and the last index named before its pointer.
+type Pending = (&'static str, Vec<V>, Option<u32>);
+
+/// A tree's bytes, from its root object (index 2) on, breadth first: each object's owned objects in turn, and each inline one
+/// right after the last object named when its pointer is written (what its owner owns named before it, else the queue's last,
+/// else itself). An inline object's own inline objects follow the same rule, next where nothing is queued.
 pub fn tree_bytes(objects: &Objects) -> Vec<u8> {
-    fn put(v: &V, out: &mut Vec<u8>, kids: &mut Vec<u32>, inline: &mut Vec<(&'static str, Vec<V>)>) {
+    fn put(v: &V, out: &mut Vec<u8>, kids: &mut Vec<u32>, inline: &mut Vec<Pending>) {
         match v {
             V::Byte(b) => out.push(*b),
             V::U32(x) => out.extend_from_slice(&x.to_le_bytes()),
@@ -1011,26 +1080,30 @@ pub fn tree_bytes(objects: &Objects) -> Vec<u8> {
             V::Inline(class, fields) => {
                 out.extend_from_slice(&u32::MAX.to_le_bytes());
                 out.extend_from_slice(&tag(class).to_le_bytes());
-                inline.push((class, fields.clone()));
+                inline.push((class, fields.clone(), kids.last().copied()));
             }
             V::Weak(i) => out.extend_from_slice(&i.to_le_bytes()),
         }
     }
     let mut out = Vec::new();
     let mut queue = VecDeque::from([2u32]);
-    let mut pending: BTreeMap<u32, Vec<(&'static str, Vec<V>)>> = BTreeMap::new();
+    let mut pending: BTreeMap<u32, Vec<Pending>> = BTreeMap::new();
     while let Some(i) = queue.pop_front() {
         let Some((_, fields)) = objects.get(&i) else { continue };
         let (mut kids, mut inline) = (Vec::new(), Vec::new());
         fields.iter().for_each(|v| put(v, &mut out, &mut kids, &mut inline));
-        pending.entry(kids.last().or(queue.back()).copied().unwrap_or(i)).or_default().extend(inline);
+        for p in inline {
+            pending.entry(p.2.or(queue.back().copied()).unwrap_or(i)).or_default().push(p);
+        }
         let mut work: VecDeque<_> = pending.remove(&i).unwrap_or_default().into();
-        while let Some((_, fields)) = work.pop_front() {
+        while let Some((_, fields, _)) = work.pop_front() {
             let mut nested = Vec::new();
             fields.iter().for_each(|v| put(v, &mut out, &mut kids, &mut nested));
-            match kids.last().or(queue.back()).copied() {
-                Some(after) => pending.entry(after).or_default().extend(nested),
-                None => work.extend(nested),
+            for p in nested {
+                match p.2.or(queue.back().copied()) {
+                    Some(after) => pending.entry(after).or_default().push(p),
+                    None => work.push_back(p),
+                }
             }
         }
         queue.extend(kids);
@@ -1146,6 +1219,18 @@ pub fn instance_tree(id: u32, symbol: u32, axes: [[f64; 3]; 3], origin: [f64; 3]
     let info = V::Inline("InstanceInfo", vec![V::Seq(vec![rows, p3(origin)]), element_id(symbol.into()), V::U32(0)]);
     let mut objects = Objects::new();
     objects.insert(2, root(id, vec![V::Own(3, "GInstance")], whole, whole));
-    objects.insert(3, ("GInstance", vec![ginfo(0), info]));
+    objects.insert(3, ("GInstance", vec![ginfo(0), info, V::Null]));
+    objects
+}
+
+/// An instance's tree ([`instance_tree`]) whose instance also holds a symbol's graphics of its own (`m_oEmbeddedSymbolGRep`, as a
+/// column's does), a tree that draws nothing, named after its placement: the placement is written before that tree.
+pub fn embedding(mut objects: Objects, whole: [f64; 6]) -> Objects {
+    if let Some((_, fields)) = objects.get_mut(&3)
+        && let Some(slot) = fields.get_mut(2)
+    {
+        *slot = V::Own(4, "GElement");
+    }
+    objects.insert(4, root(0, Vec::new(), whole, whole));
     objects
 }

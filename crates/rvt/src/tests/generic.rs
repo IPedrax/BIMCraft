@@ -110,6 +110,31 @@ fn a_placed_element_of_a_category_with_no_name_comes_in_as_a_box_of_a_family_nam
 }
 
 #[test]
+fn a_pipe_or_a_duct_accessory_comes_in_in_a_family_of_its_category_and_a_space_is_left_out_not_boxed() {
+    for release in [2019, 2024] {
+        let mut p = base(release);
+        // A valve on a pipe and a damper in a duct, each a foot cube, and two spaces: the air of a room each, from floor to
+        // floor, which Revit draws in no 3D view.
+        p.recs.push(Rec::new(300, -2_008_055).at([1.0, 2.0, 0.0, 2.0, 3.0, 1.0], &[]));
+        p.recs.push(Rec::new(301, -2_008_016).at([4.0, 4.0, 1.0, 5.0, 5.0, 2.0], &[]));
+        p.recs.push(Rec::new(304, -2_008_055).at([7.0, 2.0, 0.0, 8.0, 3.0, 1.0], &[]));
+        p.recs.push(Rec::new(302, -2_003_600).at([0.0, 0.0, 0.0, 30.0, 20.0, 10.0], &[]));
+        p.recs.push(Rec::new(303, -2_003_600).at([0.0, 0.0, 10.0, 30.0, 20.0, 20.0], &[]));
+        let i = import(&p);
+        let got: Vec<&str> = components(&i).iter().map(|c| c.family.as_str()).collect();
+        assert_eq!(got, ["Pipe Accessories", "Pipe Accessories", "Duct Accessories"], "Revit {release}: {:?}", i.skipped);
+        assert_eq!(i.model.families["Pipe Accessories"].category, Category::PipeAccessory);
+        assert_eq!(i.model.families["Duct Accessories"].category, Category::Generic);
+        let says = |what: &str| i.skipped.iter().any(|s| s.contains(what));
+        assert!(says("2 pipe accessories: comes in as a box") && says("1 duct accessory: comes in as a box"), "{:?}", i.skipped);
+        assert!(!says("category -2008055") && !says("category -2008016"), "{:?}", i.skipped);
+        assert!(says("2 spaces left out, it is a space") && says("ids 302, 303)"), "{:?}", i.skipped);
+        assert!(!i.skipped.iter().any(|s| s.contains("no reader")), "{:?}", i.skipped);
+        assert!(i.model.check().is_ok());
+    }
+}
+
+#[test]
 fn an_element_of_a_category_with_no_name_that_has_the_box_of_a_named_elements_is_its_companion_and_is_left_out() {
     for release in [2019, 2024] {
         let mut p = base(release);

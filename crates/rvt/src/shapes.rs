@@ -1021,7 +1021,8 @@ fn solid(r: &Reader, solid: &Obj, out: &mut Vec<[P3; 3]>, materials: &mut Vec<Op
 }
 
 /// The points, lines and arcs a tree draws (`GPoint`, `GLine`, `GArc`: nodes of its groups, not a surface's profile), as points
-/// millimetres in its axes: a point, a line's ends, an arc's ends and its points every [`STEP`]. The box a tree gives round its
+/// millimetres in its axes: a point, a line's ends, an arc's ends and its points every [`STEP`], round the whole circle where its
+/// two ends are one parameter. The box a tree gives round its
 /// solids may take them in (a stair's support's, the points of its path).
 fn marks(r: &Reader) -> Step<Vec<P3>> {
     let nodes: BTreeSet<u32> = r
@@ -1038,10 +1039,15 @@ fn marks(r: &Reader) -> Step<Vec<P3>> {
             "GPoint" => out.push(r.point(o, "m_coord")?),
             "GLine" | "GArc" | "GEllipse" => {
                 let curve = r.curve(o)?;
-                let [t0, t1] = r.get(o, "m_endParams")?.pair().ok_or("a curve's ends are no pair")?;
+                let [t0, mut t1] = r.get(o, "m_endParams")?.pair().ok_or("a curve's ends are no pair")?;
+                let round = matches!(curve, Curve::Arc { .. } | Curve::Ellipse { .. });
+                // An arc whose two ends are one parameter is a whole circle (a fire hose cabinet's reach, whose box is the circle's).
+                if round && t0 == t1 {
+                    t1 = t0 + std::f64::consts::TAU;
+                }
                 out.push(curve.at(t0));
                 out.push(curve.at(t1));
-                if matches!(curve, Curve::Arc { .. } | Curve::Ellipse { .. }) {
+                if round {
                     let n = ((t1 - t0).abs() / STEP).ceil().min(64.0) as usize;
                     out.extend((1..n).map(|k| curve.at(t0 + (t1 - t0) * k as f64 / n as f64)));
                 }

@@ -529,7 +529,7 @@ fn a_meshs_points_are_four_byte_floats_and_its_facets_two_byte_indices() {
     let facets = V::Counted(vec![V::Seq(vec![V::U16(0), V::U16(1), V::U16(65535)])]);
     let mut objects = Objects::new();
     objects.insert(2, root(600, vec![V::Own(3, "GInstance")], [0.0; 6], [0.0; 6]));
-    objects.insert(3, ("GInstance", vec![crate::project_fixture::ginfo(0), V::Inline("FloatMesh", vec![points, facets])]));
+    objects.insert(3, ("GInstance", vec![crate::project_fixture::ginfo(0), V::Inline("FloatMesh", vec![points, facets]), V::Null]));
     let bytes = tree_bytes(&objects);
     let tree = graphics::read(&bytes, 0, &l).unwrap();
     let mesh = &tree.get(3).unwrap().inline[0];
@@ -594,6 +594,38 @@ fn the_box_round_a_trees_solids_may_take_in_the_points_and_lines_drawn_with_them
         2,
         root(500, vec![V::Own(3, "Geometry"), V::Own(1000, "GPoint"), V::Own(1001, "GLine")], tight, [-1.0, 0.0, 0.0, 2.0, 3.0, 7.0]),
     );
+    let why = shape_of(&objects).unwrap_err();
+    assert!(why.contains("not the box"), "{why}");
+}
+
+#[test]
+fn an_arc_whose_two_ends_are_one_parameter_is_a_whole_circle_and_its_box_takes_it_in() {
+    // A fire hose cabinet, 2 by 3 by 4 ft, drawn with the circle its hose reaches, 10 ft round its middle: the box its graphics give
+    // round its solids takes in the whole circle, which Revit writes as an arc from 0 to 0.
+    let tight = [-9.0, -8.5, 0.0, 11.0, 11.5, 4.0];
+    let arc = |ends: [f64; 2]| {
+        (
+            "GArc",
+            vec![
+                crate::project_fixture::ginfo(0),
+                V::Seq(ends.map(V::F64).to_vec()),
+                p3([1.0, 0.0, 0.0]),
+                p3([0.0, 1.0, 0.0]),
+                V::F64(10.0),
+                p3([1.0, 1.5, 0.0]),
+            ],
+        )
+    };
+    let mut objects = box_tree(500, [2.0, 3.0, 4.0], None);
+    objects.insert(1000, arc([0.0, 0.0]));
+    objects.insert(2, root(500, vec![V::Own(3, "Geometry"), V::Own(1000, "GArc")], tight, tight));
+    let s = shape_of(&objects).unwrap();
+    assert_eq!(s.triangles.len(), 12);
+    let reach = extents(&s.marks.chunks(3).filter(|c| c.len() == 3).map(|c| [c[0], c[1], c[2]]).collect::<Vec<_>>());
+    let want = [-9.0, -8.5, 0.0, 11.0, 11.5, 0.0].map(|f| f * 304.8);
+    assert!((0..6).all(|k| (reach[k] - want[k]).abs() < 1.0), "{reach:?}");
+    // Half the circle does not reach the box's south side: something is drawn there that is not read.
+    objects.insert(1000, arc([0.0, std::f64::consts::PI]));
     let why = shape_of(&objects).unwrap_err();
     assert!(why.contains("not the box"), "{why}");
 }

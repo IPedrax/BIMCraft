@@ -143,14 +143,17 @@ const NAMES: &[(i64, &str)] = &[
     (-2_008_126, "Cable Tray Fittings"),
     (-2_008_099, "Sprinklers"),
     (-2_008_087, "Lighting Devices"),
+    (-2_008_055, "Pipe Accessories"),
     (-2_008_049, "Pipe Fittings"),
     (-2_008_044, "Pipes"),
     (-2_008_020, "Flex Ducts"),
+    (-2_008_016, "Duct Accessories"),
     (-2_008_013, "Air Terminals"),
     (-2_008_010, "Duct Fittings"),
     (-2_008_000, "Ducts"),
     (-2_006_114, "Design Options"),
     (-2_006_112, "Design Option Sets"),
+    (-2_003_600, "Spaces"),
     (-2_003_400, "Mass"),
     (-2_003_200, "Areas"),
     (-2_001_392, "Floors: Slab Edges"),
@@ -483,6 +486,8 @@ pub(crate) struct Gathered {
     pub drawn: BTreeMap<u32, std::result::Result<crate::shapes::Drawing, String>>,
     /// The shape of each symbol those elements place, where the file holds its graphics; or why it is not read.
     pub shapes: BTreeMap<u32, std::result::Result<crate::shapes::Shape, String>>,
+    /// The MEP system types and systems, and the systems each element asked for names.
+    pub systems: crate::systems::Systems,
 }
 
 /// What the second pass is asked for.
@@ -500,6 +505,8 @@ pub(crate) struct Wants {
     pub placements: BTreeSet<u32>,
     /// The family instances whose own graphics are read for what they draw, and the shapes of what they draw.
     pub drawings: BTreeSet<u32>,
+    /// The elements whose MEP systems are read.
+    pub systems: BTreeSet<u32>,
 }
 
 impl crate::Revit {
@@ -599,12 +606,14 @@ impl crate::Revit {
         let mut drawn = Latest::default();
         // The graphics are read by the classes the file's own schema gives, and found by the ids of the file's elements; where
         // each one's start is kept (its newest partition's), for the symbols drawn, which are read after this pass.
-        let schema = if wants.drawings.is_empty() && wants.materials.is_empty() { None } else { self.schema().ok() };
+        let schema =
+            if wants.drawings.is_empty() && wants.materials.is_empty() && wants.systems.is_empty() { None } else { self.schema().ok() };
         let layouts = schema.as_ref().and_then(crate::graphics::Layouts::of);
         let every: BTreeSet<u32> =
             if layouts.is_some() && !wants.drawings.is_empty() { ids.iter().copied().collect() } else { BTreeSet::new() };
         let mut looks: BTreeMap<u32, Option<crate::data::Look>> = BTreeMap::new();
         let mut trees: BTreeMap<u32, (u32, usize, usize)> = BTreeMap::new();
+        let mut systems = crate::systems::Scan::default();
         for (k, name) in names.iter().enumerate() {
             let number = name.rsplit('/').next().and_then(|n| n.parse::<u32>().ok()).unwrap_or(0);
             let buf = self.inflate_all(name)?.bytes;
@@ -615,6 +624,7 @@ impl crate::Revit {
             column_nodes(&buf, columns, &mut nodes);
             room_entries(&buf, wide, &wants.rooms, number, &mut room_names);
             if let Some(layouts) = &layouts {
+                systems.partition(&buf, number, layouts, &wants.systems);
                 for (id, at) in crate::graphics::roots(&buf, layouts, &every) {
                     if trees.get(&id).is_none_or(|(held, ..)| *held <= number) {
                         trees.insert(id, (number, k, at));
@@ -708,6 +718,7 @@ impl crate::Revit {
             placements: placements.into_values(),
             drawn,
             shapes,
+            systems: systems.done(),
         })
     }
 

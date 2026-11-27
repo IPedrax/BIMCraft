@@ -1546,11 +1546,16 @@ fn rules_refs(fields: &mut [&mut String], rules: &mut [crate::schedule::Filter],
 impl crate::model::Element {
     /// Each name it holds of a library entry, given to `f` with what it names, which may put another in its place: its
     /// type, its family, the phases, the design option and the materials painted its `params` hold, a view's template,
-    /// filters, phases and options, a schedule's parameter fields and the phases its filters compare. (A family's types
+    /// filters, phases and options, a schedule's parameter fields and the phases its filters compare, and the materials its imported
+    /// shape is drawn in. (A family's types
     /// are its own: a component's or a family door's type is the family's.)
     pub fn lib_refs_mut(&mut self, f: &mut dyn FnMut(&Kind, &mut String)) {
         use crate::model::{Element, run_arm};
         let category = self.category().to_string();
+        // The materials its imported shape is drawn in.
+        for p in self.imported_mut().into_iter().flatten().flat_map(|s| s.parts.iter_mut()).filter(|p| !p.material.is_empty()) {
+            f(&Kind::Material, &mut p.material);
+        }
         match self {
             Element::Wall(w) => {
                 f(&Kind::Type(category), &mut w.type_name);

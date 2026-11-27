@@ -8,14 +8,15 @@
 //! a queue. Each object is its class's fields in the order the file's own schema lists them (`Formats/Latest`, [`crate::schema`]),
 //! its bases' first. A field's type says how it is written:
 //!
-//! - a byte (kinds 1 and 2), a `u32` (4 and 5), an `f64` (6 and 7), a `u64` (11);
+//! - a byte (kinds 1 and 2), a `u32` (4 and 5), an `f64` (6 and 7), a GUID's sixteen bytes (9), a `u64` (11);
 //! - so many side by side (modifier `0x10` and a count), or a `u32` count and that many (`0x50`, `0x60`);
 //! - an array (13) as its inner type, an object by value (14, modifier 0) as its class's fields;
 //! - an owned object (14, modifier 1) as a `u32` index, 0 for none, and the `u16` tag of its class: it is written in its turn in
-//!   the queue; or, where the index is `0xffffffff`, **inline**, right after the object of the highest index named once its owner
-//!   is written: the last its owner owns, else the last of the queue (an image's info follows the filters queued beside the image),
-//!   else the owner itself. An inline object may own inline objects of its own (a fill's pattern its grids), placed by the same
-//!   rule, next where that object is written already;
+//!   the queue; or, where the index is `0xffffffff`, **inline**, right after the object of the highest index named when its
+//!   pointer is read: what its owner owns named before it (a face's loop, before its surface), else the last of the queue (an
+//!   image's info follows the filters queued beside the image; an instance's placement, named before its symbol's tree, follows
+//!   the queue too), else the owner itself. An inline object may own inline objects of its own (a fill's pattern its grids),
+//!   placed by the same rule, next where that object is written already;
 //! - a weak pointer (14, modifier 3) as a `u32` index alone, the object written elsewhere.
 //!
 //! A read is bounded: the objects, a list's length, how deep objects by value nest and how many values one tree may take
@@ -50,6 +51,8 @@ pub(crate) enum Value {
     /// An owned object written inline: its place in its owner's `inline`.
     Inline(usize),
     Weak(u32),
+    /// A GUID (kind 9), its sixteen bytes as written.
+    Guid([u8; 16]),
     Null,
 }
 
@@ -127,6 +130,11 @@ impl<'s> Layouts<'s> {
         Some(Layouts { schema, fields, element })
     }
 
+    /// The tag of the class named `name`.
+    pub(crate) fn tag(&self, name: &str) -> Option<u16> {
+        self.schema.tag(name)
+    }
+
     /// The name of a class.
     pub(crate) fn name(&self, tag: u16) -> &str {
         self.schema.by_tag(tag).map_or("", |c| c.name.as_str())
@@ -153,9 +161,10 @@ struct Decoder<'b, 'l, 's> {
     layouts: &'l Layouts<'s>,
     /// The class of each index named so far.
     kinds: BTreeMap<u32, u16>,
-    /// What the object being read owns, in turn and inline.
+    /// What the object being read owns, in turn and inline: each inline object's class, and the last index named before it in
+    /// the object being read.
     children: Vec<u32>,
-    inline: Vec<u16>,
+    inline: Vec<(u16, Option<u32>)>,
 }
 
 impl Decoder<'_, '_, '_> {
@@ -220,6 +229,7 @@ impl Decoder<'_, '_, '_> {
             6 => Value::Real(f64::from(f32::from_le_bytes(self.take()?))),
             7 => Value::Real(f64::from_le_bytes(self.take()?)),
             11 => Value::Int(u64::from_le_bytes(self.take()?)),
+            9 => Value::Guid(self.take()?),
             8 => Value::Int(u64::from(self.u16()?)),
             0x0d => {
                 let inner = t.inner.as_deref().ok_or_else(|| format!("an array with no inner type at {at:#x}"))?;
@@ -230,7 +240,7 @@ impl Decoder<'_, '_, '_> {
                     let class = class.ok_or_else(|| format!("an object by value of no class at {at:#x}"))?;
                     Value::Object(class, self.object(class, depth + 1)?)
                 }
-                1 => self.owned()?,
+                1 | 2 => self.owned()?,
                 3 => Value::Weak(self.u32()?),
                 m => return Err(format!("an object of modifier {m} at {at:#x}")),
             },
@@ -249,7 +259,7 @@ impl Decoder<'_, '_, '_> {
             return Err(format!("an object of class {tag}, which the schema does not have, at {at:#x}"));
         }
         if index == u32::MAX {
-            self.inline.push(tag);
+            self.inline.push((tag, self.children.last().copied()));
             return Ok(Value::Inline(self.inline.len() - 1));
         }
         if self.kinds.insert(index, tag).is_some() {
@@ -263,11 +273,25 @@ impl Decoder<'_, '_, '_> {
     fn object(&mut self, tag: u16, depth: usize) -> Step<Vec<Value>> {
         let layouts = self.layouts;
         let fields = layouts.fields.get(&tag).ok_or_else(|| format!("an object of class {tag}, which the schema does not have"))?;
+        let blob = layouts.name(tag) == "ESEntity";
         let mut out = Vec::with_capacity(fields.len());
         for f in fields {
+            if blob && f.name == "m_blob" {
+                out.push(self.blob()?);
+                continue;
+            }
             out.push(self.value(&f.ty, f.ty.modifier, f.ty.class, depth)?);
         }
         Ok(out)
+    }
+
+    /// An extensible-storage entity's blob, which names no class of the schema: a `u32` index, 0 for none, else the GUID of the
+    /// storage schema it follows, read as that GUID.
+    fn blob(&mut self) -> Step<Value> {
+        if self.u32()? == 0 {
+            return Ok(Value::Null);
+        }
+        Ok(Value::Guid(self.take()?))
     }
 }
 
@@ -293,6 +317,11 @@ impl Tree {
     pub(crate) fn get(&self, index: u32) -> Option<&Obj> {
         self.objects.get(&index)
     }
+
+    /// The root object.
+    pub(crate) fn root(&self) -> Option<&Obj> {
+        self.get(ROOT)
+    }
 }
 
 /// Where an inline object belongs: the object of the tree that owns it, and its place down that object's inline objects.
@@ -300,17 +329,29 @@ type Owner = (u32, Vec<usize>);
 
 /// Reads the tree whose root object starts at `at` (right after the tag of the class `GElement`).
 pub(crate) fn read(bytes: &[u8], at: usize, layouts: &Layouts) -> Step<Tree> {
-    let mut d = Decoder {
-        bytes,
-        at,
-        values: 0,
-        layouts,
-        kinds: BTreeMap::from([(ROOT, layouts.element)]),
-        children: Vec::new(),
-        inline: Vec::new(),
-    };
-    let mut queue = VecDeque::from([ROOT]);
+    read_as(bytes, at, layouts, layouts.element)
+}
+
+/// Reads the tree whose root object, of class `tag`, starts at `at`.
+pub(crate) fn read_as(bytes: &[u8], at: usize, layouts: &Layouts, tag: u16) -> Step<Tree> {
+    match read_some(bytes, at, layouts, tag) {
+        (tree, None) => Ok(tree),
+        (_, Some(why)) => Err(why),
+    }
+}
+
+/// Reads as much of the tree whose root object, of class `tag`, starts at `at` as can be read: the objects read whole before
+/// the read stopped, and why it stopped, where it did not reach the end. What an object holds is read in the order it is
+/// written, so the objects kept were read from where the file puts them; past the first that does not read, nothing is.
+pub(crate) fn read_some(bytes: &[u8], at: usize, layouts: &Layouts, tag: u16) -> (Tree, Option<String>) {
     let mut objects: BTreeMap<u32, Obj> = BTreeMap::new();
+    let stopped = walk(bytes, at, layouts, tag, &mut objects).err();
+    (Tree { objects }, stopped)
+}
+
+fn walk(bytes: &[u8], at: usize, layouts: &Layouts, tag: u16, objects: &mut BTreeMap<u32, Obj>) -> Step<()> {
+    let mut d = Decoder { bytes, at, values: 0, layouts, kinds: BTreeMap::from([(ROOT, tag)]), children: Vec::new(), inline: Vec::new() };
+    let mut queue = VecDeque::from([ROOT]);
     // The inline objects to read after the object of an index: whose they are, and their class.
     let mut pending: BTreeMap<u32, Vec<(Owner, u16)>> = BTreeMap::new();
     while let Some(i) = queue.pop_front() {
@@ -323,10 +364,13 @@ pub(crate) fn read(bytes: &[u8], at: usize, layouts: &Layouts) -> Step<Tree> {
         let values = d.object(tag, 0)?;
         let mut kids = std::mem::take(&mut d.children);
         objects.insert(i, Obj { tag, values, inline: Vec::new() });
-        // Its inline objects follow the object of the highest index named so far: its own last, else the queue's last, else itself.
-        let inline = std::mem::take(&mut d.inline);
-        let after = kids.last().or(queue.back()).copied().unwrap_or(i);
-        pending.entry(after).or_default().extend(inline.into_iter().map(|t| ((i, Vec::new()), t)));
+        // Each inline object follows the object of the highest index named when its pointer is read: what it owns named before
+        // it, else the queue's last, else itself. (A face names its loop and then its surface, which follows the loop; an
+        // instance names its placement and then its symbol's tree, so its placement comes before that tree.)
+        for (t, named) in std::mem::take(&mut d.inline) {
+            let after = named.or(queue.back().copied()).unwrap_or(i);
+            pending.entry(after).or_default().push(((i, Vec::new()), t));
+        }
         let mut work: VecDeque<(Owner, u16)> = pending.remove(&i).unwrap_or_default().into();
         while let Some(((owner, path), t)) = work.pop_front() {
             if path.len() >= MAX_DEPTH {
@@ -335,21 +379,25 @@ pub(crate) fn read(bytes: &[u8], at: usize, layouts: &Layouts) -> Step<Tree> {
             d.children.clear();
             d.inline.clear();
             let values = d.object(t, 0)?;
+            let before = kids.last().copied();
             kids.append(&mut d.children);
             let mut o = objects.get_mut(&owner).ok_or("an inline object's owner is not in the tree")?;
             for k in &path {
                 o = o.inline.get_mut(*k).ok_or("an inline object's owner is not in the tree")?;
             }
             o.inline.push(Obj { tag: t, values, inline: Vec::new() });
-            // What it owns inline follows the object of the highest index named so far; where that one is read, next.
+            // What it owns inline follows the object of the highest index named when its pointer is read; where that one is read
+            // already, next.
             let nested = std::mem::take(&mut d.inline);
             if !nested.is_empty() {
                 let mut down = path;
                 down.push(o.inline.len() - 1);
-                let items = nested.into_iter().map(|t| ((owner, down.clone()), t));
-                match kids.last().or(queue.back()).copied() {
-                    Some(after) => pending.entry(after).or_default().extend(items),
-                    None => work.extend(items),
+                for (t, named) in nested {
+                    let item = ((owner, down.clone()), t);
+                    match named.or(before).or(queue.back().copied()) {
+                        Some(after) => pending.entry(after).or_default().push(item),
+                        None => work.push_back(item),
+                    }
                 }
             }
         }
@@ -358,7 +406,7 @@ pub(crate) fn read(bytes: &[u8], at: usize, layouts: &Layouts) -> Step<Tree> {
     if !pending.is_empty() {
         return Err("an inline object comes after an object the tree does not hold".to_string());
     }
-    Ok(Tree { objects })
+    Ok(())
 }
 
 /// The id inside an `ElementId` (an object holding an object holding the number).
@@ -374,7 +422,7 @@ pub(crate) fn element_id(v: &Value) -> Option<u64> {
 }
 
 /// Every object of a tree, those it holds inline too.
-fn every(tree: &Tree) -> Vec<&Obj> {
+pub(crate) fn every(tree: &Tree) -> Vec<&Obj> {
     let mut all: Vec<&Obj> = tree.objects.values().collect();
     let mut k = 0;
     while let Some(o) = all.get(k).copied() {

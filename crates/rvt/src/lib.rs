@@ -21,6 +21,7 @@ mod generic;
 mod graphics;
 pub mod gzip;
 mod import;
+mod imported;
 pub mod info;
 pub mod inventory;
 mod names;
@@ -36,6 +37,7 @@ mod rooms;
 pub mod schema;
 mod shapes;
 mod sketch;
+mod systems;
 pub mod types;
 mod walls;
 

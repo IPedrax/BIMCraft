@@ -1,4 +1,4 @@
-//! Structural framing and foundations from their records' boxes, and the categories that come in as boxes besides: stairs' runs,
+//! Structural framing along the lines their graphics draw, framing and foundations from their records' boxes, and the categories that come in as boxes besides: stairs' runs,
 //! landings and supports, railings, curtain panels and mullions, wall sweeps, slab edges, furniture systems, site pads, masses,
 //! trusses, beam systems, stiffeners, connections and conduits. What a box would invent (a beam across the axes, a path that
 //! turns, a whole whose parts come in) is left out and said.
@@ -69,6 +69,61 @@ fn structural_framing_comes_in_as_beams_along_its_boxs_longer_side_and_one_no_bo
         assert!(says("2 structural framing members left out, its box is no beam's") && says("ids 302, 303"), "{:?}", i.skipped);
         assert!(!says("Structural Framing left out, the importer has no reader"), "{:?}", i.skipped);
     }
+}
+
+#[test]
+fn a_framing_member_comes_in_along_the_line_its_graphics_draw_with_their_section_and_is_drawn_as_they_draw_it() {
+    use crate::project_fixture::{box_tree, graphics_block, instance_tree, tree_bytes};
+    let mut p = base(2024);
+    // Two symbols: a member 20 ft long, 1 ft wide and 2 ft deep, and one 10 by 1 by 1 ft, each its corner at the origin.
+    p.graphics.extend(graphics_block(660, &tree_bytes(&box_tree(660, [20.0, 1.0, 2.0], None))));
+    p.graphics.extend(graphics_block(661, &tree_bytes(&box_tree(661, [10.0, 1.0, 1.0], None))));
+    p.extra_ids.extend([660, 661]);
+    // Member 300 runs across the axes in plan (3, 4, 5), its top at level 2; member 301 rises 3 in 5 to the east from level 1. Each
+    // record's box is the box round what it draws.
+    let (across, whole_300) = ([[0.8, 0.6, 0.0], [-0.6, 0.8, 0.0], [0.0, 0.0, 1.0]], [9.4, 10.0, 8.0, 26.0, 22.8, 10.0]);
+    let (rising, whole_301) = ([[0.8, 0.0, 0.6], [0.0, 1.0, 0.0], [-0.6, 0.0, 0.8]], [-0.6, 30.0, 0.0, 8.0, 31.0, 6.8]);
+    p.recs.push(Rec::new(300, FRAMING).at(whole_300, &[]));
+    p.recs.push(Rec::new(301, FRAMING).at(whole_301, &[]));
+    p.graphics.extend(graphics_block(300, &tree_bytes(&instance_tree(300, 660, across, [10.0, 10.0, 8.0], whole_300))));
+    p.graphics.extend(graphics_block(301, &tree_bytes(&instance_tree(301, 661, rising, [0.0, 30.0, 0.0], whole_301))));
+    // Member 302's box runs across the axes too, and the file draws nothing of it: no line, so no beam.
+    p.recs.push(Rec::new(302, FRAMING).at([0.0, 40.0, 9.0, 10.0, 50.0, 10.0], &[]));
+    // Member 303 draws a solid of its own, 20 by 1 by 2 ft at the origin, and a stick line half a foot past each of its ends; its
+    // record's box holds its location line, which runs 0.2 ft past the solid: between the two.
+    p.recs.push(Rec::new(303, FRAMING).at([-0.2, 0.0, 0.0, 20.2, 1.0, 2.0], &[]));
+    p.graphics.extend(graphics_block(303, &tree_bytes(&box_tree(303, [20.0, 1.0, 2.0], Some([-0.5, 0.0, 0.0, 20.5, 1.0, 2.0])))));
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let (l1, l2) = (level_named(&i, "Level 1"), level_named(&i, "Level 2"));
+    let got: Vec<Line> =
+        beams(&i).iter().map(|r| ([r.start.0, r.start.1], [r.end.0, r.end.1], r.offset, r.end_offset, r.justify, r.level)).collect();
+    assert_eq!(
+        got,
+        [
+            // The middle of its top, from end to end: from (9.7, 10.4) to (25.7, 22.4) ft, at level 2.
+            ([2956.56, 3169.92], [7833.36, 6827.52], 0.0, None, Justify::Top, l2),
+            // From (-0.6, 30.5) to (7.4, 30.5) ft, its top 0.8 ft over level 1 there and 6.8 ft at its east end.
+            ([-182.88, 9296.4], [2255.52, 9296.4], 243.84, Some(2072.64), Justify::Top, l1),
+            // Its solid's line, not its record's: the top of the solid, 2 ft over level 1.
+            ([0.0, 152.4], [6096.0, 152.4], 609.6, None, Justify::Top, l1),
+        ],
+        "{:?}",
+        i.skipped
+    );
+    let sections: Vec<(f64, f64)> = beams(&i)
+        .iter()
+        .map(|r| {
+            let t = &i.model.types.runs["beam"][&r.type_name];
+            (t.width, t.depth)
+        })
+        .collect();
+    assert_eq!(sections, [(304.8, 609.6), (304.8, 304.8), (304.8, 609.6)]);
+    assert!(beams(&i).iter().all(|r| r.imported.is_some()), "{:?}", i.skipped);
+    let says = |what: &str| i.skipped.iter().any(|s| s.contains(what));
+    assert!(says("3 structural framing members: comes in as a beam along the line its graphics draw"), "{:?}", i.skipped);
+    assert!(says("3 structural framing members: it is drawn in 3D as its own graphics draw it"), "{:?}", i.skipped);
+    assert!(says("1 structural framing member left out, its box is no beam's") && says("ids 302"), "{:?}", i.skipped);
 }
 
 #[test]
@@ -195,4 +250,209 @@ fn a_mutation_sweep_over_framing_foundations_and_boxes_never_panics_and_what_com
             assert!(beams(i).len() + footings(i).len() + components(i).len() <= 5, "round {round}");
         });
     }
+}
+
+/// A prism of `profile` (points across and up, millimetres) from `from` `length` along `axis`, the profile at its far end `grow`
+/// times as deep; its sides as two triangles each, its ends as fans.
+fn prism(profile: &[[f64; 2]], from: [f64; 3], axis: [f64; 3], length: f64, grow: f64) -> Vec<[[f64; 3]; 3]> {
+    let n = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
+    let a = axis.map(|v| v / n);
+    let flat = (a[0] * a[0] + a[1] * a[1]).sqrt();
+    let across = if flat > 1e-9 { [-a[1] / flat, a[0] / flat, 0.0] } else { [1.0, 0.0, 0.0] };
+    let up = [a[1] * across[2] - a[2] * across[1], a[2] * across[0] - a[0] * across[2], a[0] * across[1] - a[1] * across[0]];
+    let at = |s: f64, [w, u]: [f64; 2], k: f64| std::array::from_fn(|i| from[i] + a[i] * s + across[i] * w + up[i] * u * k);
+    let (near, far): (Vec<[f64; 3]>, Vec<[f64; 3]>) = profile.iter().map(|p| (at(0.0, *p, 1.0), at(length, *p, grow))).unzip();
+    let mut out = Vec::new();
+    for i in 0..profile.len() {
+        let j = (i + 1) % profile.len();
+        out.push([near[i], near[j], far[j]]);
+        out.push([near[i], far[j], far[i]]);
+    }
+    for i in 1..profile.len() - 1 {
+        out.push([near[0], near[i], near[i + 1]]);
+        out.push([far[0], far[i + 1], far[i]]);
+    }
+    out
+}
+
+/// An I section 200 mm wide and 400 deep, its top's middle at the origin: 15 mm flanges, a 10 mm web.
+const I_SECTION: [[f64; 2]; 12] = [
+    [-100.0, 0.0],
+    [100.0, 0.0],
+    [100.0, -15.0],
+    [5.0, -15.0],
+    [5.0, -385.0],
+    [100.0, -385.0],
+    [100.0, -400.0],
+    [-100.0, -400.0],
+    [-100.0, -385.0],
+    [-5.0, -385.0],
+    [-5.0, -15.0],
+    [-100.0, -15.0],
+];
+
+#[test]
+fn a_straight_members_line_is_where_its_faces_run_and_one_that_tapers_has_none() {
+    use crate::framing::line_of;
+    let near = |a: [f64; 3], b: [f64; 3]| a.iter().zip(&b).all(|(x, y)| (x - y).abs() < 0.01);
+    // Sloped and across the axes in plan, drawn either way: the same line, from its west end.
+    let axis = [3.0, 4.0, 1.0];
+    let n = 26f64.sqrt();
+    let end = [1000.0 + 6000.0 * 3.0 / n, 2000.0 + 6000.0 * 4.0 / n, 3000.0 + 6000.0 / n];
+    for (from, way) in [([1000.0, 2000.0, 3000.0], axis), (end, axis.map(|v| -v))] {
+        let line = line_of(&prism(&I_SECTION, from, way, 6000.0, 1.0)).unwrap_or_else(|| panic!("{from:?}"));
+        assert!(near(line.start, [1000.0, 2000.0, 3000.0]) && near(line.end, end), "{line:?}");
+        assert!((line.width - 200.0).abs() < 0.01 && (line.depth - 400.0).abs() < 0.01, "{line:?}");
+    }
+    // A post: it stands, east across it.
+    let post = line_of(&prism(&I_SECTION, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 3000.0, 1.0)).unwrap_or_else(|| panic!("a post"));
+    assert!((post.start[0] - post.end[0]).abs() < 0.01 && (post.start[1] - post.end[1]).abs() < 0.01, "{post:?}");
+    assert!((post.start[2] - post.end[2]).abs() > 2999.0, "{post:?}");
+    // A web's openings, a square hole every metre through its middle, are holes through it: its line and section stay.
+    let mut holed = prism(&I_SECTION, [0.0; 3], [1.0, 0.0, 0.0], 6000.0, 1.0);
+    for k in 1..6 {
+        let x = 1000.0 * f64::from(k);
+        for (a, b) in [([x - 50.0, -5.0, -150.0], [x + 50.0, -5.0, -150.0]), ([x - 50.0, -5.0, -250.0], [x - 50.0, -5.0, -150.0])] {
+            holed.push([a, b, [b[0], 5.0, b[2]]]);
+        }
+    }
+    let line = line_of(&holed).unwrap_or_else(|| panic!("a holed web"));
+    assert!(near(line.start, [0.0, 0.0, 0.0]) && near(line.end, [6000.0, 0.0, 0.0]) && (line.depth - 400.0).abs() < 0.01, "{line:?}");
+    // A member whose far end is twice as deep is no prism of one section; nor is one shorter than it is deep.
+    assert_eq!(line_of(&prism(&I_SECTION, [0.0; 3], [1.0, 0.0, 0.0], 6000.0, 2.0)), None);
+    assert_eq!(line_of(&prism(&I_SECTION, [0.0; 3], [1.0, 0.0, 0.0], 300.0, 1.0)), None);
+    assert_eq!(line_of(&[]), None);
+}
+
+#[test]
+fn a_rafters_line_is_where_its_sides_run_though_its_end_is_cut_plumb_and_level() {
+    // A rafter 80 by 300 mm rising 0.777 in 0.629 to the north, 5 m long, its top's middle at the origin; at its far end a plumb
+    // cut and a level seat, faces of their own that run along no side.
+    let n = (0.629f64 * 0.629 + 0.777 * 0.777).sqrt();
+    let axis = [0.0, 0.629 / n, 0.777 / n];
+    let rect = [[-40.0, 0.0], [40.0, 0.0], [40.0, -300.0], [-40.0, -300.0]];
+    let mut tris = prism(&rect, [0.0; 3], axis, 5000.0, 1.0);
+    let up = [0.0, -axis[2], axis[1]];
+    let far = |w: f64, u: f64| [-w, 5000.0 * axis[1] + u * up[1], 5000.0 * axis[2] + u * up[2]];
+    let (a, b) = (far(-40.0, 0.0), far(40.0, 0.0));
+    tris.push([a, b, [a[0], a[1], a[2] - 250.0]]);
+    let (c, d) = (far(-40.0, -300.0), far(40.0, -300.0));
+    tris.push([c, d, [c[0], c[1] - 200.0, c[2]]]);
+    let line = crate::framing::line_of(&tris).unwrap_or_else(|| panic!("no line"));
+    let near = |p: [f64; 3], q: [f64; 3]| p.iter().zip(&q).all(|(x, y)| (x - y).abs() < 0.01);
+    assert!(near(line.start, [0.0; 3]) && near(line.end, axis.map(|v| v * 5000.0)), "{line:?}");
+    assert!((line.width - 80.0).abs() < 0.01 && (line.depth - 300.0).abs() < 0.01, "{line:?}");
+}
+
+#[test]
+fn a_cylinders_line_is_its_axis_and_its_section_round_and_a_square_ones_is_not() {
+    use crate::framing::line_of;
+    // A cylinder of 24 sides, 100 mm across, 3 m along x at 2.5 m up: round, 100 mm, its top's middle 50 mm over its axis.
+    let ring: Vec<[f64; 2]> = (0..24)
+        .map(|k| {
+            let a = std::f64::consts::TAU * f64::from(k) / 24.0;
+            [50.0 * a.cos(), 50.0 * a.sin() - 50.0]
+        })
+        .collect();
+    let line = line_of(&prism(&ring, [0.0, 0.0, 2550.0], [1.0, 0.0, 0.0], 3000.0, 1.0)).unwrap_or_else(|| panic!("a cylinder"));
+    assert_eq!(line.diameter, Some(100.0), "{line:?}");
+    assert!((line.start[2] - 2550.0).abs() < 0.01 && (line.end[0] - 3000.0).abs() < 0.01, "{line:?}");
+    // A square duct 300 by 300: its corners lie on one circle, but its faces look four ways.
+    let square = [[-150.0, 0.0], [150.0, 0.0], [150.0, -300.0], [-150.0, -300.0]];
+    let duct = line_of(&prism(&square, [0.0; 3], [0.0, 1.0, 0.0], 4000.0, 1.0)).unwrap_or_else(|| panic!("a duct"));
+    assert_eq!(duct.diameter, None);
+}
+
+#[test]
+fn a_short_run_cut_square_at_both_ends_has_its_line() {
+    use crate::framing::line_of;
+    // A pipe stub of 24 sides, 100 mm across and 250 long between two fittings: its caps are a sixth of what it draws, so the
+    // faces along it are less than most of it, and its ends leave no length between them; but all else is its two square caps.
+    let ring: Vec<[f64; 2]> = (0..24)
+        .map(|k| {
+            let a = std::f64::consts::TAU * f64::from(k) / 24.0;
+            [50.0 * a.cos(), 50.0 * a.sin() - 50.0]
+        })
+        .collect();
+    let stub = line_of(&prism(&ring, [0.0; 3], [0.0, 1.0, 0.0], 250.0, 1.0)).unwrap_or_else(|| panic!("a stub"));
+    assert_eq!((stub.diameter, stub.end[1]), (Some(100.0), 250.0), "{stub:?}");
+    // A deep I section as short: its inner flanges' faces are no caps, so it is no post standing.
+    assert_eq!(line_of(&prism(&I_SECTION, [0.0; 3], [1.0, 0.0, 0.0], 300.0, 1.0)), None);
+    // A duct of 24 sides 102 mm across and 200 long whose far circle is drawn a sixth of a step round from its near one, its sides
+    // twisted a little off its line, and whose far end is a shallow cone 2 mm deep: a run as straight, its line its axis.
+    let near: Vec<[f64; 3]> = (0..24).map(|k| circle(51.0, f64::from(k), 0.0)).collect();
+    let far: Vec<[f64; 3]> = (0..24).map(|k| circle(51.0, f64::from(k) + 1.0 / 6.0, 200.0)).collect();
+    let mut tris = Vec::new();
+    for k in 0..24 {
+        let j = (k + 1) % 24;
+        tris.push([near[k], near[j], far[j]]);
+        tris.push([near[k], far[j], far[k]]);
+        tris.push([[0.0, -51.0, 0.0], near[j], near[k]]);
+        tris.push([[0.0, -51.0, 202.0], far[k], far[j]]);
+    }
+    let duct = line_of(&tris).unwrap_or_else(|| panic!("a twisted duct"));
+    assert!(duct.diameter.is_some_and(|d| (d - 102.0).abs() < 0.5) && (duct.end[2] - 202.0).abs() < 0.01, "{duct:?}");
+}
+
+#[test]
+fn a_round_stub_shorter_than_it_is_wide_runs_the_way_its_caps_face_and_a_square_one_has_no_line() {
+    use crate::framing::line_of;
+    // A pipe stub of 24 sides, 114 mm across and 46 long between two fittings, standing: its caps outweigh its sides, so the way
+    // its faces weigh least lies across it; but its sides are round about the way its caps face, and all else is those caps.
+    let ring: Vec<[f64; 2]> = (0..24)
+        .map(|k| {
+            let a = std::f64::consts::TAU * f64::from(k) / 24.0;
+            [57.0 * a.cos(), 57.0 * a.sin() - 57.0]
+        })
+        .collect();
+    let stub = line_of(&prism(&ring, [0.0; 3], [0.0, 0.0, 1.0], 46.0, 1.0)).unwrap_or_else(|| panic!("a stub"));
+    assert_eq!((stub.diameter, stub.start[2].min(stub.end[2]), stub.start[2].max(stub.end[2])), (Some(114.0), 0.0, 46.0), "{stub:?}");
+    // Lying east, as short.
+    let east = line_of(&prism(&ring, [0.0; 3], [1.0, 0.0, 0.0], 30.0, 1.0)).unwrap_or_else(|| panic!("a stub lying east"));
+    assert_eq!((east.diameter, (east.end[0] - east.start[0]).abs()), (Some(114.0), 30.0), "{east:?}");
+    // A round duct stub 250 mm across and 36 long whose far circle is drawn a sixth of a step round from its near one: over so
+    // short a length its sides lean far off its line, but they are round about it and all else is its caps.
+    let near: Vec<[f64; 3]> = (0..24).map(|k| circle(125.0, f64::from(k), 0.0)).collect();
+    let far: Vec<[f64; 3]> = (0..24).map(|k| circle(125.0, f64::from(k) + 1.0 / 6.0, 36.0)).collect();
+    let mut tris = Vec::new();
+    for k in 0..24 {
+        let j = (k + 1) % 24;
+        tris.push([near[k], near[j], far[j]]);
+        tris.push([near[k], far[j], far[k]]);
+        tris.push([[0.0, -125.0, 0.0], near[j], near[k]]);
+        tris.push([[0.0, -125.0, 36.0], far[k], far[j]]);
+    }
+    let twisted = line_of(&tris).unwrap_or_else(|| panic!("a twisted stub"));
+    assert!(twisted.diameter.is_some_and(|d| (d - 250.0).abs() < 0.5) && (twisted.end[2] - twisted.start[2]).abs() == 36.0, "{twisted:?}");
+    // A round duct stub 203 mm across and as long, half its far circle drawn half a step round from its near one, turned off the
+    // axes (tilted 30° and turned 40°): its faces weigh about the same every way, and its uneven sides pull the ways they weigh in
+    // off its line, so only its flat caps say which way it runs.
+    let near: Vec<[f64; 3]> = (0..24).map(|k| circle(101.5, f64::from(k), 0.0)).collect();
+    let far: Vec<[f64; 3]> = (0..24).map(|k| circle(101.5, f64::from(k) + if k < 12 { 0.5 } else { 0.0 }, 203.0)).collect();
+    let (tilt, turn) = (30f64.to_radians(), 40f64.to_radians());
+    let place = |p: [f64; 3]| {
+        let (y, z) = (p[1] * tilt.cos() - p[2] * tilt.sin(), p[1] * tilt.sin() + p[2] * tilt.cos());
+        [p[0] * turn.cos() - y * turn.sin(), p[0] * turn.sin() + y * turn.cos(), z]
+    };
+    let mut tris = Vec::new();
+    for k in 0..24 {
+        let j = (k + 1) % 24;
+        tris.push([near[k], near[j], far[j]]);
+        tris.push([near[k], far[j], far[k]]);
+        tris.push([[0.0, -101.5, 0.0], near[j], near[k]]);
+        tris.push([[0.0, -101.5, 203.0], far[k], far[j]]);
+    }
+    let tris: Vec<[[f64; 3]; 3]> = tris.into_iter().map(|t| t.map(place)).collect();
+    let even = line_of(&tris).unwrap_or_else(|| panic!("a stub as long as it is wide"));
+    let length = (0..3).map(|k| (even.end[k] - even.start[k]).powi(2)).sum::<f64>().sqrt();
+    assert!(even.diameter.is_some_and(|d| (d - 203.0).abs() < 1.0) && (length - 203.0).abs() < 0.5, "{even:?}");
+    // A square duct as short has no line: its shape does not say which way it runs.
+    let square = [[-50.0, 0.0], [50.0, 0.0], [50.0, -100.0], [-50.0, -100.0]];
+    assert_eq!(line_of(&prism(&square, [0.0; 3], [1.0, 0.0, 0.0], 60.0, 1.0)), None);
+}
+
+/// A point of the circle of radius `r` round the axis x = 0, y = -r, at step `k` of 24 round it and `z` along it.
+fn circle(r: f64, k: f64, z: f64) -> [f64; 3] {
+    let a = std::f64::consts::TAU * k / 24.0;
+    [r * a.cos(), r * a.sin() - r, z]
 }

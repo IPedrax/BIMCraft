@@ -236,3 +236,30 @@ fn column_types_of_one_name_are_one_type_when_their_size_matches_and_two_when_it
     let names: Vec<&str> = columns(&i).iter().map(|(_, c)| c.type_name.as_str()).collect();
     assert_eq!(names, ["Concrete", "Concrete", "Concrete (2)"], "{:?}", i.skipped);
 }
+
+#[test]
+fn a_column_is_drawn_in_3d_as_its_graphics_draw_it_and_one_the_file_draws_nothing_of_says_nothing() {
+    // Column 100's graphics draw a symbol 2 by 1 by 10 ft where its box is, its instance holding a symbol's graphics of its own
+    // as Revit's columns do (written after its placement); column 101's file holds no graphics of it.
+    use crate::project_fixture::{box_tree, embedding, graphics_block, instance_tree, tree_bytes};
+    let mut p = project(2024, COLUMNS);
+    column(&mut p, COLUMNS, 100);
+    p.recs.push(Rec::new(101, COLUMNS).at([19.0, 4.5, 0.0, 21.0, 5.5, 10.0], &[10, 11, 650, 101]));
+    p.graphics.extend(graphics_block(660, &tree_bytes(&box_tree(660, [2.0, 1.0, 10.0], None))));
+    p.extra_ids.push(660);
+    let square = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let whole = [9.0, 4.5, 0.0, 11.0, 5.5, 10.0];
+    let tree = embedding(instance_tree(100, 660, square, [9.0, 4.5, 0.0], whole), whole);
+    p.graphics.extend(graphics_block(100, &tree_bytes(&tree)));
+    let i = import(&p);
+    assert!(i.model.check().is_ok(), "{:?}", i.model.check());
+    let shaped: Vec<&Column> = columns(&i).into_iter().map(|(_, c)| c).filter(|c| c.imported.is_some()).collect();
+    assert_eq!(shaped.len(), 1, "{:?}", i.skipped);
+    assert_eq!(shaped[0].at, bimcraft_core::geom::P2(3048.0, 1524.0));
+    assert!(
+        i.skipped.iter().any(|s| s.contains("1 column: it is drawn in 3D as its own graphics draw it") && s.contains("100")),
+        "{:?}",
+        i.skipped
+    );
+    assert!(!i.skipped.iter().any(|s| s.contains("drawn in 3D from its own geometry")), "{:?}", i.skipped);
+}

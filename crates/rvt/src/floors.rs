@@ -12,12 +12,16 @@
 //! by a straight line, or else the footprint of its own box
 //! — and the report says which. A type with no layers has no thickness of its own: the box's height is taken for it. A ceiling is
 //! read the same way, its level and its offset those of the bottom of its box, its underside.
+//!
+//! A **shaft opening**, which cuts the floors, ceilings and roofs it passes through, is a shaft of the outline its graphics draw:
+//! they draw it as a solid, a prism standing upright from its bottom to its top ([`outline_of`]). Where they draw no such prism,
+//! or nothing, it is a shaft of its box's rectangle, and the report says so.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use bimcraft_core::geom;
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Ceiling, CeilingType, Element, Floor, FloorType, Layer, MAX_SHAPE_POINTS, Shape, ShapePoint};
+use bimcraft_core::model::{Ceiling, CeilingType, Element, Floor, FloorType, Layer, MAX_SHAPE_POINTS, Shaft, Shape, ShapePoint};
 
 use crate::data::newest;
 use crate::import::{Facts, Import, kind, micron, mm, point};
@@ -346,6 +350,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 }
                 for p in &s.pieces {
                     let floor = Floor {
+                        imported: None,
                         type_name: s.type_name.clone(),
                         level: s.level,
                         boundary: ring(&p.outer),
@@ -391,6 +396,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 }
                 for p in &s.pieces {
                     let ceiling = Ceiling {
+                        imported: None,
                         type_name: s.type_name.clone(),
                         level: s.level,
                         boundary: ring(&p.outer),
@@ -405,5 +411,162 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             }
             Err(why) => cx.left_out("ceiling", r.id, &why),
         }
+    }
+}
+
+/// `OST_ShaftOpening`.
+pub(crate) const OST_SHAFT_OPENINGS: i64 = -2_000_996;
+
+/// The shaft openings whose graphics are read for their outline.
+pub(crate) fn shafts_wanted(f: &Facts) -> Vec<u32> {
+    f.of_category(OST_SHAFT_OPENINGS).map(|r| r.id).collect()
+}
+
+/// A corner in plan, to the hundredth of a millimetre.
+type Corner = (i64, i64);
+
+/// How far from level or upright (the sine) a face of a shaft's solid may be.
+const PLUMB: f64 = 1e-6;
+
+/// The outline in plan of a solid drawn as a prism standing upright (millimetres: each face level or upright), counter-clockwise,
+/// and the heights of its bottom and its top; none where it is no such prism: a face that leans, a bottom and a top of other
+/// areas, or a bottom that is not one loop.
+pub(crate) fn outline_of(tris: &[[[f64; 3]; 3]]) -> Option<(Vec<P2>, f64, f64)> {
+    let (mut z0, mut z1) = (f64::INFINITY, f64::NEG_INFINITY);
+    for p in tris.iter().flatten() {
+        z0 = z0.min(p[2]);
+        z1 = z1.max(p[2]);
+    }
+    if !(z0.is_finite() && z1.is_finite() && z1 > z0) {
+        return None;
+    }
+    let (mut bottom, mut top) = (Vec::new(), 0.0);
+    for t in tris {
+        let u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+        let v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+        let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        let twice = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if twice.is_nan() || twice <= 0.0 {
+            continue;
+        }
+        let nz = n[2] / twice;
+        if nz.abs() < PLUMB {
+            continue;
+        }
+        if nz.abs() < 1.0 - PLUMB {
+            return None;
+        }
+        let at = if nz < 0.0 { z0 } else { z1 };
+        if t.iter().any(|p| (p[2] - at).abs() > 0.5) {
+            return None;
+        }
+        if nz < 0.0 {
+            bottom.push(t);
+        } else {
+            top += twice / 2.0;
+        }
+    }
+    // The bottom's edges that bound it: those of its triangles no other of them shares.
+    let key = |p: &[f64; 3]| ((p[0] * 100.0).round() as i64, (p[1] * 100.0).round() as i64);
+    let mut edges: BTreeMap<(Corner, Corner), usize> = BTreeMap::new();
+    let mut at: BTreeMap<(i64, i64), P2> = BTreeMap::new();
+    let mut area = 0.0;
+    for t in &bottom {
+        for k in 0..3 {
+            let (a, b) = (key(&t[k]), key(&t[(k + 1) % 3]));
+            at.insert(a, P2(micron(t[k][0]), micron(t[k][1])));
+            if a != b {
+                *edges.entry(if a < b { (a, b) } else { (b, a) }).or_default() += 1;
+            }
+        }
+        area += geom::area(&[P2(t[0][0], t[0][1]), P2(t[1][0], t[1][1]), P2(t[2][0], t[2][1])]).abs();
+    }
+    if area <= 0.0 || (area - top).abs() > 1e-3 * area {
+        return None;
+    }
+    let mut next: BTreeMap<(i64, i64), Vec<(i64, i64)>> = BTreeMap::new();
+    for ((a, b), _) in edges.into_iter().filter(|(_, n)| *n == 1) {
+        next.entry(a).or_default().push(b);
+        next.entry(b).or_default().push(a);
+    }
+    if next.len() < 3 || next.values().any(|n| n.len() != 2) {
+        return None;
+    }
+    // One loop through every corner, or none.
+    let first = *next.keys().next()?;
+    let (mut ring, mut before, mut here) = (vec![first], first, first);
+    loop {
+        let n = next.get(&here)?;
+        let go = if n[0] != before { n[0] } else { n[1] };
+        if go == first {
+            break;
+        }
+        if ring.len() > next.len() {
+            return None;
+        }
+        ring.push(go);
+        (before, here) = (here, go);
+    }
+    if ring.len() != next.len() {
+        return None;
+    }
+    let mut ring: Vec<P2> = ring.iter().filter_map(|k| at.get(k).copied()).collect();
+    // Corners on a straight edge add nothing.
+    let straight = |a: P2, b: P2, c: P2| ((b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)).abs() < 1e-6 * a.dist(c).max(1.0);
+    let mut k = 0;
+    while ring.len() > 3 && k < ring.len() {
+        let n = ring.len();
+        if straight(ring[(k + n - 1) % n], ring[k], ring[(k + 1) % n]) {
+            ring.remove(k);
+        } else {
+            k += 1;
+        }
+    }
+    if geom::area(&ring) < 0.0 {
+        ring.reverse();
+    }
+    Some((ring, micron(z0), micron(z1)))
+}
+
+/// Each shaft opening, a shaft of the outline its graphics draw from their bottom to their top, on the level at or below its
+/// bottom; or, where they draw no prism standing upright, of its box's rectangle, saying so.
+pub(crate) fn shafts(cx: &mut Import, f: &Facts, g: &Gathered) {
+    let label = "shaft opening";
+    for r in f.of_category(OST_SHAFT_OPENINGS) {
+        let read = crate::generic::drawn_where_it_stands(g, r)
+            .and_then(|d| outline_of(&d.triangles).ok_or_else(|| "what they draw is no prism standing upright".to_string()));
+        let (boundary, z0, z1, note) = match read {
+            Ok((ring, z0, z1)) => {
+                (ring, z0, z1, "comes in as a shaft of the outline its graphics draw, from their bottom to their top".to_string())
+            }
+            Err(why) => {
+                let b = &r.bbox;
+                let ring = vec![point(b[0], b[1]), point(b[3], b[1]), point(b[3], b[4]), point(b[0], b[4])];
+                let mut note = "comes in as a shaft of its box's rectangle: its outline is not read".to_string();
+                if why != crate::generic::NO_GRAPHICS {
+                    note.push_str(" from its graphics: ");
+                    note.push_str(&why);
+                }
+                (ring, mm(b[2]), mm(b[5]), note)
+            }
+        };
+        let (level, elevation) = match crate::import::level_at(cx, f, z0 / 304.8) {
+            Ok(l) => l,
+            Err(why) => {
+                cx.left_out(label, r.id, &why);
+                continue;
+            }
+        };
+        let shaft = Shaft {
+            level,
+            boundary,
+            top_level: None,
+            height: micron(z1 - z0),
+            base_offset: micron(z0 - mm(elevation)),
+            sketch: Vec::new(),
+        };
+        let id = cx.model.insert(Element::Shaft(shaft));
+        cx.from.insert(id, format!("Shaft opening {}", r.id));
+        cx.note(label, r.id, &note);
     }
 }

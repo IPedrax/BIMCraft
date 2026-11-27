@@ -6702,6 +6702,7 @@ impl BimApp {
                 let type_name =
                     self.types.get("column").cloned().or_else(|| m.default_type("column").map(String::from)).unwrap_or_default();
                 let e = Element::Column(Column {
+                    imported: None,
                     room_bounding: true,
                     params: Default::default(),
                     type_name,

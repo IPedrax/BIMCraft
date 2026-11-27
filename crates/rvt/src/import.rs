@@ -17,7 +17,7 @@ use bimcraft_core::model::{Element, Id, Level, MAX_TEXT, Model, culprit};
 use crate::inventory::{Inventory, OST_LEVELS, Survey, Wants, category_name};
 use crate::records::{Record, TypeRecord};
 use crate::{Limits, Revit};
-use crate::{columns, ducts, floors, framing, generic, openings, pipes, roofs, rooms, walls};
+use crate::{columns, ducts, floors, framing, generic, imported, openings, pipes, roofs, rooms, systems, walls};
 
 /// `OST_Materials`.
 pub(crate) const OST_MATERIALS: i64 = -2_000_700;
@@ -131,11 +131,11 @@ impl Import {
             let list: Vec<String> = ids.iter().take(8).map(u32::to_string).collect();
             let more = if ids.len() > list.len() { ", …" } else { "" };
             let n = ids.len();
-            let plural = if n == 1 { "" } else { "s" };
+            let kind = if n == 1 { kind } else { plural(&kind) };
             self.skipped.push(if left {
-                format!("{n} {kind}{plural} left out, {reason} (ids {}{more})", list.join(", "))
+                format!("{n} {kind} left out, {reason} (ids {}{more})", list.join(", "))
             } else {
-                format!("{n} {kind}{plural}: {reason} (ids {}{more})", list.join(", "))
+                format!("{n} {kind}: {reason} (ids {}{more})", list.join(", "))
             });
         }
     }
@@ -204,10 +204,11 @@ fn has_volume(r: &Record) -> bool {
 }
 
 /// The categories whose records the first pass keeps.
-const CATEGORIES: [i64; 15] = [
+const CATEGORIES: [i64; 16] = [
     walls::OST_WALLS,
     floors::OST_FLOORS,
     floors::OST_CEILINGS,
+    floors::OST_SHAFT_OPENINGS,
     floors::OST_SKETCH_LINES,
     openings::OST_DOORS,
     openings::OST_WINDOWS,
@@ -268,6 +269,8 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     unread(&mut cx, &inv);
     let mut wants = Wants { materials: facts.materials.clone(), ..Wants::default() };
     walls::wanted(&facts, &mut wants.data);
+    wants.drawings.extend(imported::wanted(&facts));
+    wants.drawings.extend(floors::shafts_wanted(&facts));
     floors::wanted(&facts, &mut wants.data);
     roofs::wanted(&facts, &mut wants.data);
     openings::wanted(&facts, &mut wants);
@@ -276,10 +279,12 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     pipes::wanted(&facts, &mut wants.data);
     ducts::wanted(&facts, &mut wants.data);
     generic::wanted(&facts, &mut wants);
+    systems::wanted(&facts, &mut wants.systems);
     let gathered = revit.gather(release, &facts.tags, &facts.ids, &wants).map_err(e)?;
     cx.looks = gathered.looks.iter().filter_map(|(id, l)| Some((gathered.materials.get(id)?.clone(), *l))).collect();
     walls::import(&mut cx, &facts, &gathered);
     floors::import(&mut cx, &facts, &gathered);
+    floors::shafts(&mut cx, &facts, &gathered);
     roofs::import(&mut cx, &facts, &gathered);
     attached(&mut cx, &facts);
     openings::import(&mut cx, &facts, &gathered);
@@ -287,8 +292,10 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     rooms::import(&mut cx, &facts, &gathered);
     pipes::import(&mut cx, &facts, &gathered);
     ducts::import(&mut cx, &facts, &gathered);
-    framing::import(&mut cx, &facts);
+    framing::import(&mut cx, &facts, &gathered);
+    imported::shaped(&mut cx, &facts, &gathered);
     generic::import(&mut cx, &facts, &gathered, &inv);
+    systems::colour(&mut cx, &facts, &gathered);
     let from = cx.from.clone();
     finish(cx, format!("Revit {release}")).map(|i| (i, from))
 }
@@ -358,6 +365,14 @@ fn levels(cx: &mut Import, inv: &Inventory) {
     }
 }
 
+/// What many of `kind` are called: an accessory's are accessories, a wall's walls.
+fn plural(kind: &str) -> String {
+    match kind.strip_suffix('y') {
+        Some(stem) if !stem.ends_with(['a', 'e', 'o', 'u']) => format!("{stem}ies"),
+        _ => format!("{kind}s"),
+    }
+}
+
 /// The categories of the file the importer has no reader for, one note each, with how many placed elements of it the file holds (the
 /// symbols of a type are no elements). They count as left out, since they are in the file and not in the model.
 fn unread(cx: &mut Import, inv: &Inventory) {
@@ -374,10 +389,15 @@ fn unread(cx: &mut Import, inv: &Inventory) {
     for (category, mut ids) in by {
         ids.sort_unstable();
         let n = ids.len();
-        let name = category_name(category)
-            .map_or_else(|| format!("element{} of category {category}", if n == 1 { "" } else { "s" }), str::to_string);
         let list: Vec<String> = ids.iter().take(8).map(u32::to_string).collect();
         let more = if n > list.len() { ", …" } else { "" };
+        if let Some((_, one, many, why)) = generic::NO_BODY.iter().find(|(id, ..)| *id == category) {
+            let what = if n == 1 { one } else { many };
+            cx.skipped.push(format!("{n} {what} left out, {why} (ids {}{more})", list.join(", ")));
+            continue;
+        }
+        let name = category_name(category)
+            .map_or_else(|| format!("element{} of category {category}", if n == 1 { "" } else { "s" }), str::to_string);
         cx.skipped.push(format!("{n} {name} left out, the importer has no reader for this category (ids {}{more})", list.join(", ")));
     }
 }
@@ -431,6 +451,16 @@ fn finish(mut cx: Import, schema: String) -> Result<Imported, String> {
     }
     if !checked {
         m.check()?;
+    }
+    // Each imported shape is held to its element as the model now has it, a wall's doors and windows those that came in.
+    let shaped: Vec<Id> = m.elements.iter().filter(|(_, e)| e.imported().is_some()).map(|(id, _)| *id).collect();
+    for id in shaped {
+        let key = bimcraft_core::imported::key(m, id);
+        if let Some(key) = key
+            && let Some(Some(s)) = m.elements.get_mut(id).and_then(|e| e.imported_mut())
+        {
+            s.key = key;
+        }
     }
     for (id, why) in dropped {
         cx.dropped(id, &why);

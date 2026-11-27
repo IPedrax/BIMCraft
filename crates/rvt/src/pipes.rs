@@ -5,10 +5,12 @@
 //! and its heights are theirs (a pipe's are the centre line's). Its **diameter** is the outside diameter its record's box gives:
 //! the box of a cylinder of diameter `d` along the unit vector `u` and of length `l` is `l|u| + d sqrt(1 - u^2)` across on each
 //! axis, so `d` is worked out on the axes the pipe does not lie along, and averaged. Its **level** is the highest at or below its
-//! start. Its system, the name of its type and its material are not read, and the notes say so.
+//! start. The name of its type and its material are not read, and the notes say so; its system is read with the others'
+//! ([`crate::systems`]).
 //!
-//! Found in the data of a Revit 2018 file; no other release's was seen, so a pipe whose data does not hold the two connectors
-//! is left out and listed.
+//! Found in the data of a Revit 2018 file; no other release's was seen. A pipe whose data does not hold the two connectors (every
+//! one of the 2025 samples') runs along the cylinder its graphics draw ([`crate::framing::centre_line`]): its middle from end to
+//! end, of the outside diameter it draws. One that draws no cylinder is left out and listed.
 
 use std::collections::BTreeSet;
 
@@ -62,12 +64,37 @@ fn diameter(a: [f64; 3], b: [f64; 3], bbox: &[f64; 6]) -> Option<f64> {
     (d.is_finite() && d > 1e-3 && d < 20.0).then_some(d)
 }
 
+/// What a pipe's line and diameter are read from.
+#[derive(Clone, Copy, PartialEq)]
+enum From {
+    /// Its connectors in its data, its diameter from its box.
+    Data,
+    /// The cylinder its graphics draw.
+    Graphics,
+}
+
+/// The ends of pipe `r`'s line and its outside diameter, feet: from the connectors in its data, else from the cylinder its graphics
+/// draw; or why not.
+fn line(g: &Gathered, r: &crate::records::Record) -> Result<([f64; 3], [f64; 3], f64, From), String> {
+    let reason = "its two connectors are not in the record";
+    if let Some((a, b)) = g.data.get(&r.id).and_then(|copies| newest(copies, connectors)).map(|(c, _)| c) {
+        let d = diameter(a, b, &r.bbox).ok_or("its diameter cannot be worked out from its box")?;
+        return Ok((a, b, d, From::Data));
+    }
+    match crate::framing::centre_line(g, r) {
+        Ok(c) if c.round => Ok((c.start, c.end, c.width, From::Graphics)),
+        Ok(_) => Err(format!("{reason}, and what its graphics draw is no round pipe")),
+        Err(why) if why == crate::generic::NO_GRAPHICS => Err(reason.to_string()),
+        Err(why) => Err(format!("{reason}, nor is its line read from its graphics: {why}")),
+    }
+}
+
 pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
     for r in f.of_category(OST_PIPES) {
+        let mut from = From::Data;
         let made = (|| -> Result<Run, String> {
-            let copies = g.data.get(&r.id).ok_or("its two connectors are not in the record")?;
-            let (a, b) = newest(copies, connectors).map(|(c, _)| c).ok_or("its two connectors are not in the record")?;
-            let width = diameter(a, b, &r.bbox).ok_or("its diameter cannot be worked out from its box")?;
+            let (a, b, width, read) = line(g, r)?;
+            from = read;
             let (level, elevation) = level_at(cx, f, a[2])?;
             let width = micron(mm(width));
             let types = cx.model.types.runs.entry("pipe".to_string()).or_default();
@@ -80,6 +107,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             let offset = micron(mm(a[2]) - mm(elevation));
             let end = micron(mm(b[2]) - mm(elevation));
             Ok(Run {
+                imported: None,
                 type_name,
                 level,
                 start: point(a[0], a[1]),
@@ -96,11 +124,13 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             Ok(run) => {
                 let id = cx.model.insert(Element::Pipe(run));
                 cx.from.insert(id, format!("Pipe {}", r.id));
-                cx.note(
-                    "pipe",
-                    r.id,
-                    "its diameter is the outside diameter its box gives; its system, type name and material are not read",
-                );
+                let note = match from {
+                    From::Data => "its diameter is the outside diameter its box gives; its type name and material are not read",
+                    From::Graphics => {
+                        "comes in along the line its graphics draw, of the outside diameter they draw: its type name and material are not read"
+                    }
+                };
+                cx.note("pipe", r.id, note);
             }
             Err(why) => cx.left_out("pipe", r.id, why.as_str()),
         }

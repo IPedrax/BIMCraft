@@ -1147,6 +1147,34 @@ pub(crate) fn lazy_points(m: &Model, id: Id, e: &Element, components: &mut crate
 /// of its own ([`walls::host_voids_in`]), or a component on one of its faces does ([`Model::hosted_voids`]), each prism they
 /// reach as triangles less them, a mesh a section cuts in its own shape. Should cutting fail (too many faces), every opening
 /// cuts its rectangle.
+/// Element `id`'s imported shape, where it is still the element it was drawn for ([`crate::imported::live`]): each part a mesh in
+/// its material's colour, or `color` where it names none.
+fn imported_solids(m: &Model, id: Id, color: Rgb) -> Option<Vec<Solid>> {
+    let shape = crate::imported::live(m, id)?;
+    Some(
+        shape
+            .parts
+            .iter()
+            .map(|p| {
+                let color = m.materials.get(&p.material).map_or(color, |x| Rgb(x.color[0], x.color[1], x.color[2]));
+                Solid::Mesh { owner: id, color, tex: 0, tris: p.tris.to_vec(), caps: 0, round: false, shared: false, cut: true, vis: 0 }
+            })
+            .collect(),
+    )
+}
+
+/// The colour an element's imported shape is drawn in where a part names no material: its kind's.
+fn imported_color(e: &Element) -> Rgb {
+    match e {
+        Element::Floor(_) => SLAB,
+        Element::Ceiling(_) => CEILING,
+        Element::Roof(_) => ROOF,
+        Element::StructuralColumn(_) => STRUCTURE,
+        e if e.run().is_some() => STRUCTURE,
+        _ => WALL,
+    }
+}
+
 fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
     let prism = |p: walls::Prism| Solid::Prism {
         owner: id,
@@ -1732,6 +1760,13 @@ fn solids_in_with(
 ) -> Vec<Solid> {
     let mut out = Vec::new();
     for &(id, e) in elements {
+        // Drawn as another program drew it, while it is the element it was drawn for.
+        if e.imported().is_some()
+            && let Some(solids) = imported_solids(m, id, imported_color(e))
+        {
+            out.extend(solids);
+            continue;
+        }
         match e {
             Element::Wall(w) if crate::curtain::pattern(m, w).is_some() => curtain_solids(&mut out, m, id, w),
             Element::Wall(_) => out.extend(wall_solids(m, id, index)),
@@ -2218,6 +2253,8 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
 /// [`layered`], each piece with the place of its layer among its type's, none where it has no layers.
 pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
     let layers = match m.elements.get(s.owner()) {
+        // A wall drawn in its imported shape is in that shape's materials already.
+        Some(e) if e.imported().is_some() && crate::imported::live(m, s.owner()).is_some() => &[],
         Some(Element::Wall(w)) => m.type_layers("wall", &w.type_name),
         Some(Element::Floor(f)) => m.type_layers("floor", &f.type_name),
         Some(Element::Roof(r)) => m.type_layers("roof", &r.type_name),

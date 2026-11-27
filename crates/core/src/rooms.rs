@@ -441,6 +441,7 @@ fn made(r: &Room, part: Part, ty: &str, offset: f64, boundary: Vec<P2>, openings
         .collect();
     match part {
         Part::Floor => Element::Floor(Floor {
+            imported: None,
             type_name: ty.into(),
             level: r.level,
             boundary,
@@ -457,9 +458,16 @@ fn made(r: &Room, part: Part, ty: &str, offset: f64, boundary: Vec<P2>, openings
             framing_angle: None,
             params,
         }),
-        Part::Ceiling => {
-            Element::Ceiling(Ceiling { type_name: ty.into(), level: r.level, boundary, openings, offset, sketch: Vec::new(), params })
-        }
+        Part::Ceiling => Element::Ceiling(Ceiling {
+            imported: None,
+            type_name: ty.into(),
+            level: r.level,
+            boundary,
+            openings,
+            offset,
+            sketch: Vec::new(),
+            params,
+        }),
     }
 }
 
