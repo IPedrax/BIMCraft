@@ -58,6 +58,11 @@ pub struct Lookup {
     /// What a plan finds no other way: the elements of the kinds it looks for among all of them (grids, floors, roofs,
     /// stairs, sections…), and the runs too steep to band.
     other: Arc<BTreeSet<Id>>,
+    /// Components by their level and the plan tile of the point they stand on (tile [`ANY`] for a point that isn't finite):
+    /// what a dimension's point asks of a storey's components, which was every element of the project.
+    placed: BTreeMap<Placed, Arc<BTreeSet<Id>>>,
+    /// Each component's key in [`Lookup::placed`], by chunk of ids.
+    placed_at: BTreeMap<Id, Arc<BTreeMap<Id, Placed>>>,
 }
 
 /// What a banded element's heights share with the others of its group beside its own values: a component's family, type,
@@ -162,12 +167,19 @@ pub const RARE: &[&str] = &[
     "ceiling",
     "modelgroup",
     "detailgroup",
+    // Footings under walls, which a command that moves a wall takes along (`glue::footings_of`): a few hundred at most.
+    "stripfooting",
+    // Circuits, held to each other after every command (`electrical::check_circuits`): a few hundred to a board's thousands.
+    "circuit",
 ];
 
 /// The categories of a drawing set: views, sheets and what places a view on a sheet. Their names and numbers are kept
 /// apart, and a view goes on one sheet, so they are checked together ([`crate::model::Model::check_changed`]).
 pub const DRAWING_SET: &[&str] =
     &["sheet", "viewport", "planview", "section", "elevation", "detail", "schedule", "panelschedule", "rebardetail", "view3d"];
+
+/// A component's level and the plan tile it stands in ([`Lookup::components_near`]).
+type Placed = (Guid, i64, i64);
 
 /// Banded elements' groups and bands, by id.
 type Banded = BTreeMap<Id, (Arc<Group>, [i64; 2])>;
@@ -326,6 +338,14 @@ impl Lookup {
         if e.params().is_some_and(|p| p.keys().any(|k| crate::phasing::reserved(k))) {
             Arc::make_mut(&mut self.phased).insert(id);
         }
+        if let Element::Component(c) = e {
+            let key = match (c.at.0.is_finite() && c.at.0.abs() < 1e12, c.at.1.is_finite() && c.at.1.abs() < 1e12) {
+                (true, true) => (c.level, tile(c.at.0), tile(c.at.1)),
+                _ => (c.level, ANY, ANY),
+            };
+            Arc::make_mut(self.placed.entry(key).or_default()).insert(id);
+            Arc::make_mut(self.placed_at.entry(id >> SHIFT).or_default()).insert(id, key);
+        }
     }
 
     fn take(&mut self, id: Id) {
@@ -356,6 +376,21 @@ impl Lookup {
             }
             if chunk.is_empty() {
                 self.banded.remove(&(id >> SHIFT));
+            }
+        }
+        if let Some(chunk) = self.placed_at.get_mut(&(id >> SHIFT))
+            && chunk.contains_key(&id)
+        {
+            if let Some(key) = Arc::make_mut(chunk).remove(&id)
+                && let Some(set) = self.placed.get_mut(&key)
+            {
+                Arc::make_mut(set).remove(&id);
+                if set.is_empty() {
+                    self.placed.remove(&key);
+                }
+            }
+            if chunk.is_empty() {
+                self.placed_at.remove(&(id >> SHIFT));
             }
         }
         for set in [
@@ -553,6 +588,31 @@ impl Lookup {
     /// The elements a plan looks for among all of them ([`Lookup::other`]), by id.
     pub fn other(&self) -> impl Iterator<Item = Id> + '_ {
         self.other.iter().copied()
+    }
+
+    /// The components on `level` that may stand within `reach` mm of `p` in plan, by id: every one that does, and others
+    /// in the same plan tiles. Not finite, or too far to look tile by tile, every component of the level.
+    pub fn components_near(&self, level: Guid, p: crate::geom::P2, reach: f64) -> BTreeSet<Id> {
+        let mut out = BTreeSet::new();
+        let b = [p.0 - reach, p.1 - reach, p.0 + reach, p.1 + reach];
+        match tiles_of(b) {
+            Some([x0, y0, x1, y1]) if (x1 - x0 + 1).saturating_mul(y1 - y0 + 1) <= MAX_TILES => {
+                for x in x0..=x1 {
+                    for (_, set) in self.placed.range((level, x, y0)..=(level, x, y1)) {
+                        out.extend(set.iter().copied());
+                    }
+                }
+                if let Some(set) = self.placed.get(&(level, ANY, ANY)) {
+                    out.extend(set.iter().copied());
+                }
+            }
+            _ => {
+                for (_, set) in self.placed.range((level, i64::MIN, i64::MIN)..=(level, i64::MAX, i64::MAX)) {
+                    out.extend(set.iter().copied());
+                }
+            }
+        }
+        out
     }
 
     /// The levels, by id.
@@ -864,6 +924,38 @@ mod tests {
         let referrers: Vec<&str> =
             s.model.lookup().referrers(&guid).filter_map(|id| s.model.elements.get(id)).map(Element::category).collect();
         assert!(referrers.iter().all(|c| ["door", "window", "tag", "dimension", "room"].contains(c)), "{referrers:?}");
+    }
+
+    #[test]
+    fn the_components_near_a_point_of_a_level_are_every_one_within_reach_that_every_element_gives() {
+        let mut s = Session::new();
+        s.reset(tower_on(Plate::SMALL, 2).unwrap(), None);
+        let lookup = s.model.lookup();
+        let levels: Vec<Guid> = s.model.levels().iter().map(|(id, _)| s.model.guid(*id)).collect();
+        let mut found = 0;
+        for level in &levels {
+            for x in (-6000..=42_000).step_by(3700) {
+                for y in (-6000..=42_000).step_by(4100) {
+                    let p = crate::geom::P2(f64::from(x), f64::from(y));
+                    for reach in [0.0, 100.0, 5100.0, 20_000.0, f64::INFINITY] {
+                        let near = lookup.components_near(*level, p, reach);
+                        let every: BTreeSet<Id> = s
+                            .model
+                            .elements
+                            .iter()
+                            .filter(|(_, e)| matches!(e, Element::Component(c) if c.level == *level && c.at.dist(p) <= reach))
+                            .map(|(id, _)| *id)
+                            .collect();
+                        assert!(every.is_subset(&near), "{level:?} at {p:?} within {reach}");
+                        assert!(
+                            near.iter().all(|id| matches!(s.model.elements.get(*id), Some(Element::Component(c)) if c.level == *level))
+                        );
+                        found += every.len();
+                    }
+                }
+            }
+        }
+        assert!(found > 100, "{found}");
     }
 
     #[test]

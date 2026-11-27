@@ -5488,7 +5488,7 @@ msgstr "Demolido"
 msgid "Demolition"
 msgstr "Demolição"
 
-#: crates/core/src/commands.rs:16671
+#: crates/core/src/commands.rs:16673
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -5565,7 +5565,7 @@ msgstr "Desanexar topo/base"
 msgid "Detach Top/Base: the tops and bases of the walls and columns their own again"
 msgstr ""
 
-#: crates/core/src/commands.rs:16461
+#: crates/core/src/commands.rs:16463
 #: crates/ui-egui/src/draw.rs:693
 #: crates/ui-egui/src/editor/document.rs:645
 #: crates/ui-egui/src/structure.rs:111
@@ -20167,7 +20167,7 @@ msgstr "Desbloquear"
 msgid "Unlock alignment"
 msgstr "Desbloquear alinhamento"
 
-#: crates/core/src/commands.rs:17019
+#: crates/core/src/commands.rs:17021
 msgid "Unnamed"
 msgstr "Sem nome"
 

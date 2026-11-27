@@ -243,3 +243,32 @@ fn only_a_flat_strip_footing_glues() {
     s.execute("modify", &json!({"id": wall_id, "base_offset": 900.0})).unwrap();
     assert_eq!(run(&s, beam).offset, -500.0, "a beam is never glued to a wall");
 }
+
+#[test]
+fn the_footings_of_walls_are_those_every_element_would_give_and_none_for_no_walls() {
+    // Five walls, four with a footing under them (one sloped, which doesn't glue), one footing under no wall, and a beam.
+    let mut script: Vec<String> = (0..5).map(|i| format!(r#"wall {{"points": [[0, {y}], [6000, {y}]]}}"#, y = i * 10_000)).collect();
+    for i in 0..3 {
+        script.push(format!(r#"strip_footing {{"points": [[0, {y}], [6000, {y}]]}}"#, y = i * 10_000));
+    }
+    script.push(r#"strip_footing {"points": [[0, 30000], [6000, 30000]], "end_offset": 200}"#.into());
+    script.push(r#"strip_footing {"points": [[0, 90000], [6000, 90000]]}"#.into());
+    script.push(r#"beam {"points": [[0, 40000], [6000, 40000]], "offset": -500, "justify": "bottom"}"#.into());
+    let s = session(&script.join("\n"));
+    let every = |walls: &[u64]| -> Vec<(u64, u64)> {
+        s.model
+            .elements
+            .iter()
+            .filter(|(_, e)| e.category() == "stripfooting")
+            .filter_map(|(id, _)| Some((*id, crate::glue::wall_of(&s.model, *id)?)))
+            .filter(|(_, w)| walls.contains(w))
+            .collect()
+    };
+    let all = walls(&s);
+    assert_eq!(crate::glue::footings_of(&s.model, &all), every(&all));
+    assert_eq!(every(&all).len(), 3, "three footings glue");
+    for w in &all {
+        assert_eq!(crate::glue::footings_of(&s.model, &[*w]), every(&[*w]), "wall {w}");
+    }
+    assert!(crate::glue::footings_of(&s.model, &[]).is_empty());
+}

@@ -11,7 +11,7 @@ mod compound;
 mod index;
 pub(crate) mod profile;
 pub(crate) mod slant;
-pub(crate) use index::{Index, reach};
+pub(crate) use index::{Index, RunsNear, reach};
 
 use crate::curves::Curve;
 use crate::geom::{self, P2};
@@ -1328,12 +1328,21 @@ pub(crate) fn prisms_rect_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Pr
     prisms_holed(m, id, true, false, index)
 }
 
-/// The doors and windows in wall `id`, or the openings `index` lists in it.
+/// The doors and windows in wall `id`, in order of id: the openings `index` lists in it, or the wall's referrers in the
+/// model's lookup that are hosted by it (a wall schedule asked every element for each wall's, which was walls × elements).
 fn openings_of<'a>(m: &'a Model, id: Id, index: Option<&'a Index>) -> Box<dyn Iterator<Item = &'a Element> + 'a> {
     let guid = m.guid(id);
     match index {
         Some(index) => Box::new(index.openings(guid).iter().filter_map(|id| m.elements.get(*id))),
-        None => Box::new(m.elements.values().filter(move |e| matches!(e, Element::Door(o) | Element::Window(o) if o.host == guid))),
+        None => {
+            let hosted: Vec<&Element> = m
+                .lookup()
+                .referrers(&guid)
+                .filter_map(|k| m.elements.get(k))
+                .filter(|e| matches!(e, Element::Door(o) | Element::Window(o) if o.host == guid))
+                .collect();
+            Box::new(hosted.into_iter())
+        }
     }
 }
 
@@ -1507,6 +1516,23 @@ mod tests {
 
     fn near(a: P2, b: P2) -> bool {
         a.dist(b) < 1e-6
+    }
+
+    #[test]
+    fn a_walls_openings_from_the_lookup_are_those_every_element_names_it_host_of_in_order() {
+        let m = crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 2).unwrap_or_else(|e| panic!("{e}"));
+        let (mut walls, mut holed) = (0, 0);
+        for (id, e) in m.elements.iter() {
+            let Element::Wall(_) = e else { continue };
+            let guid = m.guid(*id);
+            let every: Vec<&Element> =
+                m.elements.values().filter(|e| matches!(e, Element::Door(o) | Element::Window(o) if o.host == guid)).collect();
+            let found: Vec<&Element> = openings_of(&m, *id, None).collect();
+            assert_eq!(found, every, "wall {id}");
+            walls += 1;
+            holed += usize::from(!every.is_empty());
+        }
+        assert!(walls > 20 && holed > 10, "{walls} walls, {holed} with openings: the tower should have both");
     }
 
     #[test]

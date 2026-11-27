@@ -77,6 +77,8 @@ The goal is to make the file, the ids and the build trustworthy enough to build 
 
 **Exit criteria**: green CI on three operating systems; a 0.4 file opens in 0.5 and is migrated; the benchmark model
 edits at under 100 ms a command on a mid-range laptop.
+(The edit criterion is met: on the annotated reference tower, 1.2 million elements, an ordinary edit takes 1 to 7 ms,
+[performance](docs/performance.md#edits-that-looked-at-every-element-again-2026-11-27).)
 
 ### 0.6: Modeling productivity
 

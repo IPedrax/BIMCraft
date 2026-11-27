@@ -13884,13 +13884,15 @@ fn near_point(m: &Model, level: Guid, p: P2, reach: f64) -> BTreeSet<Id> {
     out.extend(look.rare("column").chain(look.rare("structuralcolumn")).filter(|&id| match m.elements.get(id) {
         Some(e @ (Element::Column(c) | Element::StructuralColumn(c))) => {
             let size = m.column_type(e).map_or(0.0, |t| t.width.max(t.depth));
-            m.column_cut_by(e, level) && c.at.dist(p) <= reach + size
+            // (Near first: whether the plan cuts it asks for the plan's range, which sorts the levels.)
+            c.at.dist(p) <= reach + size && m.column_cut_by(e, level)
         }
         _ => false,
     }));
     // A component's reference planes stay within [`COMPONENT_REACH`] of where it stands, the most a family's planes are
     // drawn out: those on the level.
-    out.extend(m.rare("component").into_iter().filter(
+    // (Those the lookup keeps on the level in the plan tiles near, not every component of the project.)
+    out.extend(look.components_near(level, p, reach + COMPONENT_REACH).into_iter().filter(
         |&id| matches!(m.elements.get(id), Some(Element::Component(c)) if c.level == level && c.at.dist(p) <= reach + COMPONENT_REACH),
     ));
     out
@@ -21140,15 +21142,21 @@ fn side_mirrored(m: &Model, e: &Element) -> Option<Element> {
     Some(Element::Component(cp))
 }
 
-/// The doors and windows whose host is one of `hosts`: what a wall carries when it moves or turns round.
+/// The doors and windows whose host is one of `hosts`, in order of id: what a wall carries when it moves or turns round.
+/// Found among what points at each host in the model's lookup, not among every element.
 fn hosted_openings(m: &Model, hosts: &BTreeSet<Guid>) -> Vec<Id> {
-    m.elements
+    if hosts.is_empty() {
+        return Vec::new();
+    }
+    let lookup = m.lookup();
+    let mut out: Vec<Id> = hosts
         .iter()
-        .filter_map(|(&id, e)| match e {
-            Element::Door(o) | Element::Window(o) if hosts.contains(&o.host) => Some(id),
-            _ => None,
-        })
-        .collect()
+        .flat_map(|g| lookup.referrers(g))
+        .filter(|id| matches!(m.elements.get(*id), Some(Element::Door(o) | Element::Window(o)) if hosts.contains(&o.host)))
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
 }
 
 /// An error naming the pinned elements among `ids`, which command `c` would `verb`; a command that changes where an
@@ -21253,7 +21261,10 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             taken.entry(*id).or_insert_with(|| (before.clone(), after.clone()));
         }
     }
-    let index = crate::walls::Index::new(m);
+    // The runs a taken wall's or run's end was on, from the lookup (`walls::RunsNear`, the same runs as the tile index of
+    // every element gives, which a move made for each command), and only when one asks.
+    let made = std::cell::OnceCell::new();
+    let index = || made.get_or_init(|| crate::walls::RunsNear::new(m));
     let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
     // What a taken end may slide along: neither taken nor riding a taken wall.
     let staying = |other: Id| !moving.contains(&other) && !glued_moving.contains(&other);
@@ -21273,7 +21284,7 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                     Some((o.start, o.end))
                 })
                 .or_else(|| {
-                    host_line(was, index.runs_near(was, lo - TOL, hi + TOL), |other| {
+                    host_line(was, index().runs_near(was, lo - TOL, hi + TOL), |other| {
                         let e = m.elements.get(other).filter(|e| staying(other) && e.category() == "stripfooting")?;
                         let r = e.run().filter(|r| r.join && before.join && crate::runs::flat(r))?;
                         let (rlo, rhi) = m.run_geom(e)?.z_span();
@@ -21294,7 +21305,7 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             let Some((lo, hi)) = m.run_geom(e).map(|g| g.z_span()) else { continue };
             let line = (after.start, after.end);
             for (end, was) in [(&mut after.start, before.start), (&mut after.end, before.end)] {
-                let host = host_line(was, index.runs_near(was, lo - TOL, hi + TOL), |other| {
+                let host = host_line(was, index().runs_near(was, lo - TOL, hi + TOL), |other| {
                     let oe = m.elements.get(other).filter(|oe| other != *id && staying(other) && oe.category() == category)?;
                     let r = oe.run().filter(|r| r.join && crate::runs::flat(r))?;
                     let (olo, ohi) = m.run_geom(oe)?.z_span();
@@ -21466,7 +21477,7 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             })
             .flat_map(|(id, (before, _))| {
                 let (lo, hi) = span_of(id).unwrap_or((0.0, 0.0));
-                index.runs_near_box(box_of(before), 2.0 * TOL, lo, hi)
+                index().runs_near_box(box_of(before), 2.0 * TOL, lo, hi)
             })
             .collect();
         // A strip footing ending on a taken wall follows it too: the touch of its top with the wall's base
@@ -21476,7 +21487,7 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                 continue;
             }
             let (lo, hi) = (m.base_z(before), m.top_z(before));
-            met.extend(index.runs_near_box(crate::derived::axis_box(before), 2.0 * TOL, lo - TOL, hi + TOL));
+            met.extend(index().runs_near_box(crate::derived::axis_box(before), 2.0 * TOL, lo - TOL, hi + TOL));
         }
         for id in met {
             if moving.contains(&id) {
