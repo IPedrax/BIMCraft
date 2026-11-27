@@ -619,12 +619,13 @@ impl Discipline for Reinforce {
         match action {
             "cancel" => return Outcome::Close,
             "ok" => return self.ok(host),
-            "remove" => {
-                if host.execute("delete", &json!({"ids": self.made})).is_ok() {
+            "remove" => match host.execute("delete", &json!({"ids": self.made})) {
+                Ok(_) => {
                     host.say(tf("Removed {} bars.", &[&self.made.len().to_string()]));
+                    return Outcome::Close;
                 }
-                return Outcome::Close;
-            }
+                Err(why) => self.error = Some(why),
+            },
             "save_preset" => self.save(host),
             "delete_preset" => self.forget(host),
             _ => {}

@@ -105,6 +105,7 @@ pub fn dialog(s: &App, k: &Kit, layer: &mut Vec<El>) {
     if !tabs.is_empty() {
         body = body.child(
             SegmentedControl::new(&tabs, Some(d.tab()))
+                .fit()
                 .on_pick(|s: &mut App, i: usize, _: &mut Tx| {
                     s.discipline_press("tab", i);
                 })
