@@ -275,6 +275,25 @@ fn walls_along(spec: &Spec, ctx: &Ctx, curves: &[bimcraft_core::curves::Curve]) 
     Step::Run { commands, keep: Chain::No }
 }
 
+/// Pick Lines: the line of the element clicked (a wall's location line, a detail line's curve, a grid, a beam), beside it by the Options Bar's
+/// offset on the side clicked, as the walls along it. The click is the pointer's place on the plan, which `Ctx::hovered` is the nearest
+/// element to.
+fn pick_lines(spec: &Spec, ctx: &Ctx, at: P2) -> Step {
+    let line = ctx.hovered.and_then(|id| draw::element_curve(ctx.model, id)).and_then(|c| draw::pick(&c, at, ctx.options.offset));
+    match line {
+        Some(curve) => walls_along(spec, ctx, &[curve]),
+        None => Step::Refuse(tf("{}: click a wall or a line.", &[label(spec)])),
+    }
+}
+
+/// Pick Faces: the walls of the face of a mass clicked, which the core's `wall_by_face` makes.
+fn pick_faces(spec: &Spec, ctx: &Ctx, at: P2) -> Step {
+    match bimcraft_core::massing::face_at(ctx.model, at, ctx.reach) {
+        Some((mass, face)) => Step::Run { commands: vec![("wall_by_face", json!({"mass": mass, "faces": [face]}))], keep: Chain::No },
+        None => Step::Refuse(tf("{}: click a face of a mass.", &[label(spec)])),
+    }
+}
+
 /// A shape other than a line, its points clicked: when it has them all, the walls along what they make.
 fn shaped(spec: &Spec, ctx: &Ctx, points: &[P2]) -> Step {
     let n = ctx.shape.clicks(&ctx.options);
@@ -319,6 +338,13 @@ pub fn advance(spec: &Spec, ctx: &Ctx, points: &[P2]) -> Step {
             Some(a) => run(spec, json!({ from: xy(a), to: xy(last), "level": ctx.level }), Chain::No),
         },
         Kind::Run { chain, shapes, curtain } => {
+            // The shapes that pick what is there rather than draw: one click makes the walls.
+            if shapes && ctx.shape == Shape::PickLines {
+                return pick_lines(spec, ctx, last);
+            }
+            if shapes && ctx.shape == Shape::PickFaces {
+                return pick_faces(spec, ctx, last);
+            }
             if shapes && ctx.shape != Shape::Line {
                 return shaped(spec, ctx, points);
             }

@@ -354,3 +354,23 @@ fn align_holds_the_first_line_and_offset_copies_a_wall_across_to_the_point() {
     assert!(approx(&cmds[0].1["by"], &[n.0 * 500.0, n.1 * 500.0]), "{:?}", cmds[0].1);
     assert_eq!(advance(offset, &on(None, Held::Element(id), 100.0), &[start, start + n * 0.5]), Step::Ignore, "on the wall: no distance");
 }
+
+#[test]
+fn pick_lines_makes_the_walls_along_the_element_clicked_beside_it_by_the_offset_and_pick_faces_wants_a_mass() {
+    let w = world();
+    let wall =
+        w.model.elements.iter().find(|(_, e)| matches!(e, bimcraft_core::model::Element::Wall(_))).map(|(id, _)| *id).expect("a wall");
+    let ctx = Ctx { hovered: Some(wall), shape: Shape::PickLines, ..w.ctx() };
+    let (cmds, keep) = run_of(advance(of("wall"), &ctx, &pts(&[(-300.0, 3500.0)])));
+    assert_eq!((cmds.len(), cmds[0].0, keep), (1, "wall", Chain::No), "one wall along its line, and the chain is over");
+    let at = |cmds: &[Command], i: usize, k: usize| cmds[0].1["points"][i][k].as_f64().unwrap_or(f64::NAN);
+    let line = w.model.wall(wall).map(|x| (x.start, x.end)).expect("a wall");
+    assert!((at(&cmds, 0, 0) - line.0.0).abs() < 1e-6 && (at(&cmds, 1, 1) - line.1.1).abs() < 1e-6, "the wall's own line: {:?}", cmds[0].1);
+    let beside = Ctx { options: Options { offset: 500.0, ..Options::default() }, ..ctx };
+    let (cmds, _) = run_of(advance(of("wall"), &beside, &pts(&[(-300.0, 3500.0)])));
+    assert!(((at(&cmds, 0, 0) - line.0.0).abs() - 500.0).abs() < 1.0, "beside it by the offset: {:?}", cmds[0].1);
+    let nothing = Ctx { hovered: None, shape: Shape::PickLines, ..w.ctx() };
+    assert!(matches!(advance(of("wall"), &nothing, &pts(&[A])), Step::Refuse(_)), "nothing to pick");
+    let faces = Ctx { shape: Shape::PickFaces, ..w.ctx() };
+    assert!(matches!(advance(of("wall"), &faces, &pts(&[A])), Step::Refuse(_)), "the house has no mass");
+}

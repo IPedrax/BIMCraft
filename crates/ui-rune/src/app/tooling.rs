@@ -121,6 +121,16 @@ impl App {
                     if spec.ends_tool() {
                         self.tool = None;
                     }
+                    // A door or a window placed takes its flip with it: the next starts as the bar has it.
+                    self.bar.settings.flip = false;
+                    // A roof or a floor made is what is selected, and the tool goes back to Modify, as in the egui window.
+                    if matches!(spec.id, "roof" | "floor") {
+                        let id = made.first().and_then(|v| v["id"].as_u64());
+                        self.tool = None;
+                        if let Some(id) = id {
+                            self.select(vec![id]);
+                        }
+                    }
                 } else if clicked {
                     // The core refused: the point clicked is not kept, and the message says why.
                     self.picked.pop();

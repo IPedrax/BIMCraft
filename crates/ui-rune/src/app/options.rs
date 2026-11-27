@@ -67,6 +67,15 @@ impl App {
         self.bar.settings.choose(&self.session.model, level, key, i)
     }
 
+    /// Space with a door or a window in hand: the next one is placed the other way, with its other hinge (a door) or its other face (a window).
+    pub fn flip_opening(&mut self) -> bool {
+        if !matches!(self.tool, Some("door" | "window")) {
+            return false;
+        }
+        self.bar.settings.flip = !self.bar.settings.flip;
+        true
+    }
+
     /// A check box of the bar was set.
     pub fn bar_check(&mut self, key: &str, on: bool) -> bool {
         self.bar.settings.check(key, on)
@@ -86,8 +95,14 @@ impl App {
         let Step::Run { mut commands, keep } = step else { return step };
         self.bar_store();
         if let Some(level) = self.level {
-            for (_, params) in commands.iter_mut() {
-                if let Err(why) = self.bar.settings.feed(spec.id, &self.session.model, level, params) {
+            for (name, params) in commands.iter_mut() {
+                // A command of the tool's own takes the settings; another it makes (Pick Faces' `wall_by_face`) takes the type only.
+                if *name != spec.command {
+                    self.bar.settings.feed_type(spec.id, &self.session.model, params);
+                    continue;
+                }
+                let near = 2.0 * f64::from(super::REACH) / self.camera.scale;
+                if let Err(why) = self.bar.settings.feed(spec.id, &self.session.model, level, params, near) {
                     return Step::Refuse(why);
                 }
             }

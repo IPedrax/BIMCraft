@@ -19,7 +19,7 @@ fn level_of(m: &Model) -> Id {
 
 fn fed(s: &Settings, tool: &str, m: &Model, params: Value) -> Result<Value, String> {
     let mut params = params;
-    s.feed(tool, m, level_of(m), &mut params).map(|_| params)
+    s.feed(tool, m, level_of(m), &mut params, 100.0).map(|_| params)
 }
 
 #[test]
@@ -153,4 +153,24 @@ fn a_door_takes_the_type_picked_and_the_family_of_a_family_type_and_a_family_too
     s.picks.insert("component", TypePick { name: "900 x 2100".into(), family: Some("Single Door".into()) });
     let fixture = fed(&s, "plumbing_fixture", m, json!({"family": "Basin", "type": "Wall", "at": [0, 0]})).unwrap_or_default();
     assert_eq!(fixture["family"], json!("Basin"));
+}
+
+#[test]
+fn a_door_and_a_window_are_centred_on_their_wall_and_take_their_hinge_and_face_and_space_flips_them() {
+    let session = house();
+    let m = &*session.model;
+    let level = level_of(m);
+    let mut s = Settings::default();
+    let at = json!({"at": [3000, 0], "level": level});
+    let door = fed(&s, "door", m, at.clone()).unwrap_or_default();
+    assert!(door["flip_facing"].is_boolean(), "a door takes the pointer's side: {door}");
+    assert_eq!(door["flip_hand"], json!(false), "a door that swings takes its hinge");
+    let window = fed(&s, "window", m, at.clone()).unwrap_or_default();
+    assert!(window["flip_facing"].is_boolean() && window.get("flip_hand").is_none(), "{window}");
+    s.flip = true;
+    let flipped = fed(&s, "door", m, at.clone()).unwrap_or_default();
+    assert_eq!((flipped["flip_hand"].clone(), flipped["flip_facing"].clone()), (json!(true), door["flip_facing"].clone()));
+    let turned = fed(&s, "window", m, at).unwrap_or_default();
+    assert_ne!(turned["flip_facing"], window["flip_facing"], "Space turns a window the other way");
+    assert!(fed(&Settings::default(), "door", m, json!({"at": [-30000, -30000], "level": level})).is_ok(), "no wall there: left as it is");
 }

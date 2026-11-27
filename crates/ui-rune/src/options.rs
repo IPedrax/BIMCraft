@@ -7,9 +7,11 @@
 
 use std::collections::BTreeMap;
 
+use bimcraft_core::geom::P2;
 use bimcraft_core::ids::Id;
-use bimcraft_core::model::{CEILING_HEIGHT, DEFAULT_HEIGHT, Justify, Location, MAX_COORD, Model, STAIR_WIDTH, StairLine};
+use bimcraft_core::model::{CEILING_HEIGHT, DEFAULT_HEIGHT, Element, Justify, Location, MAX_COORD, Model, STAIR_WIDTH, StairLine};
 use bimcraft_core::units::Units;
+use bimcraft_core::walls::{self, Axis};
 use serde_json::{Value, json};
 
 use crate::lang::{t, tf};
@@ -136,6 +138,8 @@ pub struct Settings {
     pub line: StairLine,
     pub chain: bool,
     pub gable: bool,
+    /// Space was pressed with a door or a window in hand: the next one is placed with its other hinge (a door) or its other face (a window).
+    pub flip: bool,
 }
 
 impl Default for Settings {
@@ -149,6 +153,7 @@ impl Default for Settings {
             line: StairLine::Centre,
             chain: true,
             gable: false,
+            flip: false,
         }
     }
 }
@@ -218,12 +223,10 @@ impl Settings {
         }
     }
 
-    /// Joins what tool `tool` has set to `params`, the ones its machine made: the type (unless the machine named one), the heights, the
-    /// lines. Or what is wrong with a field, which the click is refused for.
-    pub fn feed(&self, tool: &str, m: &Model, level: Id, params: &mut Value) -> Result<(), String> {
-        let units = m.units;
-        let Some(object) = params.as_object_mut() else { return Ok(()) };
-        // The type picked for the tool's category; a family's type of a family tool (of one of its kinds) or a door or a window.
+    /// The type picked for the tool's category joins `params`: a family's type for a family tool (of one of its kinds) or a door or a
+    /// window, else the project's own unless the machine named one.
+    pub fn feed_type(&self, tool: &str, m: &Model, params: &mut Value) {
+        let Some(object) = params.as_object_mut() else { return };
         let kinds = match tooling::spec_of(tool).map(|s| s.kind) {
             Some(Kind::Family { kinds }) => Some(kinds),
             _ => None,
@@ -239,6 +242,37 @@ impl Settings {
             if let Some(f) = &pick.family {
                 object.insert("family".into(), json!(f));
             }
+        }
+    }
+
+    /// A door or a window at the point `at` of `params`: centred on its stretch of wall when the click is near the middle (`near` mm), a
+    /// door of a kind that swings with its hinge, and its facing, the pointer's side of the wall or the other when Space flipped it.
+    fn opening(&self, door: bool, m: &Model, near: f64, object: &mut serde_json::Map<String, Value>) {
+        let Ok(Element::Door(o) | Element::Window(o)) = bimcraft_core::opening_of(m, &Value::Object(object.clone()), door) else { return };
+        let cursor = object.get("at").and_then(|a| Some(P2(a.get(0)?.as_f64()?, a.get(1)?.as_f64()?)));
+        if let Some(middle) = m.centred(&o, near) {
+            object.insert("offset".into(), json!(middle));
+        }
+        if let (Some(w), Some(cursor)) = (m.wall(o.host), cursor) {
+            let side = Axis::of(w).project(cursor).1 < walls::centre(m, w);
+            if !door {
+                object.insert("flip_facing".into(), json!(side ^ self.flip));
+            } else if m.door_flips(o.family.as_deref(), &o.type_name).hand {
+                object.insert("flip_hand".into(), json!(self.flip));
+                object.insert("flip_facing".into(), json!(side));
+            }
+        }
+    }
+
+    /// Joins what tool `tool` has set to `params`, the ones its machine made: the type (unless the machine named one), the heights, the
+    /// lines; a door or a window's place on its wall and its hinge or face. Or what is wrong with a field, which the click is refused for.
+    /// `near` is how near the middle of a stretch of wall a door or window is taken to be at it, millimetres.
+    pub fn feed(&self, tool: &str, m: &Model, level: Id, params: &mut Value, near: f64) -> Result<(), String> {
+        let units = m.units;
+        self.feed_type(tool, m, params);
+        let Some(object) = params.as_object_mut() else { return Ok(()) };
+        if matches!(tool, "door" | "window") {
+            self.opening(tool == "door", m, near, object);
         }
         let mut put = |more: Value| {
             if let Value::Object(more) = more {

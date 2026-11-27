@@ -112,9 +112,14 @@ pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
     // Digits typed while a tool has a point picked are a length, and Tab goes on to the angle.
     if let Key::Text(text) = &key.key
         && !key.mods.cmd
-        && s.type_text(text)
     {
-        return true;
+        if s.type_text(text) {
+            return true;
+        }
+        // Space turns the door or the window about to be placed.
+        if text == " " && s.flip_opening() {
+            return true;
+        }
     }
     match (&key.key, key.mods.cmd, key.mods.shift) {
         (Key::Tab, false, false) if s.typed_tab() => return true,

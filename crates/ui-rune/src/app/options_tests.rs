@@ -152,3 +152,38 @@ fn what_was_typed_is_kept_when_the_tool_changes_and_a_list_closes_on_a_pick() {
     assert_eq!(height.as_deref(), Some("2700"), "what was typed comes back with the tool");
     assert!(!app.bar_choose("nope", 0) && !app.bar_check("nope", true));
 }
+
+#[test]
+fn space_turns_the_door_about_to_be_placed_and_a_placed_one_starts_the_next_as_the_bar_has_it() {
+    let mut app = App::sample();
+    assert!(!app.flip_opening(), "no door or window in hand");
+    app.set_tool("door");
+    assert!(app.flip_opening() && app.bar.settings.flip);
+    assert!(app.flip_opening() && !app.bar.settings.flip, "Space again turns it back");
+    assert!(app.flip_opening());
+    let before = app.session.model.elements.len();
+    click(&mut app, P2(3000.0, 0.0));
+    if app.message.is_none() {
+        assert_eq!(app.session.model.elements.len(), before + 1, "a door on the wall");
+        assert!(!app.bar.settings.flip, "the flip went with the door placed");
+    }
+    app.set_tool("door");
+    app.set_tool("window");
+    assert!(app.flip_opening());
+}
+
+#[test]
+fn a_roof_or_floor_made_is_what_is_selected_and_the_tool_goes_back_to_modify() {
+    let mut app = App::sample();
+    app.set_tool("floor");
+    click(&mut app, A);
+    if app.message.is_none() {
+        assert!(app.tool.is_none(), "the tool is put down");
+        assert_eq!(app.selection.len(), 1, "what the click made is selected");
+        let made = app.selection[0];
+        assert_eq!(app.session.model.elements.get(made).map(|e| e.category()), Some("floor"));
+        assert_eq!(app.palette.panel.subject, Subject::Element(made));
+    } else {
+        assert_eq!(app.tool, Some("floor"), "a refusal leaves the tool in hand");
+    }
+}

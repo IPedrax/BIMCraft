@@ -10,10 +10,19 @@ use crate::app::App;
 use crate::lang::t;
 use crate::tooling;
 
-/// The shapes a wall is drawn with by clicks alone: Fillet Arc, Pick Lines and Pick Faces pick elements, and Tangent End Arc needs
-/// the wall before it, none of which this window has yet.
-pub const SHAPES: [Shape; 7] =
-    [Shape::Line, Shape::Rectangle, Shape::Inscribed, Shape::Circumscribed, Shape::Circle, Shape::Arc, Shape::CentreArc];
+/// The shapes a wall is drawn with by clicks, and the two that pick what is there (Pick Lines, Pick Faces). Fillet Arc needs two lines and a
+/// radius, and Tangent End Arc the wall before it: neither is here yet.
+pub const SHAPES: [Shape; 9] = [
+    Shape::Line,
+    Shape::Rectangle,
+    Shape::Inscribed,
+    Shape::Circumscribed,
+    Shape::Circle,
+    Shape::Arc,
+    Shape::CentreArc,
+    Shape::PickLines,
+    Shape::PickFaces,
+];
 
 /// Whether the tool in hand takes one of [`SHAPES`].
 pub fn takes_shape(s: &App) -> bool {

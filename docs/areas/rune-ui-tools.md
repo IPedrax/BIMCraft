@@ -119,16 +119,19 @@ of the view there), and a dimension's locks and equality.
   roof (slope, overhang, gable) and the stair (height, location line, offset, width), with the type the Type Selector picks for the tool.
   Not on it yet: a ramp's, a footing's and a dormer's options, a stair's riser, tread and winders, the curtain wall's type, and a family tool
   still places the first type of the first family unless one is picked.
-- **What egui adds to a click:** a door's or window's centring on its stretch of wall and its hand and facing (the click sends the
-  point only; the core finds the wall), a wall's fixed-grid ends, a stair's or ramp's path with landings and winders (a stair is its
-  two ends), the rafters of a roof by extrusion, dormers, shafts, slope arrows, mass, detail lines, grids, reference planes, sections
-  and cameras, the Revit shortcuts (they wait for the shared registry), and a shape's own typed numbers (a rectangle's width and height, a circle's radius: `draw::typed`). The typed length and angle of a line is built
+- **What egui adds to a click**, built: a door's or window's centring on its stretch of wall when the click is near its middle, the hinge of
+  a door that swings and the face of a door or window (the pointer's side of the wall, turned by Space for the next one), and the roof or floor a
+  click made selected with the tool put down (`options.rs`, `Settings::feed`; `app/tooling.rs`). Still egui's alone: a wall's fixed-grid ends, a stair's
+  or ramp's path with landings and winders (a stair is its two ends), the rafters of a roof by extrusion, dormers, shafts, slope arrows,
+  mass, detail lines, grids, reference planes, sections and cameras, the Revit shortcuts (they wait for the shared registry), and a shape's own
+  typed numbers (a rectangle's width and height, a circle's radius: `draw::typed`). The typed length and angle of a line is built
   ([the palette doc](rune-ui-properties.md#round-2-the-typed-length-and-angle)).
-- **Shapes that pick elements**: Fillet Arc, Pick Lines, Pick Faces and Tangent End Arc (which needs the wall before it) are left out
-  of the bar; the machine refuses them if a test sets them. Open-ended shapes (spline, polyline) are not walls in the core.
-- **Previews of what stands:** a ghost of the wall's thickness, of a door in its wall, of a column. The pointer's glyph and the
-  chain are all a point tool shows.
-- **After a click:** egui selects the roof or floor it made and goes back to Modify; here the tool stays in hand and nothing is selected.
+- **Shapes that pick elements**: Pick Lines (the line of the element clicked, beside it by the shape options' offset) and Pick Faces (a mass's face,
+  `wall_by_face`) are on the shape bar. Pick Lines takes a wall by its location line, where egui takes the face under the pointer. Left out: Fillet
+  Arc (two lines and a radius, which egui builds by trimming what is there) and Tangent End Arc (which needs the wall before it); the machine
+  refuses them if a test sets them. Open-ended shapes (spline, polyline) are not walls in the core.
+- **Previews of what stands:** a ghost of the wall's thickness, of a door in its wall, of a column are not built. The pointer's glyph, the chain
+  and a shape's ghost are all a tool shows.
 - **A drag with a tool in hand** still pans on the primary button (the placeholder of stage 3, slice 4); a Modify tool takes the two
   clicks of a base point and a destination, not the press, drag and release of one.
 
