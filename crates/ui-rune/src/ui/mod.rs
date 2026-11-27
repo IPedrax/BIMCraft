@@ -14,6 +14,7 @@ use crate::profile::Profile;
 
 mod browser;
 mod canvas;
+mod choose;
 mod dialog;
 mod draw_bar;
 mod export;
@@ -96,6 +97,8 @@ pub fn poll(s: &mut App, clock: f64, tx: &mut Tx) -> bool {
     if let Some(due) = s.typed_in() {
         tx.wake_after(Duration::from_secs_f64(due));
     }
+    // What a menu item asked of the clipboard (a copy to put on it, a paste to read from it).
+    clipboard_io(s, tx);
     drawn || made || typed
 }
 
@@ -126,6 +129,15 @@ pub fn on_key(s: &mut App, key: &KeyEvent, tx: &mut Tx) -> bool {
         (Key::Delete, false, _) => {
             s.delete_selection();
         }
+        // The clipboard's keys are not in the shortcuts' table (egui has them as the system's copy, cut and paste events): what a field
+        // has focused takes them itself, and these are for the model's selection.
+        (Key::Command('c'), true, false) => {
+            s.copy_selection(false);
+        }
+        (Key::Command('x'), true, false) => {
+            s.copy_selection(true);
+        }
+        (Key::Command('v'), true, false) => s.paste_request(crate::clip::ctrl_v(s.view)),
         (Key::Command('z'), true, false) => {
             s.undo();
         }
@@ -141,7 +153,19 @@ pub fn on_key(s: &mut App, key: &KeyEvent, tx: &mut Tx) -> bool {
         }
         _ => return chord(s, key, tx),
     }
+    clipboard_io(s, tx);
     true
+}
+
+/// What the clipboard asks of the system: the text a copy left goes on the system clipboard, and a paste asked for reads it and places what
+/// it holds (this window's own copy where it holds none of BIMCraft's). A key and a menu item only ask; the `Tx` is here.
+fn clipboard_io(s: &mut App, tx: &mut Tx) {
+    if let Some(text) = s.take_clip_out() {
+        tx.copy(text);
+    }
+    if let Some(mode) = s.take_paste_asked() {
+        tx.read_clipboard(move |s: &mut App, content, _| s.pasted_text(Some(content.text().to_string()), mode));
+    }
 }
 
 /// A chord the core's table names: the ones that ask for a file are the top bar's and the export's, the rest the app's own.
@@ -159,6 +183,8 @@ fn chord(s: &mut App, key: &KeyEvent, tx: &mut Tx) -> bool {
     true
 }
 
+#[cfg(test)]
+mod clip_tests;
 #[cfg(test)]
 mod dialog_tests;
 #[cfg(test)]

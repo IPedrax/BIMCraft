@@ -51,6 +51,8 @@ pub struct Dialogs {
     pub settings: Option<super::settings::SettingsDialog>,
     /// Type Properties (`app/types.rs`).
     pub types: Option<super::types::TypeDialog>,
+    /// The levels or views a paste goes onto, being ticked (`app/clip.rs`).
+    pub choose: Option<crate::clip::Choose>,
     /// Where an edit goes when its field is gone (a stale handler): never read.
     pub scratch: TextEdit,
 }
@@ -58,12 +60,12 @@ pub struct Dialogs {
 impl Dialogs {
     /// A dialog is open: the keys and pointer are its, not the plan's.
     pub fn any(&self) -> bool {
-        self.form.is_some() || self.find.is_some() || self.settings.is_some() || self.types.is_some()
+        self.form.is_some() || self.find.is_some() || self.settings.is_some() || self.types.is_some() || self.choose.is_some()
     }
 
     /// Closes every dialog: they are open one at a time.
     pub fn clear(&mut self) {
-        (self.form, self.find, self.settings, self.types) = (None, None, None, None);
+        (self.form, self.find, self.settings, self.types, self.choose) = (None, None, None, None, None);
     }
 
     /// The box of field `i` of the open Type Properties.

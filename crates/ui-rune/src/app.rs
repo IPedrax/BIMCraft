@@ -25,6 +25,7 @@ use crate::tooling::Tooling;
 use crate::views::{self, ViewKind, Views};
 
 mod browser;
+mod clip;
 pub mod dialogs;
 mod export;
 mod keys;
@@ -117,6 +118,12 @@ pub struct App {
     pub cut: Cut,
     /// The letters of a shortcut typed and waiting for the next (`keys.rs`).
     pub typed: Typed,
+    /// The text of the last copy, for a system clipboard that has lost it; what waits to go on the system clipboard; the paste asked of
+    /// it; and a paste by hand waiting for its click, as the text it will paste (`app/clip.rs`).
+    pub clip_text: Option<String>,
+    pub clip_out: Option<String>,
+    pub paste_asked: Option<crate::clip::Mode>,
+    pub pasting: Option<String>,
     /// The 3D view shown, with the thread that makes its picture (`orbit.rs`).
     pub orbit: Orbit,
     /// The sheet shown, with the thread that paints it (`paper.rs`).
@@ -202,6 +209,10 @@ impl App {
             views_find: TextEdit::new(""),
             cut: Cut::new(),
             typed: Typed::default(),
+            clip_text: None,
+            clip_out: None,
+            paste_asked: None,
+            pasting: None,
             orbit: Orbit::new(),
             paper: Paper::new(),
             grid: Grid::default(),
@@ -411,6 +422,10 @@ impl App {
         if std::mem::take(&mut self.region) {
             return true;
         }
+        // A paste waiting for its click is given up first.
+        if self.pasting.take().is_some() {
+            return true;
+        }
         // An open list of the palette closes first.
         if self.palette.open.take().is_some() {
             return true;
@@ -610,7 +625,9 @@ impl App {
                 self.zoom_region(from, to);
             }
         } else if (to.0 - from.0).hypot(to.1 - from.1) <= CLICK {
-            if self.tool.is_some() {
+            if self.paste_at(to) {
+                // The click put the paste down.
+            } else if self.tool.is_some() {
                 let before = self.picked.len();
                 self.pick_point(to.0, to.1);
                 if self.picked.len() > before {

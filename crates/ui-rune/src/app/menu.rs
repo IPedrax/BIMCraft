@@ -6,6 +6,7 @@ use bimcraft_core::model::Element;
 use serde_json::json;
 
 use super::App;
+use crate::clip::Mode;
 use crate::context::{self, Action, Item};
 
 impl App {
@@ -49,6 +50,17 @@ impl App {
             Action::ZoomToFit => self.zoom_fit(),
             Action::ZoomIn => self.zoom_by(1.25),
             Action::ZoomOut => self.zoom_by(0.8),
+            Action::Cut => {
+                self.copy_selection(true);
+            }
+            Action::CopyToClipboard => {
+                self.copy_selection(false);
+            }
+            Action::Paste => self.paste_request(crate::clip::ctrl_v(self.view)),
+            Action::PasteSamePlace => self.paste_request(Mode::SamePlace),
+            Action::PasteCurrentView => self.paste_request(Mode::CurrentView),
+            Action::PasteSelectedLevels => self.paste_request(Mode::SelectedLevels),
+            Action::PasteSelectedViews => self.paste_request(Mode::SelectedViews),
             // The browser's items were done above.
             _ => {}
         }

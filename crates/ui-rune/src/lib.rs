@@ -11,6 +11,7 @@
 
 pub mod app;
 pub mod camera;
+pub mod clip;
 pub mod context;
 pub mod finder;
 pub mod forms;

@@ -24,7 +24,20 @@ fn enabled(groups: &[Vec<Item>], action: Action) -> Option<bool> {
 fn with_nothing_selected_and_no_tool_it_offers_cancel_disabled_and_the_zoom() {
     let (app, _) = house();
     let g = items(&app.session.model, &[], false, false);
-    assert_eq!(actions(&g), [Action::Cancel, Action::ZoomToFit, Action::ZoomIn, Action::ZoomOut]);
+    assert_eq!(
+        actions(&g),
+        [
+            Action::Cancel,
+            Action::Paste,
+            Action::PasteSamePlace,
+            Action::PasteCurrentView,
+            Action::PasteSelectedLevels,
+            Action::PasteSelectedViews,
+            Action::ZoomToFit,
+            Action::ZoomIn,
+            Action::ZoomOut
+        ]
+    );
     assert_eq!(enabled(&g, Action::Cancel), Some(false), "nothing to cancel");
     assert_eq!(enabled(&items(&app.session.model, &[], true, false), Action::Cancel), Some(true), "a tool in hand is cancelled");
 }

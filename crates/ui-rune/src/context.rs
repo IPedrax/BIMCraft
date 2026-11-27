@@ -1,7 +1,7 @@
 //! The right-click menu of the plan, as data: which items the moment offers (`items`) and what each is (`Action`); `App::act` does it.
 //! After the egui window's `context.rs` (`context_items` and `Action`), which is the reference and stays as it is: this is a copy of
 //! the part that is about the plan and the selection, to fold into the core when egui adopts it. Not here yet from that menu: Edit
-//! Family and Type, Select All Instances, the groups' items, Hide and Override Graphics (a view's), Reload CAD, and the clipboard's.
+//! Family and Type, Select All Instances, the groups' items, Hide and Override Graphics (a view's) and Reload CAD.
 
 use bimcraft_core::ids::Id;
 use bimcraft_core::model::{Element, Model};
@@ -25,6 +25,15 @@ pub enum Action {
     ZoomToFit,
     ZoomIn,
     ZoomOut,
+    /// The selection to the clipboard, taken away or kept; and the clipboard pasted, as Ctrl+V does in the view shown, or Aligned
+    /// (`app/clip.rs`).
+    Cut,
+    CopyToClipboard,
+    Paste,
+    PasteSamePlace,
+    PasteCurrentView,
+    PasteSelectedLevels,
+    PasteSelectedViews,
     // The Project Browser's menu (`browser_items`): what a right click over a row, a group, a type or a linked model offers.
     /// A copy of a plan view, a copy with the annotation of the plan, a view that follows it (`duplicate_view`).
     Duplicate,
@@ -76,6 +85,13 @@ impl Action {
             Action::ZoomToFit => "Zoom to Fit",
             Action::ZoomIn => "Zoom In",
             Action::ZoomOut => "Zoom Out",
+            Action::Cut => "Cut to Clipboard",
+            Action::CopyToClipboard => "Copy to Clipboard",
+            Action::Paste => "Paste",
+            Action::PasteSamePlace => "Paste Aligned to Same Place",
+            Action::PasteCurrentView => "Paste Aligned to Current View",
+            Action::PasteSelectedLevels => "Paste Aligned to Selected Levels\u{2026}",
+            Action::PasteSelectedViews => "Paste Aligned to Selected Views\u{2026}",
             Action::Duplicate => "Duplicate",
             Action::DuplicateDetailing => "Duplicate with Detailing",
             Action::DuplicateDependent => "Duplicate as Dependent",
@@ -95,6 +111,9 @@ impl Action {
             Action::Finish => Some("Enter"),
             Action::Cancel => Some("Esc"),
             Action::Delete => Some("Del"),
+            Action::Cut => Some("Ctrl+X"),
+            Action::CopyToClipboard => Some("Ctrl+C"),
+            Action::Paste => Some("Ctrl+V"),
             _ => None,
         }
     }
@@ -124,6 +143,7 @@ pub fn items(m: &Model, selection: &[Id], tool: bool, finishable: bool) -> Vec<V
     let mut groups = vec![first];
     if some {
         groups.push(vec![Item::new(Action::Delete, true)]);
+        groups.push(vec![Item::new(Action::Cut, true), Item::new(Action::CopyToClipboard, true)]);
         // What is pinned stays where it is until it is unpinned.
         let pinned: Vec<bool> = selection.iter().map(|id| m.is_pinned(*id)).collect();
         groups.push(vec![Item::new(Action::Pin, pinned.iter().any(|p| !*p)), Item::new(Action::Unpin, pinned.iter().any(|p| *p))]);
@@ -143,6 +163,14 @@ pub fn items(m: &Model, selection: &[Id], tool: bool, finishable: bool) -> Vec<V
             ]);
         }
     }
+    // The clipboard pasted: as Ctrl+V does in the view shown, or Aligned.
+    groups.push(vec![
+        Item::new(Action::Paste, true),
+        Item::new(Action::PasteSamePlace, true),
+        Item::new(Action::PasteCurrentView, true),
+        Item::new(Action::PasteSelectedLevels, true),
+        Item::new(Action::PasteSelectedViews, true),
+    ]);
     groups.push(vec![Item::new(Action::ZoomToFit, true), Item::new(Action::ZoomIn, true), Item::new(Action::ZoomOut, true)]);
     groups
 }

@@ -17,6 +17,10 @@ impl App {
         (self.rubber, self.region) = (None, false);
         self.history.clear();
         self.picked.clear();
+        // A paste waiting for its click follows the pointer in a plan only.
+        if !crate::clip::by_hand(kind) {
+            self.pasting = None;
+        }
         self.view = kind;
         if let Some(level) = views::level_of(&self.session.model, kind) {
             self.level = Some(level);
