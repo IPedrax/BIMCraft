@@ -99,7 +99,7 @@ pub fn plan(s: &App) -> El {
                 .live_scale(&s.live_scale)
                 .children(layers),
         ],
-        CameraMode::Exact => layers.into(),
+        CameraMode::Exact => layers,
     };
     el().key("plan")
         .grow(1.0)

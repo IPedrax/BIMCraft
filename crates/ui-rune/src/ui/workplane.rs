@@ -34,6 +34,7 @@ pub fn dialog(s: &App, k: &Kit, layer: &mut Vec<El>) {
         .on_choose(|s: &mut App, picked: &str, _: &mut Tx| s.choose_work_plane(picked))
         .build(k, layer);
     let offset = TextInput::new(&d.offset)
+        .label(t("Offset").to_string())
         .width(None)
         .on_edit(|s: &mut App| s.dialogs.work_plane_edit())
         .on_submit(|s: &mut App, _: &mut Tx| {

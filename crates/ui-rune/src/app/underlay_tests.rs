@@ -18,11 +18,12 @@ fn with_a_plan_view() -> (App, u64, u64) {
 }
 
 #[test]
-fn a_plan_or_a_section_other_than_the_one_on_screen_can_go_under_it_and_nothing_else_can() {
+fn a_plan_other_than_the_one_on_screen_can_go_under_it_and_nothing_else_can() {
     let (mut app, level, copy) = with_a_plan_view();
     assert_eq!(app.underlay_target(), Some(level));
     assert!(app.can_underlay(ViewKind::Plan(copy)));
     assert!(!app.can_underlay(ViewKind::Plan(level)), "not under itself");
+    assert!(!app.can_underlay(ViewKind::Section(copy)), "a section is not drawn under a plan yet");
     assert!(
         !app.can_underlay(ViewKind::Schedule("wall")) && !app.can_underlay(ViewKind::Nothing) && !app.can_underlay(ViewKind::Ceiling(copy))
     );

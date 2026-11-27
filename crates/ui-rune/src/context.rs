@@ -62,7 +62,7 @@ pub enum Action {
     DeleteType,
     ReloadLink,
     RemoveLink,
-    /// The plan or section the row is, shown under the plan on screen (`underlay`); and the plan on screen's underlay taken off.
+    /// The plan the row is, shown under the plan on screen (`underlay`); and the plan on screen's underlay taken off.
     ShowAsUnderlay,
     RemoveUnderlay,
 }

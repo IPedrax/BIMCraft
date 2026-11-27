@@ -267,10 +267,10 @@ of the levels, or of the views like the ones the elements were copied from (`cli
 core left out is said. Not here: the copy following the pointer as a preview (egui draws it), by hand in a section, a sheet or a 3D view (a 3D view asks "same place or by hand on
 the work plane" in egui), Aligned to Picked Level, the Clipboard panel in the ribbon and the palette, and a family tab's clipboard.
 
-**Underlay.** Show as Underlay and Remove Underlay in the browser's menu over a plan or a section, put under the plan shown (`underlay` `{view, source}` or `source: null`; the engine
+**Underlay.** Show as Underlay and Remove Underlay in the browser's menu over a plan, put under the plan shown (`underlay` `{view, source}` or `source: null`; the engine
 keeps it with the view). The plan is drawn with it: `App::redraw` also draws the underlay through the camera (`bimcraft_core::underlay::draw`, one more drawing of the source while
-it is on, where egui uses a worker) and the plan canvas lays it under the plan's lines, or over them with `front`, as a layer of its own (`plan-underlay`). Plans only: the
-underlay of a section or an elevation is the core's and not drawn here. Not here: Properties' Underlay group and the Underlay Settings (colour, fills, annotation, front, Move and
+it is on, where egui uses a worker) and the plan canvas lays it under the plan's lines, or over them with `front`, as a layer of its own (`plan-underlay`). Plans only, as the plan shown and as the source: a section as the source would be a section picture drawn on the
+window's thread at every redraw (egui's is a worker's), and the underlay of a section or an elevation is not drawn here. Not here: Properties' Underlay group and the Underlay Settings (colour, fills, annotation, front, Move and
 Rotate by picks; the `underlay` command's form takes them all), and snapping to the underlay's lines.
 
 **Groups.** Create Group (GP), Ungroup (UG), Edit Group (GE) and, while one is edited, Add, Remove, Finish and Cancel, and Exclude (EM) and Restore All Excluded (RA), in the plan's menu where

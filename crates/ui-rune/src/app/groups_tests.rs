@@ -2,15 +2,18 @@
 
 use bimcraft_core::groups as core_groups;
 use bimcraft_core::model::Element;
+use serde_json::{Value, json};
 
 use crate::app::App;
 use crate::context::Action;
 
+/// Two walls of their own, away from the house's: the house's are held to its roof, which a group of them would leave outside.
 fn two_walls() -> (App, Vec<u64>) {
     let mut app = App::sample();
-    let walls: Vec<u64> = app.session.model.elements.iter().filter_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).collect();
-    assert!(walls.len() >= 2, "the house has walls");
-    let pair = walls[..2].to_vec();
+    let made = app.session.execute("wall", &json!({"points": [[0, -9000], [4000, -9000], [4000, -5000]]}));
+    let pair: Vec<u64> = made.expect("two walls")["ids"].as_array().into_iter().flatten().filter_map(Value::as_u64).collect();
+    assert_eq!(pair.len(), 2, "a chain of two walls");
+    app.settle();
     app.select(pair.clone());
     (app, pair)
 }

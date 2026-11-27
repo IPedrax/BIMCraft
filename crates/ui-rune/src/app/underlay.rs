@@ -22,10 +22,11 @@ impl App {
         }
     }
 
-    /// Whether the view `kind` can be shown under the plan on screen: a plan or a section, not the plan itself.
+    /// Whether the view `kind` can be shown under the plan on screen: another plan. A section is the core's to draw as a picture, which is
+    /// a worker's job (egui's), not a redraw's.
     pub fn can_underlay(&self, kind: ViewKind) -> bool {
         let m = &self.session.model;
-        if !matches!(kind, ViewKind::Plan(_) | ViewKind::Section(_)) {
+        if !matches!(kind, ViewKind::Plan(_)) {
             return false;
         }
         let (Some(target), Some(source)) = (self.underlay_target(), views::element_id(m, kind)) else { return false };
