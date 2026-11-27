@@ -894,11 +894,40 @@ of a foot by design, so `field` is `length` there. A field that commits only whe
 keeps `length`.
 
 A project also keeps how many places lengths show (`Model::decimals`, the `units` command's `decimals`; Manage > Project Units
-lists them under the units): metres and feet 2 to 5, centimetres 1 to 4, millimetres 0 to 3, none for inches and feet-inches,
-which show sixteenths. None, and the fewest, are what drawings always showed. A change of units starts again at the fewest.
+lists them under the units): metres and feet 0 to 5, centimetres 0 to 4, millimetres 0 to 3; inches and feet-inches take 0 to 4 as fractions of an inch, from whole inches to sixteenths. None, and the fewest, are what drawings always showed. A change of units starts again at the fewest.
+Rounding (`Model::rounding`, the `units` command's `rounding`) comes first: 1 rounds to the nearest 10, 2 to 100, 3 to 1000 in the
+project's units. The Units page lists both as one choice: `10`, `100`, `1000` before the point, `1` whole, and `0.0`, `0.00`, …
+after it; the unit is left out of those labels when Show units in values is off. A field whose value the rounding would change
+says the value itself in mm, so a dialog that reads every field back keeps it.
 Code that has a `Model` shows a length with `Model::length`, `Model::with_unit` and `Model::field`, which pass the places on;
 `Units::length` is for code that has only the units (so it shows the fewest places), and dimension types and schedules take
 the places as `DimensionType::length` and `schedule::shown_to` do. Typed lengths are read exactly whatever places are shown.
+
+## Units in values and signs
+
+**Manage > Project Units** (UN) opens Revit's dialog: a discipline (Common), a table of the kinds of value a project shows —
+Length, Area, Volume, Angle, Slope, Mass Density, Time, Speed and Currency — each with the format it is shown in, and a format
+dialog of its own for the row picked. Length takes its units, rounding and places; Area and Volume take their own square and
+cubic units; Slope degrees or percent; Mass Density kg/m³ or lb/ft³; Time s, min or h; Speed m/s, km/h, ft/s or mph; Currency
+its symbol. Every change is the `units` command's (`area`, `volume`, `slope`, `mass_density`, `time`, `speed`, `currency`), kept
+with the project, and undone as one step. The dialog also holds the user's **Show units in values** (on by default) and the
+project's **Signs** (`Same signs throughout the project`, `Positive` Always or Never, `Zero` ±0 or 0); Settings has no Units
+page. A dimensional value in Properties, in a component's parameters and in Family Types then reads the number and its unit
+(`12.34 m²`, `3000 mm`, `30°`), and the field's name never carries the unit. A field still takes a value with or without it
+(`3000`, `3000 mm`, `3.00 m`, `12.5 m²`). `Show units` is the user's and lives in `settings.json` (`show_units`), never in the
+project, so saving and opening a project does not depend on it; signs are the project's. Each row's Format dialog has the
+format's own options (`Show units in values`, `Show + for positive values`, `Show ± for zero`, `Suppress trailing 0's`,
+`Suppress 0 feet`, `Use digit grouping`, `Suppress spaces`, `Unit symbol`), kept with the project; every quantity's format has its own
+`Rounding` (`10`, `100`, `1000`, `1`, `0.0`, `0.00`, …) and places after the point. The table's
+`Decimal symbol/digit grouping` picks how numbers write their point and grouped thousands (`123,456,789.00`, `123.456.789,00`,
+`123 456 789.00` or `123456789.00`). Fields that only commit on change keep `Units::field`'s exactness; read-only values use `Units::length_to` and the project's `Model::area` and
+`Model::volume_shown`.
+
+The same page has the project's **Signs**: **Same signs throughout the project** (off by default), and under it **Positive**
+(Always or Never) and **Zero** (±0 or 0). They are `Model::signs` in the project and the `units` command's `signs` parameter,
+because the printed drawing depends on them. With none, spot elevations keep `+3.600` and `±0.000`, level labels and fields stay
+unsigned; with one, `dims::signed` writes every value the same way, and rounding comes before the sign (`-0.0004` m at three places
+is `±0.000`). Changing them is one command, so Undo is one step.
 
 ## Benchmarking the window
 

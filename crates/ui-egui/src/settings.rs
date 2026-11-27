@@ -137,6 +137,8 @@ pub struct Settings {
     /// back as it was written), and the view's name in their corner, a working aid on the screen.
     pub origin_marker: bool,
     pub view_name: bool,
+    /// Show the unit beside a dimensional value in Properties, family parameters and Family Types.
+    pub show_units: bool,
     /// The shortcuts: chords and sequences, many per action, saved as a full effective set.
     pub shortcuts: crate::shortcuts::Config,
     /// The system's title bar rather than the window's own, where the window can draw its own.
@@ -202,6 +204,7 @@ impl Settings {
             "drag_on_selection": self.drag_on_selection,
             "origin_marker": self.origin_marker,
             "view_name": self.view_name,
+            "show_units": self.show_units,
             "shortcuts": self.shortcuts.to_json(),
             "system_title_bar": self.system_title_bar,
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
@@ -260,6 +263,7 @@ impl Settings {
             drag_on_selection: v["drag_on_selection"].as_bool().unwrap_or(base.drag_on_selection),
             origin_marker: v["origin_marker"].as_bool().unwrap_or(base.origin_marker),
             view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
+            show_units: v["show_units"].as_bool().unwrap_or(base.show_units),
             shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
             agents_listen: v["agents"]["listen"].as_bool().unwrap_or(base.agents_listen),
@@ -366,6 +370,83 @@ impl Page {
     }
 }
 
+/// A precision a project's lengths are shown at: rounded before the point (`Before`: 1 is 10, 2 is 100, 3 is 1000), whole
+/// (`Whole`), or so many places after it (`After`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Precision {
+    Before(u8),
+    Whole,
+    After(u8),
+}
+
+/// The choices the Decimal Places list offers in `units`: rounding to 10, 100 and 1000, whole ones, then each count of
+/// places after the point it allows.
+pub(crate) fn precision_choices(units: bimcraft_core::units::Units) -> Vec<Precision> {
+    use bimcraft_core::units::Units;
+    if matches!(units, Units::Inches | Units::FeetInches) {
+        // Fractions of an inch, from a whole inch to a sixteenth.
+        return (0..=4).map(Precision::After).collect();
+    }
+    let Some(range) = units.decimals() else { return Vec::new() };
+    let mut out = vec![Precision::Before(1), Precision::Before(2), Precision::Before(3), Precision::Whole];
+    out.extend((1..=*range.end()).map(Precision::After));
+    out
+}
+
+/// What a model holds now, as a [`Precision`]: its rounding before the point, whole ones, or its places after it.
+pub(crate) fn precision_of(m: &bimcraft_core::model::Model) -> Precision {
+    use bimcraft_core::units::Units;
+    if matches!(m.units, Units::Inches | Units::FeetInches) {
+        return Precision::After(m.decimals.unwrap_or(4).min(4));
+    }
+    if let Some(digits) = m.rounding {
+        Precision::Before(digits)
+    } else if m.decimals == Some(0) || (m.decimals.is_none() && m.units.fewest() == Some(0)) {
+        Precision::Whole
+    } else {
+        // A unit whose fewest places is 0 (millimetres) is whole; any other has at least one.
+        Precision::After(m.decimals.or_else(|| m.units.fewest()).unwrap_or(1).max(1))
+    }
+}
+
+/// A precision as the list writes it: `1000`, `100`, `10`, `1`, `0.0`, `0.00`, with the unit only when the user's setting
+/// shows units in values.
+pub(crate) fn precision_label(units: bimcraft_core::units::Units, show_units: bool, precision: Precision) -> String {
+    use bimcraft_core::units::Units;
+    if matches!(units, Units::Inches | Units::FeetInches)
+        && let Precision::After(digits) = precision
+    {
+        let number = if digits == 0 { "1".to_string() } else { format!("1/{}", 1u32 << digits.min(10)) };
+        return if show_units { format!("{number}\"") } else { number };
+    }
+    let number = match precision {
+        Precision::Before(digits) => format!("{}", 10u64.pow(u32::from(digits))),
+        Precision::Whole => "1".to_string(),
+        Precision::After(0) => "1".to_string(),
+        Precision::After(digits) => format!("0.{}", "0".repeat(usize::from(digits))),
+    };
+    if !show_units {
+        return number;
+    }
+    match units {
+        bimcraft_core::units::Units::Millimetres | bimcraft_core::units::Units::Centimetres | bimcraft_core::units::Units::Metres => {
+            format!("{number} {}", units.name())
+        }
+        bimcraft_core::units::Units::Feet => format!("{number}'"),
+        bimcraft_core::units::Units::Inches => format!("{number}\""),
+        bimcraft_core::units::Units::FeetInches => number,
+    }
+}
+
+/// The `units` command's parameters for a precision.
+pub(crate) fn precision_params(precision: Precision) -> Value {
+    match precision {
+        Precision::Before(digits) => json!({"rounding": digits, "decimals": 0}),
+        Precision::Whole => json!({"rounding": null, "decimals": 0}),
+        Precision::After(digits) => json!({"rounding": null, "decimals": digits}),
+    }
+}
+
 impl BimApp {
     /// Puts the interface in `lang`. The fonts with the hanzi and the Hangul are already behind the window's own, whatever it
     /// speaks. Chinese needs its glyphs: where the system has none the language stays as it was, and the status says why.
@@ -411,6 +492,7 @@ impl BimApp {
         self.compressed_save = kept.compressed_save;
         (self.select_by_face, self.drag_on_selection) = (kept.select_by_face, kept.drag_on_selection);
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
+        self.show_units = kept.show_units;
         self.shortcuts = crate::shortcuts::Shortcuts::from_config(&kept.shortcuts);
         self.shortcut_presets = kept.shortcuts.presets.clone();
         self.active_shortcut_preset = kept.shortcuts.active_preset.clone();
@@ -481,6 +563,7 @@ impl BimApp {
             drag_on_selection: self.drag_on_selection,
             origin_marker: self.show_origin,
             view_name: self.show_view_name,
+            show_units: self.show_units,
             shortcuts: self.shortcuts_config(),
             system_title_bar: self.system_title_bar,
             agents_listen: self.agents.listen,

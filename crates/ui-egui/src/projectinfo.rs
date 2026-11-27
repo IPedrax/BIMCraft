@@ -33,7 +33,7 @@ pub(crate) struct ProjectInfoDialog {
 }
 
 impl ProjectInfoDialog {
-    pub(crate) fn new(m: &Model) -> Self {
+    pub(crate) fn new(m: &Model, show_units: bool) -> Self {
         let info = m.project_info().map(|(_, i)| i.clone()).unwrap_or_default();
         let fields = FIELDS.iter().map(|(key, label)| (*key, *label, info.get(key).unwrap_or("").to_string())).collect();
         let params = m
@@ -47,7 +47,7 @@ impl ProjectInfoDialog {
                     kind: p.kind,
                     description: p.description.clone(),
                     read_only: p.read_only,
-                    typed: parameter_shown(p.kind, &v, m),
+                    typed: parameter_shown(p.kind, &v, m, show_units),
                     on: v.as_bool().unwrap_or(false),
                 }
             })
@@ -102,7 +102,7 @@ fn changes(was: &Value, now: &Value) -> Value {
 
 impl BimApp {
     pub(crate) fn open_project_info(&mut self) {
-        self.project_info_dialog = Some(ProjectInfoDialog::new(&self.session.model));
+        self.project_info_dialog = Some(ProjectInfoDialog::new(&self.session.model, self.show_units));
     }
 
     pub(crate) fn project_info_window(&mut self, ctx: &Context) {

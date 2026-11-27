@@ -653,7 +653,7 @@ fn draw_chain(p: &egui::Painter, m: &bimcraft_core::model::Model, points: &[P3],
         text = format!("{text}\nΔX {x}  ΔY {y}  ΔZ {z}");
     }
     if let Some(a) = area {
-        let (area, unit) = m.units.area(a);
+        let (area, unit) = m.area(a);
         text = format!("{text}\n{}", tf("Area {}", &[&format!("{area:.2} {unit}")]));
     } else if closed {
         text = format!("{text}\n{}", t("No area: its points aren't in one plane"));

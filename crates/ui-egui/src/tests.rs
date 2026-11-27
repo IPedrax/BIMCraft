@@ -1181,10 +1181,10 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     assert!(matches!(h.state().tool, Tool::Modify), "the dialog takes the keys while it's open");
     press(&mut h, "Close");
     assert!(h.query_by_label("Create Similar").is_none());
-    // UN, as Revit's opens Project Units: Manage's Project Units menu.
+    // UN, as Revit's opens Project Units: the dialog with every kind of value.
     shortcut(&mut h, "UN");
-    press(&mut h, "Feet and inches");
-    assert_eq!(h.state().session.model.units.name(), "ft-in");
+    assert!(h.state().project_units.is_some(), "Project Units opens");
+    press(&mut h, "OK");
     // Any two letters do something exactly when the dialog lists them, and it names each in every language.
     let listed: Vec<&str> = crate::shortcuts().iter().map(|(letters, _)| *letters).collect();
     // One key, one thing: a fixture's (the Plumbing Fixture's PX, once Explode's too) or an alias that a desktop key
@@ -2041,11 +2041,11 @@ fn properties_show_0_where_the_json_leaves_a_number_out_and_blank_where_it_is_no
     // A floor on its level, flat: its JSON leaves its offset and its slope out.
     h.state_mut().selection = floors[..1].to_vec();
     h.run();
-    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope")), ("0 mm".into(), "0°".into()));
+    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope")), ("0 mm".into(), "0.00°".into()));
     // Both floors: the slopes they share show, their offsets differ.
     h.state_mut().selection = floors;
     h.run();
-    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope")), (String::new(), "0°".into()));
+    assert_eq!((value(&h, "Height Offset From Level"), value(&h, "Slope")), (String::new(), "0.00°".into()));
     // None is not 0: a section with no far clip sees all there is, a plan's top is the level above (its View Range says so).
     h.state_mut().selection = ids(&h, "section");
     h.run();
@@ -3396,7 +3396,9 @@ fn project_units_show_and_read_lengths_in_feet_and_inches() {
     let mut h = app(BOX);
     press(&mut h, "Manage");
     press(&mut h, "Project Units");
-    press(&mut h, "Feet and inches");
+    assert!(h.state().project_units.is_some(), "the Project Units dialog is open");
+    press(&mut h, "OK");
+    h.state_mut().run("units", json!({"length": "ft-in"})).unwrap();
     assert_eq!(h.state().session.model.units.name(), "ft-in");
     // The bottom wall, 8000 mm long, in Properties; a base offset typed in feet and inches.
     click(&mut h, P2(4000.0, 0.0));
@@ -3409,24 +3411,38 @@ fn project_units_show_and_read_lengths_in_feet_and_inches() {
 
 #[test]
 fn project_units_offer_the_decimals_their_units_allow_and_the_project_keeps_the_one_picked() {
+    use egui::accesskit::Role;
     let mut h = app(&format!("{BOX}\nunits {}", json!({"length": "m"})));
     press(&mut h, "Manage");
     press(&mut h, "Project Units");
-    // Metres show two to five places, each as it writes a metre.
-    for sample in ["1.00 m", "1.000 m", "1.0000 m", "1.00000 m"] {
-        assert!(h.query_by_label(sample).is_some(), "no `{sample}`");
-    }
-    assert!(h.query_by_label("1.0 m").is_none() && h.query_by_label("1.000000 m").is_none());
-    press(&mut h, "1.000 m");
+    // The Length row's Format opens its own dialog: units and rounding.
+    press(&mut h, "1.24 m");
+    h.get_all_by_role(Role::ComboBox).find(|n| n.value().as_deref() == Some("0.00 m")).expect("the rounding list").click_accesskit();
+    h.run();
+    assert!(h.query_by_label("0.000 m").is_some(), "the places metres allow");
+    press(&mut h, "0.000 m");
+    press(&mut h, "OK");
+    press(&mut h, "OK");
     assert_eq!(h.state().session.model.decimals, Some(3), "{}", h.state().status.text);
     assert_eq!(h.state().session.model.length(3.0), "0.003");
-    // Inches and feet-inches show sixteenths: no places to pick.
+    // Inches and feet-inches show fractions of an inch, so their rounding list is 1" to 1/16".
     press(&mut h, "Manage");
     press(&mut h, "Project Units");
+    press(&mut h, "1.235 m");
+    h.get_all_by_role(Role::ComboBox).find(|n| n.value().as_deref() == Some("Metres")).expect("the units list").click_accesskit();
+    h.run();
     press(&mut h, "Feet and inches");
-    assert_eq!(h.state().session.model.decimals, None, "the places of one unit are not another's");
+    press(&mut h, "OK");
+    press(&mut h, "OK");
+    assert_eq!(h.state().session.model.units.name(), "ft-in");
+    press(&mut h, "Manage");
     press(&mut h, "Project Units");
-    assert!(h.query_by_label("Decimal places").is_none());
+    press(&mut h, "4'-1\"");
+    h.get_all_by_role(Role::ComboBox).find(|n| n.value().as_deref() == Some("1\"")).expect("the rounding list").click_accesskit();
+    h.run();
+    press(&mut h, "1/16\"");
+    assert!(h.get_all_by_role(Role::ComboBox).any(|n| n.value().as_deref() == Some("1/16\"")), "sixteenths picked");
+    press(&mut h, "Cancel");
 }
 
 #[test]
@@ -6172,7 +6188,6 @@ fn a_ribbon_tab_wider_than_the_window_folds_its_last_panels_to_buttons_that_list
 fn a_tool_with_choices_of_its_own_opens_them_from_a_panels_list() {
     let mut shut = Vec::new();
     for (tab, panel, tool, choice) in [
-        (Tab::Manage, "Settings", "Project Units", "Feet and inches"),
         (Tab::Manage, "Settings", "Project Language", "Español"),
         (Tab::Manage, "Settings", "Project Language", "Nederlands"),
         (Tab::View, "Create", "Schedules", "Schedule/Quantities…"),
@@ -6199,9 +6214,8 @@ fn a_tool_with_choices_of_its_own_opens_them_from_a_panels_list() {
     h.state_mut().tab = Tab::Manage;
     h.run();
     from_list(&mut h, "Settings", "Project Units");
-    press(&mut h, "Feet and inches");
-    assert_eq!(h.state().session.model.units, bimcraft_core::units::Units::FeetInches);
-    assert!(!egui::Popup::is_any_open(&h.ctx), "the list and its choices close with it");
+    assert!(h.state().project_units.is_some(), "Project Units opens its dialog");
+    press(&mut h, "OK");
 }
 
 /// Manage > Project Language lists every language a project can be in, Vietnamese among them as it is in Settings > Language
@@ -6235,11 +6249,8 @@ fn the_units_shortcut_gets_to_the_choices_in_the_smallest_window_too() {
             break;
         }
     }
-    assert!(egui::Popup::is_any_open(&h.ctx), "the panel's list is open");
-    let row = h.get_by_label("Project Units").rect().center();
-    click_at(&mut h, row);
-    press(&mut h, "Feet and inches");
-    assert_eq!(h.state().session.model.units, bimcraft_core::units::Units::FeetInches);
+    assert!(h.state().project_units.is_some(), "Project Units opens its dialog");
+    press(&mut h, "OK");
 }
 
 #[test]

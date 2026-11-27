@@ -443,7 +443,18 @@ fn table_of(m: &Model, view: Option<Id>, sc: &Schedule) -> Table {
     let kept = schedule::table_kept(m, view, sc).ok();
     let t = kept.as_deref().unwrap_or(&empty);
     let said = |c: &schedule::Column, v: &serde_json::Value| {
-        let s = schedule::shown_to(m.units, m.decimals, c.kind, v);
+        let s = schedule::shown_style(
+            schedule::Show {
+                units: m.units,
+                display: &m.display,
+                decimals: m.decimals,
+                show_units: true,
+                signs: m.signs,
+                rounding: m.rounding,
+            },
+            c.kind,
+            v,
+        );
         if v.is_boolean() { m.language.word(&s).to_string() } else { s }
     };
     let mut rows: Vec<Vec<String>> = t.rows.iter().map(|r| r.iter().zip(&t.columns).map(|(v, c)| said(c, v)).collect()).collect();
@@ -457,7 +468,14 @@ fn table_of(m: &Model, view: Option<Id>, sc: &Schedule) -> Table {
     let headings: Vec<String> = t
         .columns
         .iter()
-        .map(|c| schedule::heading(m.units, &schedule::Column { heading: m.language.word(&c.heading).to_string(), kind: c.kind }))
+        .map(|c| {
+            schedule::heading_shown(
+                m.units,
+                &m.display,
+                true,
+                &schedule::Column { heading: m.language.word(&c.heading).to_string(), kind: c.kind },
+            )
+        })
         .collect();
     let widths = (0..headings.len())
         .map(|i| {
@@ -867,8 +885,8 @@ mod tests {
         let (id, sc) =
             s.model.elements.iter().find_map(|(id, e)| if let Element::Schedule(sc) = e { Some((*id, sc.clone())) } else { None }).unwrap();
         let t = table_of(&s.model, Some(id), &sc);
-        assert_eq!(t.headings, ["Name", "Area (m²)", "Big"]);
-        assert_eq!(t.rows, [vec!["Living", "48.00", "Yes"], vec!["Total", "48.00", ""]]);
+        assert_eq!(t.headings, ["Name", "Area", "Big"]);
+        assert_eq!(t.rows, [vec!["Living", "48.00 m²", "Yes"], vec!["Total", "48.00 m²", ""]]);
         assert!(t.totals);
         // A row more than its rows and headings: its totals.
         let vp = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Viewport(_)).then_some(*id)).unwrap();
@@ -876,7 +894,7 @@ mod tests {
         assert_eq!(frame.height as f32, TITLE_ROW + 3.0 * ROW);
         s.execute("language", &serde_json::json!({"code": "pt"})).unwrap();
         let t = table_of(&s.model, Some(id), &sc);
-        assert_eq!((t.headings[1].as_str(), t.rows[0][2].as_str(), t.rows[1][0].as_str()), ("Área (m²)", "Sim", "Total"));
+        assert_eq!((t.headings[1].as_str(), t.rows[0][2].as_str(), t.rows[1][0].as_str()), ("Área", "Sim", "Total"));
     }
 
     #[test]

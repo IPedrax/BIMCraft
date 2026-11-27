@@ -18,6 +18,12 @@ its plan projection.
 | `plan_area_m2` | a floor's or a roof's net plan projection; a flat floor's equals its `area_m2` |
 | `volume_m3` | net volume, less openings and shafts |
 
+Areas and volumes are shown in the project's units: m² and m³ by default, or the square and cubic units chosen in Manage >
+Project Units (mm², cm², m², in², ft² and their cubes). In Properties and Family Types the unit stands beside the value when
+**Show units in values** is on (Manage > Project Units). A schedule puts each unit in one place only: with the setting on, in the
+cell (`12.34 m³`) and its heading plain (`Volume`); off, in the heading (`Volume (m³)`) and the cell a number. Exports keep
+numbers as numbers and the unit in the heading, so a sum still adds them.
+
 A wall's net side is its net volume over its thickness (`walls::prisms`, `walls::prism_volume`), so an arched window cuts
 its arc, not its bounding rectangle; a wall of no known thickness has no area (null, not 0) and `Model::warnings` says
 which wall and why. A ceiling is flat, so its surface and plan are the same. A roof whose faces can't be found has no

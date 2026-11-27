@@ -160,7 +160,8 @@ fn cancel_leaves_the_pattern_as_it_was() {
 #[test]
 fn type_properties_of_a_curtain_wall_opens_edit_pattern_and_shows_a_thickness_it_cant_type() {
     let mut h = app(LOOSE);
-    h.state_mut().type_dialog = Some(crate::properties::TypeDialog::new(&h.state().session.model, "wall", "Loose CW".into(), Vec::new()));
+    h.state_mut().type_dialog =
+        Some(crate::properties::TypeDialog::new(&h.state().session.model, "wall", "Loose CW".into(), Vec::new(), true));
     h.run();
     assert!(h.query_by_label("Up").is_none());
     press(&mut h, "Edit…");
@@ -180,7 +181,7 @@ fn type_properties_of_a_curtain_wall_opens_edit_pattern_and_shows_a_thickness_it
 #[test]
 fn the_browser_edits_a_panel_and_a_mullions_type() {
     let mut h = app("");
-    let mullion = crate::properties::TypeDialog::new(&h.state().session.model, "mullion", "50 x 150".into(), Vec::new());
+    let mullion = crate::properties::TypeDialog::new(&h.state().session.model, "mullion", "50 x 150".into(), Vec::new(), true);
     h.state_mut().type_dialog = Some(mullion);
     h.run();
     type_into(&mut h, "Y Offset", "20");
@@ -615,6 +616,7 @@ fn the_browser_lists_the_corner_mullion_family_and_its_rotation_is_typed_in_degr
         "cornermullion",
         bimcraft_core::curtain::RECTANGULAR_CORNER.to_string(),
         Vec::new(),
+        true,
     );
     let rotation = d.field_text("rotation").unwrap();
     assert_eq!(rotation.trim_end_matches('°').trim(), "45");
@@ -676,6 +678,7 @@ fn type_properties_of_a_corner_mullion_has_an_auto_rotation_box() {
         "cornermullion",
         bimcraft_core::curtain::SQUARE_CORNER.to_string(),
         Vec::new(),
+        true,
     );
     h.state_mut().type_dialog = Some(d);
     h.run();

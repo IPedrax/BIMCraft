@@ -11,7 +11,6 @@ use crate::properties::group_header;
 use bimcraft_core::family::{Group, Under, Val};
 use bimcraft_core::ids::Guid;
 use bimcraft_core::shared_parameters::SharedFile;
-use bimcraft_core::units::Units;
 use std::collections::BTreeSet;
 
 /// The widths of the table's columns: a parameter's name, its value, its formula and its lock.
@@ -196,7 +195,7 @@ impl FamilyEditor {
 }
 
 /// Family Types' body: the Type name row, the search, the table and the buttons under it, and what was refused.
-pub(super) fn body(ed: &mut FamilyEditor, ui: &mut Ui, base: &Arc<Model>, materials: &[String]) {
+pub(super) fn body(ed: &mut FamilyEditor, ui: &mut Ui, base: &Arc<Model>, materials: &[String], show_units: bool) {
     ed.picked = ed.picked.min(ed.types.len().saturating_sub(1));
     type_row(ed, ui);
     ui.add_space(4.0);
@@ -210,7 +209,8 @@ pub(super) fn body(ed: &mut FamilyEditor, ui: &mut Ui, base: &Arc<Model>, materi
         ui.label(RichText::new(note).color(pal().muted));
     }
     ui.separator();
-    table(ed, ui, base.units, materials);
+    let f = crate::properties::Format::of(base, show_units);
+    table(ed, ui, materials, &f);
     ui.add_space(6.0);
     buttons(ed, ui, base);
     // Said in the dialog: the view's would be under it. One line, the most pressing.
@@ -255,7 +255,7 @@ fn type_row(ed: &mut FamilyEditor, ui: &mut Ui) {
 }
 
 /// The table: a heading per group with rows, in the palette's order, each heading folding its rows.
-fn table(ed: &mut FamilyEditor, ui: &mut Ui, units: Units, materials: &[String]) {
+fn table(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String], f: &crate::properties::Format) {
     let values = ed.values();
     let h = ui.spacing().interact_size.y;
     Grid::new("family-types-head").num_columns(4).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
@@ -283,7 +283,7 @@ fn table(ed: &mut FamilyEditor, ui: &mut Ui, units: Units, materials: &[String])
         }
         Grid::new(("family-types-group", g.label())).num_columns(4).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
             for i in rows {
-                if row(ed, ui, i, &values, units, materials) {
+                if row(ed, ui, i, &values, materials, f) {
                     select = Some(ed.params[i].name.trim().to_string());
                 }
                 ui.end_row();
@@ -299,7 +299,15 @@ fn table(ed: &mut FamilyEditor, ui: &mut Ui, units: Units, materials: &[String])
 }
 
 /// Row `i` of the table: its name (selecting it), its value, its formula and its lock. Whether its name was clicked.
-fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, Val>, units: Units, materials: &[String]) -> bool {
+fn row(
+    ed: &mut FamilyEditor,
+    ui: &mut Ui,
+    i: usize,
+    values: &BTreeMap<String, Val>,
+    materials: &[String],
+    f: &crate::properties::Format,
+) -> bool {
+    let (units, show_units, display) = (f.units, f.show_units, &f.display);
     let h = ui.spacing().interact_size.y;
     let FamilyEditor { params, types, picked, types_dialog, dimensions, .. } = ed;
     let p = &mut params[i];
@@ -307,10 +315,7 @@ fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, V
     if p.derived {
         ui.label(name.clone());
         let mut text = match values.get(&name) {
-            Some(Val::Number(mm2)) => {
-                let (area, unit) = units.area(*mm2);
-                format!("{area:.2} {unit}")
-            }
+            Some(Val::Number(mm2)) => crate::properties::family_shown(Holds::Area, &format!("{mm2}"), units, show_units, display),
             _ => String::new(),
         };
         ui.add_enabled_ui(false, |ui| ui.add_sized([VALUE_W, h], TextEdit::singleline(&mut text).id_salt(&name)));
@@ -325,7 +330,7 @@ fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, V
     let value_label = format!("{} {name}", t("Parameter Value"));
     let own = (!p.instance && !p.original.reporting).then(|| types.get_mut(*picked)).flatten();
     match p.kind {
-        _ if !p.formula.trim().is_empty() => computed(ui, value_label, p.kind, values.get(&name), VALUE_W),
+        _ if !p.formula.trim().is_empty() => computed(ui, value_label, p.kind, values.get(&name), VALUE_W, f),
         Holds::FamilyType => {
             let mut none = t("(none)").to_string();
             let r = ui.add_enabled_ui(false, |ui| ui.add_sized([VALUE_W, h], TextEdit::singleline(&mut none)));
@@ -335,7 +340,8 @@ fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, V
             // A type parameter's value is the type's own, else the family's; an instance's, a reporting one's (no type sets
             // it) or one of a family with no type is the family's.
             let typed = own.as_ref().and_then(|(_, set)| set.get(&name).cloned());
-            let mut text = typed.clone().unwrap_or_else(|| p.value.clone());
+            let raw = typed.unwrap_or_else(|| p.value.clone());
+            let mut text = crate::properties::family_shown(kind, &raw, units, show_units, display);
             let before = text.clone();
             match kind {
                 Holds::YesNo => {
@@ -356,11 +362,13 @@ fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, V
                 _ => field(ui, value_label, &mut text, VALUE_W),
             }
             if text != before {
+                // The field reads in the project's units; the family stores mm, mm² or mm³.
+                let raw = crate::properties::family_typed(kind, &text, units).unwrap_or(text);
                 match own {
                     Some((_, set)) => {
-                        set.insert(name.clone(), text);
+                        set.insert(name.clone(), raw);
                     }
-                    None => p.value = text,
+                    None => p.value = raw,
                 }
             }
         }

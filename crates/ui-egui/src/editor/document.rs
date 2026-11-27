@@ -706,19 +706,10 @@ impl BimApp {
                     if big_button(ui, Icon::Materials, "Materials", self.materials_dialog.is_some(), tip).clicked() {
                         ed.ask.manage = Some(Manage::Materials);
                     }
-                    let now = self.session.model.units;
-                    let tip = tf("Project Units: how lengths show and read, the project's; now {}", &[&t(now.label()).to_lowercase()]);
-                    let r = big_button(ui, Icon::Units, msg!("Project Units"), false, &tip);
-                    let asked = self.open_units;
-                    let opened = ribbon::choices(ui, &r, asked, |ui| {
-                        ui.label(RichText::new(t(super::PROJECT_NOTE_UNITS)).small().color(pal().muted));
-                        for u in bimcraft_core::units::Units::ALL {
-                            if ui.selectable_label(u == now, t(u.label())).clicked() {
-                                self.run("units", json!({"length": u.name()}));
-                            }
-                        }
-                    });
-                    self.open_units &= !opened;
+                    let tip = msg!("Project Units: the units, rounding and places each kind of value is shown in, the project's");
+                    if big_button(ui, Icon::Units, msg!("Project Units"), self.project_units.is_some(), tip).clicked() {
+                        self.open_project_units();
+                    }
                     let tip = msg!("Purge Unused: take out of the family the parameters and nested families nothing in it uses");
                     if big_button(ui, Icon::Delete, "Purge Unused", ed.purging(), tip).clicked() {
                         ed.ask.manage = Some(Manage::Purge);
@@ -1814,7 +1805,7 @@ impl BimApp {
             "Project Units" => {
                 let Some(ed) = self.active_family_mut() else { return false };
                 ed.doc_tab = super::DocTab::Manage;
-                self.open_units = true;
+                self.open_project_units();
             }
             "Select Elements by Face" => self.select_by_face = !self.select_by_face,
             "Drag Elements on Selection" => self.drag_on_selection = !self.drag_on_selection,
@@ -2081,7 +2072,7 @@ impl BimApp {
         let width = if dialog == DocDialog::Category { 560.0 } else { 900.0 };
         let r = Modal::new(UiId::new(("family-dialog", dialog as u8)), title).width(width).show(ctx, |ui| {
             crate::popup::body(ui, |ui| match dialog {
-                DocDialog::Types => super::types_dialog::body(ed, ui, &base, materials),
+                DocDialog::Types => super::types_dialog::body(ed, ui, &base, materials, self.show_units),
                 DocDialog::Category => category_body(ed, ui, units),
             });
             crate::popup::footer(ui, |ui| {

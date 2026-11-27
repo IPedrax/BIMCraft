@@ -4559,6 +4559,17 @@ pub struct Model {
     /// fewest, which drawings have always shown. Inches and feet-inches show sixteenths and leave it out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decimals: Option<u8>,
+    /// The signs its drawings and fields write throughout the project; none, each kind of value keeps its own (spot
+    /// elevations `+3.600` and `±0.000`, level labels and fields unsigned).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signs: Option<crate::dims::Signs>,
+    /// How many places before the point lengths round to, in the project's units: 1 to the nearest 10, 2 to 100, 3 to 1000;
+    /// none, not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rounding: Option<u8>,
+    /// The units each other kind of value is shown in; none, what its length units imply.
+    #[serde(default, skip_serializing_if = "crate::units::DisplayUnits::is_default")]
+    pub display: crate::units::DisplayUnits,
     /// What its drawings say, and the names commands give.
     #[serde(default)]
     pub language: Language,
@@ -4742,26 +4753,69 @@ impl Model {
         self.standard.unwrap_or(crate::standards::TechnicalStandard::Iso)
     }
 
-    /// A length as the project shows it: in its units, to its decimals (`Units::length_to`).
+    /// A length rounded to the project's rounding, before the point: 1 to the nearest 10, 2 to 100, 3 to 1000 in its units.
+    pub fn rounded_mm(&self, mm: f64) -> f64 {
+        self.rounding.map_or(mm, |digits| self.units.round_before(mm, digits))
+    }
+
+    /// A length as the project shows it: in its units, to its decimals (`Units::length_to`), rounded as the project asks.
     pub fn length(&self, mm: f64) -> String {
-        self.units.length_to(mm, self.decimals)
+        self.units.length_to(self.rounded_mm(mm), self.decimals)
+    }
+
+    /// An area in mm² as the project shows it, with its unit.
+    pub fn area(&self, mm2: f64) -> (f64, &'static str) {
+        self.display.area(self.units, mm2)
+    }
+
+    /// A volume in mm³ as the project shows it, with its unit.
+    pub fn volume_shown(&self, mm3: f64) -> (f64, &'static str) {
+        self.display.volume(self.units, mm3)
+    }
+
+    /// An angle in degrees as the project shows it, with its unit.
+    pub fn angle(&self, degrees: f64) -> (f64, &'static str) {
+        self.display.angle(degrees)
+    }
+
+    /// A slope in degrees as the project shows it (degrees or percent), with its unit.
+    pub fn slope(&self, degrees: f64) -> (f64, &'static str) {
+        self.display.slope(degrees)
+    }
+
+    /// A mass density in kg/m³ as the project shows it, with its unit.
+    pub fn mass_density(&self, kg_m3: f64) -> (f64, &'static str) {
+        self.display.mass_density(kg_m3)
+    }
+
+    /// A time in seconds as the project shows it, with its unit.
+    pub fn time(&self, seconds: f64) -> (f64, &'static str) {
+        self.display.time(seconds)
+    }
+
+    /// A speed in m/s as the project shows it, with its unit.
+    pub fn speed(&self, m_s: f64) -> (f64, &'static str) {
+        self.display.speed(m_s)
     }
 
     /// [`Model::length`] with its unit, as the desktop labels one (`Units::with_unit_to`).
     pub fn with_unit(&self, mm: f64) -> String {
-        self.units.with_unit_to(mm, self.decimals)
+        self.units.with_unit_to(self.rounded_mm(mm), self.decimals)
     }
 
-    /// A length as a field to edit is filled, in the project's units and decimals (`Units::field_to`).
+    /// A length as a field to edit is filled, in the project's units and decimals (`Units::field_to`). When the project
+    /// rounds it to another length, the field says the value itself in mm, so a field left alone keeps it.
     pub fn field(&self, mm: f64) -> String {
-        self.units.field_to(mm, self.decimals)
+        let rounded = self.rounded_mm(mm);
+        if rounded != mm { format!("{} mm", (mm * 1e3).round() / 1e3 + 0.0) } else { self.units.field_to(mm, self.decimals) }
     }
 
     /// The places after the point its lengths show: what `decimals` asks, else the fewest its units allow; none for inches and
     /// feet-inches, which show sixteenths.
     pub fn decimals_shown(&self) -> Option<u8> {
         let range = self.units.decimals()?;
-        Some(self.decimals.map_or(*range.start(), |d| d.clamp(*range.start(), *range.end())))
+        let fewest = self.units.fewest()?;
+        Some(self.decimals.map_or(fewest, |d| d.clamp(*range.start(), *range.end())))
     }
 
     /// Adapt the project to `std`: sets the technical standard and optionally updates line weights,
@@ -4778,6 +4832,7 @@ impl Model {
             // The places of one unit are not another's.
             if self.units != was {
                 self.decimals = None;
+                self.rounding = None;
             }
         }
         if line_weights {
@@ -4815,6 +4870,9 @@ impl Model {
             uid: fresh_uid(),
             units: Units::default(),
             decimals: None,
+            signs: None,
+            rounding: None,
+            display: crate::units::DisplayUnits::default(),
             language,
             room_area: RoomArea::default(),
             halftone: crate::graphics::HALFTONE,
@@ -9452,6 +9510,32 @@ impl Model {
                 }
             }
         }
+        if let Some(r) = self.rounding
+            && !(1..=6).contains(&r)
+        {
+            return Err(format!("`rounding` is 1, 2 or 3 (to the nearest 10, 100 or 1000 in its units) up to 6, not {r}"));
+        }
+        if let Some(c) = &self.display.currency
+            && (c.chars().count() > 8 || c.contains(['\n', '\r']))
+        {
+            return Err("`currency` is one line of up to 8 characters, such as `$` or `€`".into());
+        }
+        for (name, o) in &self.display.formats {
+            if crate::units::Quantity::from_name(name).is_none() {
+                return Err(format!("`display.formats` names `{name}`, which is not a quantity"));
+            }
+            if let Some(s) = &o.symbol
+                && (s.chars().count() > 12 || s.contains(['\n', '\r']))
+            {
+                return Err(format!("`display.formats.{name}.symbol` is one line of up to 12 characters"));
+            }
+            if o.rounding.is_some_and(|r| !(1..=6).contains(&r)) {
+                return Err(format!("`display.formats.{name}.rounding` is 1 to 6, before the point"));
+            }
+            if o.decimals.is_some_and(|d| d > 6) {
+                return Err(format!("`display.formats.{name}.decimals` is 0 to 6"));
+            }
+        }
         self.classification.check()?;
         if let Some(lw) = &self.line_weights {
             lw.check()?;
@@ -11554,6 +11638,9 @@ impl Model {
             uid,
             units,
             decimals,
+            signs,
+            rounding,
+            display,
             language,
             room_area,
             halftone,
@@ -11616,6 +11703,9 @@ impl Model {
             && *uid == o.uid
             && *units == o.units
             && *decimals == o.decimals
+            && *signs == o.signs
+            && *rounding == o.rounding
+            && *display == o.display
             && *language == o.language
             && *room_area == o.room_area
             && *halftone == o.halftone

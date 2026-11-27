@@ -131,7 +131,7 @@ fn a_roofs_framing_is_set_in_properties_and_its_type_edited_from_there() {
     assert_eq!(field(&h, roof, "framing"), json!("2x4 @ 406"), "{}", h.state().status.text);
     assert_eq!(h.state().session.history().len(), steps + 1);
     // A roof's rafters run up its slopes: no direction to give.
-    assert!(h.query_by_label("Joist Direction (°)").is_none());
+    assert!(h.query_by_label("Joist Direction").is_none());
     h.get_by_label("Edit Framing Type").scroll_to_me();
     h.run();
     press(&mut h, "Edit Framing Type");

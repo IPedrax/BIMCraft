@@ -6321,7 +6321,7 @@ impl BimApp {
             Tool::Room => {
                 if let Some(g) = geom::region_at(&m.room_lines(level, m.room_area), v.mm(q), TOL) {
                     p.add(Shape::closed_line(g.outer.iter().map(|pt| sc.screen(*pt)).collect(), stroke));
-                    let (area, unit) = m.units.area(g.area());
+                    let (area, unit) = m.area(g.area());
                     label(cursor, format!("{area:.2} {unit}"));
                 }
                 return;
@@ -6745,7 +6745,7 @@ impl BimApp {
                     for r in std::iter::once(&g.outer).chain(&g.holes) {
                         p.add(Shape::closed_line(r.iter().map(|pt| sc.screen(*pt)).collect(), stroke));
                     }
-                    let (area, unit) = m.units.area(g.area().abs());
+                    let (area, unit) = m.area(g.area().abs());
                     label(cursor, format!("{area:.2} {unit}"));
                 }
                 return;
@@ -6864,7 +6864,7 @@ impl BimApp {
                 base_offset: 0.0,
                 params: Default::default(),
             }));
-            let (area, unit) = m.units.area(geom::area(&ring).abs());
+            let (area, unit) = m.area(geom::area(&ring).abs());
             let middle = ring.iter().fold(P2(0.0, 0.0), |a, q| a + *q * (1.0 / ring.len() as f64));
             label(sc.screen(middle), format!("{area:.2} {unit}"));
         }

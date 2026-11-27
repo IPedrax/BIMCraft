@@ -24,7 +24,7 @@ use crate::rooms::Rooms;
 use crate::units::Units;
 
 /// What a field holds, and so how a schedule shows it and a formula reads it: text, a number, a
-/// length (mm), an area (m²), or yes or no (1 or 0 to a formula).
+/// length (mm), an area (m²), a volume (m³), or yes or no (1 or 0 to a formula).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
@@ -33,6 +33,7 @@ pub enum Kind {
     Number,
     Length,
     Area,
+    Volume,
     YesNo,
 }
 
@@ -233,7 +234,7 @@ const WEIGHT: Own = (msg!("Weight"), Kind::Number, From::Key("weight_kg"));
 /// The room a component stands in (`room_number`, `room_name` in its JSON), as Revit's Room: Number and Room: Name.
 const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
 const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
-const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
+const VOLUME: Own = (msg!("Volume"), Kind::Volume, From::Key("volume_m3"));
 /// The formwork a member needs (`quantities`), in m², the weight of the bars it hosts, kg, and that over its volume, kg/m³.
 const FORMWORK: Own = (msg!("Formwork Area"), Kind::Area, From::Key("formwork_m2"));
 const REBAR_WEIGHT: Own = (msg!("Rebar Weight"), Kind::Number, From::Key("rebar_kg"));
@@ -784,7 +785,8 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
             n,
             match p.kind {
                 ParameterKind::Text => Kind::Text,
-                ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => Kind::Number,
+                ParameterKind::Number | ParameterKind::Integer | ParameterKind::Angle => Kind::Number,
+                ParameterKind::Volume => Kind::Volume,
                 ParameterKind::Length => Kind::Length,
                 ParameterKind::Area => Kind::Area,
                 ParameterKind::YesNo => Kind::YesNo,
@@ -797,7 +799,8 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
                 &p.name,
                 match p.kind {
                     family::Kind::Length => Kind::Length,
-                    family::Kind::Number | family::Kind::Angle | family::Kind::Integer | family::Kind::Volume => Kind::Number,
+                    family::Kind::Number | family::Kind::Angle | family::Kind::Integer => Kind::Number,
+                    family::Kind::Volume => Kind::Volume,
                     family::Kind::Area => Kind::Area,
                     family::Kind::YesNo => Kind::YesNo,
                     family::Kind::Material | family::Kind::Text | family::Kind::Url | family::Kind::FamilyType => Kind::Text,
@@ -856,6 +859,7 @@ pub(crate) fn holding(k: Kind) -> &'static str {
         Kind::Number => "a number",
         Kind::Length => "a length",
         Kind::Area => "an area",
+        Kind::Volume => "a volume",
         Kind::YesNo => "yes or no",
     }
 }
@@ -938,8 +942,9 @@ pub fn check(m: &Model, sc: &Schedule) -> Result<(), String> {
     for name in formulas.keys() {
         follow(name, &formulas, &kinds, &unknown, &mut Vec::new(), &mut depths)?;
     }
-    if let Some(f) =
-        fields.iter().find(|f| f.total && !matches!(kinds.get(f.name.as_str()), Some(Kind::Number | Kind::Length | Kind::Area)))
+    if let Some(f) = fields
+        .iter()
+        .find(|f| f.total && !matches!(kinds.get(f.name.as_str()), Some(Kind::Number | Kind::Length | Kind::Area | Kind::Volume)))
     {
         let k = kinds.get(f.name.as_str()).copied().unwrap_or_default();
         return Err(format!("field `{}` holds {}; only numbers, lengths and areas total", f.name, holding(k)));
@@ -974,13 +979,16 @@ fn check_filter(flt: &Filter, kinds: &BTreeMap<&str, Kind>, unknown: &dyn Fn(&st
         },
         (_, Kind::Text, Value::String(s)) => s.chars().count() <= MAX_TEXT,
         (_, Kind::YesNo, Value::Bool(_)) => true,
-        (_, Kind::Number | Kind::Length | Kind::Area, v) => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
+        (_, Kind::Number | Kind::Length | Kind::Area | Kind::Volume, v) => {
+            v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD)
+        }
         _ => false,
     };
     if !fits {
         let unit = match k {
             Kind::Length => " (mm)",
             Kind::Area => " (m²)",
+            Kind::Volume => " (m³)",
             _ => "",
         };
         return Err(format!("{who}: it compares {}{unit}, not {}", holding(k), flt.value));
@@ -1518,26 +1526,77 @@ fn keeps(f: &Filter, v: &Value, kind: Option<Kind>, units: Units) -> bool {
 pub fn heading(units: Units, column: &Column) -> String {
     match column.kind {
         Kind::Area => format!(ui_msg!("{} ({})"), column.heading, units.area(0.0).1),
+        Kind::Volume => format!(ui_msg!("{} ({})"), column.heading, units.volume(0.0).1),
         _ => column.heading.clone(),
     }
 }
 
+/// A column's heading as a schedule shows it when its cells carry their units: no unit in the heading, so no unit twice.
+pub fn heading_shown(units: Units, display: &crate::units::DisplayUnits, show_units: bool, column: &Column) -> String {
+    if show_units {
+        column.heading.clone()
+    } else {
+        match column.kind {
+            Kind::Area => format!(ui_msg!("{} ({})"), column.heading, display.area(units, 0.0).1),
+            Kind::Volume => format!(ui_msg!("{} ({})"), column.heading, display.volume(units, 0.0).1),
+            _ => column.heading.clone(),
+        }
+    }
+}
+
 /// A cell as a schedule shows it in `units`: lengths as drawings show them; areas to two places,
-/// so the column lines up; other numbers to the hundredth; yes or no as `Yes` or `No` (English,
-/// for the caller to say in its language); text as it is.
+/// so the column lines up; volumes to three; other numbers to the hundredth; yes or no as `Yes`
+/// or `No` (English, for the caller to say in its language); text as it is.
 pub fn shown(units: Units, kind: Kind, v: &Value) -> String {
     shown_to(units, None, kind, v)
 }
 
 /// [`shown`] with lengths to a project's `decimals` (`Model::decimals`).
 pub fn shown_to(units: Units, decimals: Option<u8>, kind: Kind, v: &Value) -> String {
+    let display = crate::units::DisplayUnits::default();
+    shown_style(Show { units, display: &display, decimals, show_units: false, signs: None, rounding: None }, kind, v)
+}
+
+/// The look a schedule's cells are shown in: the project's units and the user's settings.
+#[derive(Clone, Copy)]
+pub struct Show<'a> {
+    pub units: Units,
+    pub display: &'a crate::units::DisplayUnits,
+    pub decimals: Option<u8>,
+    pub show_units: bool,
+    pub signs: Option<crate::dims::Signs>,
+    pub rounding: Option<u8>,
+}
+
+/// [`shown_to`] as the user's setting and the project's signs have it: with the unit beside the number, and lengths signed.
+pub fn shown_style(show: Show<'_>, kind: Kind, v: &Value) -> String {
+    let Show { units, display, decimals, show_units, signs, rounding } = show;
+    let signed = |x: f64| {
+        let x = rounding.map_or(x, |digits| units.round_before(x, digits));
+        match signs {
+            Some(signs) if show_units => crate::dims::signed(units, decimals, signs, x),
+            _ => units.length_to(x, decimals),
+        }
+    };
     match (v, kind) {
         (Value::Bool(b), _) => (if *b { msg!("Yes") } else { msg!("No") }).into(),
-        (v, Kind::Length) if v.is_number() => units.length_to(v.as_f64().unwrap_or(0.0), decimals),
-        (v, Kind::Area) if v.is_number() => format!("{:.2}", units.area(v.as_f64().unwrap_or(0.0) * 1e6).0),
+        (v, Kind::Length) if v.is_number() => signed(v.as_f64().unwrap_or(0.0)),
+        (v, Kind::Area) if v.is_number() => {
+            let (area, unit) = display.area(units, v.as_f64().unwrap_or(0.0) * 1e6);
+            with_unit(format!("{area:.2}"), unit, show_units)
+        }
+        (v, Kind::Volume) if v.is_number() => {
+            let (volume, unit) = display.volume(units, v.as_f64().unwrap_or(0.0) * 1e9);
+            with_unit(format!("{volume:.3}"), unit, show_units)
+        }
         (Value::Number(x), _) => format!("{}", (x.as_f64().unwrap_or(0.0) * 100.0).round() / 100.0 + 0.0),
         (v, _) => cell(v),
     }
+}
+
+/// `number` with its unit, when the setting shows units in values.
+fn with_unit(number: String, unit: &str, show_units: bool) -> String {
+    if show_units { format!("{number} {unit}") } else { number }
 }
 
 /// Two texts in the order `natural` puts them.

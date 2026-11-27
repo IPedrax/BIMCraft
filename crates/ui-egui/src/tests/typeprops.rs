@@ -120,7 +120,7 @@ type {"category": "window", "name": "Slot", "width": 1200.0, "height": 1003.0, "
 
 /// Type Properties of the `category` type `name`, open.
 fn open_type_of(h: &mut Harness<BimApp>, category: &'static str, name: &str) {
-    h.state_mut().type_dialog = Some(crate::properties::TypeDialog::new(&h.state().session.model, category, name.into(), Vec::new()));
+    h.state_mut().type_dialog = Some(crate::properties::TypeDialog::new(&h.state().session.model, category, name.into(), Vec::new(), true));
     h.run();
 }
 

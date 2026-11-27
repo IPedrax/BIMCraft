@@ -59,7 +59,7 @@ fn new_rename_and_delete_type_and_the_last_type_stays() {
     ok_over(&mut h);
     assert_eq!(value(&h, "Type Name").as_deref(), Some("C"), "the new type is the one shown");
     assert_eq!(draft(&h).types["C"]["Width"], json!(600.0), "a copy of B's values");
-    assert_eq!(value(&h, "Parameter Value Width").as_deref(), Some("600"));
+    assert_eq!(value(&h, "Parameter Value Width").as_deref(), Some("600 mm"));
     // A name taken is refused, in the Name dialog.
     press(&mut h, "Rename Type");
     type_into(&mut h, "Name:", "A");
@@ -134,7 +134,7 @@ fn an_instance_parameter_is_marked_default_and_its_value_is_the_familys() {
 fn a_row_a_formula_drives_is_greyed_and_shows_what_it_comes_to() {
     let h = opened();
     assert!(disabled(&h, "Parameter Value Height"));
-    assert_eq!(value(&h, "Parameter Value Height").as_deref(), Some("500"));
+    assert_eq!(value(&h, "Parameter Value Height").as_deref(), Some("500 mm"));
     assert!(!disabled(&h, "Parameter Value Width"));
     assert_eq!(value(&h, "Parameter Formula Height").as_deref(), Some("Width / 2"));
 }
@@ -147,7 +147,7 @@ fn a_good_formula_is_taken_and_a_bad_one_refused_with_t9s_words_in_the_dialog() 
     assert!(open(&h));
     assert_eq!(draft(&h).parameters[2].formula.as_deref(), Some("Width * 0.5"));
     assert!(disabled(&h, "Parameter Value Depth"), "driven now");
-    assert_eq!(value(&h, "Parameter Value Depth").as_deref(), Some("500"));
+    assert_eq!(value(&h, "Parameter Value Depth").as_deref(), Some("500 mm"));
     // A name the family hasn't: OK is refused, the dialog stays and says why.
     type_into(&mut h, "Parameter Formula Depth", "Nope + 1");
     press(&mut h, "OK");

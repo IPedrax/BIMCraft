@@ -6236,7 +6236,7 @@ fn a_schedule_of_mass_floors_gives_each_masses_floor_area_and_volume_on_each_lev
     // Another, 7.5 m tall from Level 1: its last floor is only half a storey of volume.
     run(&mut s, "mass", json!({"boundary": [[20000, 0], [25000, 0], [25000, 4000], [20000, 4000]], "height": 7500, "name": "Annex"}));
     let r = run(&mut s, "schedule", json!({"category": "massfloors", "sort": ["Mass", "Level"]}));
-    assert_eq!(r["columns"], json!(["Mass", "Level", "Area (m²)", "Perimeter", "Volume"]));
+    assert_eq!(r["columns"], json!(["Mass", "Level", "Area (m²)", "Perimeter", "Volume (m³)"]));
     assert_eq!(
         r["rows"],
         json!([
