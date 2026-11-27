@@ -65,6 +65,8 @@ cap = "0.1"
 sysinfo = { version = "0.40", default-features = false, features = ["system"] }
 # Text notes' fonts: IBM Plex's outlines, its weights too, read from the files the packages carry.
 ttf-parser = { version = "0.25", features = ["gvar-alloc"] }
+# Point clouds: LAZ, LAS compressed by LASzip, and COPC, read by the laz crate (Apache-2.0), without its `parallel` feature.
+laz = { version = "0.14", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

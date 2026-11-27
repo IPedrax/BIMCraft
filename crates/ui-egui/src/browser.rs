@@ -121,6 +121,10 @@ enum Act {
     SelectInstances(serde_json::Value, crate::context::InstanceScope),
     /// Show as Underlay: the view under the one on screen.
     Underlay(Id),
+    /// Find Index…: the file of a scan's index, picked in the system's dialog.
+    FindIndex(String),
+    /// Delete Index…: asked first.
+    DeleteIndex(String),
 }
 
 /// An entry of the tree, or a group of them.
@@ -426,6 +430,8 @@ impl BimApp {
                 self.type_dialog = Some(crate::properties::TypeDialog::new(&self.session.model, category, name, Vec::new()));
             }
             Some(Act::SelectInstances(params, scope)) => self.select_instances(params, scope),
+            Some(Act::FindIndex(cloud)) => self.find_cloud_index(ui.ctx(), cloud),
+            Some(Act::DeleteIndex(cloud)) => self.index_delete = Some(cloud),
             _ => {}
         }
     }
@@ -534,6 +540,11 @@ impl BimApp {
             && let Some(links) = self.links_node()
         {
             out.push(links);
+        }
+        if tab == Tab::All
+            && let Some(scans) = self.scans_node()
+        {
+            out.push(scans);
         }
         // Keeping to one kind, its group is all there is: what's in it, without it.
         if tab != Tab::All && out.len() == 1 {
@@ -725,6 +736,51 @@ impl BimApp {
         (!kids.is_empty()).then(|| {
             Node::group(t("Linked Models"), true, kids).with_menu(vec![(msg!("Reload All"), Act::Do("reload", serde_json::json!({})))])
         })
+    }
+
+    /// The project's point clouds, each a scan it holds: picking one selects where it's placed. A scan whose index can't be
+    /// read says so, with a menu to find its file or read it again; none where the project holds no scans.
+    fn scans_node(&self) -> Option<Node> {
+        let m = &self.session.model;
+        if m.clouds.is_empty() {
+            return None;
+        }
+        // The first element placing each scan.
+        let placed: Vec<(Id, String)> = m
+            .rare("pointcloud")
+            .into_iter()
+            .filter_map(|id| match m.elements.get(id) {
+                Some(Element::PointCloud(pc)) => Some((id, pc.cloud.clone())),
+                _ => None,
+            })
+            .collect();
+        // A Co-Work guest's copy never opens the host's files: its scans draw the top the project holds.
+        let guest = self.guest();
+        let kids: Vec<Node> = m
+            .clouds
+            .iter()
+            .filter_map(|(name, scan)| {
+                let label = match (scan.index().is_some(), scan.indexed()) {
+                    (true, None) if guest => tf("{} (index on host)", &[name]),
+                    (true, None) => tf("{} (index missing)", &[name]),
+                    (true, Some(ix)) => format!("{name} ({})", bimcraft_core::memory::bytes(ix.source().size())),
+                    (false, _) => name.clone(),
+                };
+                let id = placed.iter().find(|(_, c)| c == name).map(|(id, _)| *id)?;
+                let leaf = Node::leaf(&label, Act::Select(id), self.selection == [id]);
+                Some(if scan.index().is_some() && !guest {
+                    leaf.with_menu(vec![
+                        (msg!("Find Index…"), Act::FindIndex(name.clone())),
+                        (msg!("Reload Index"), Act::Do("point_cloud_index", serde_json::json!({"cloud": name}))),
+                        (msg!("Rebuild Index"), Act::Do("point_cloud_index", serde_json::json!({"cloud": name, "action": "rebuild"}))),
+                        (msg!("Delete Index…"), Act::DeleteIndex(name.clone())),
+                    ])
+                } else {
+                    leaf
+                })
+            })
+            .collect();
+        (!kids.is_empty()).then(|| Node::group(t("Point Clouds"), true, kids))
     }
 
     /// The sheets, by number, as "A101 - Name".
