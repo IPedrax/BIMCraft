@@ -405,15 +405,33 @@ other_files(
         "point_cloud",
         ui_msg!("Point Cloud"),
         &[],
-        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?} brings in a laser scan (`path`: \
-         PTS, XYZ, PLY, LAS or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
+        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?, index?, index_dir?} brings in a laser scan (`path`: \
+         PTS, XYZ, PLY, LAS, LAZ (COPC too) or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
          cm, m (the default), in or ft; one point kept in each cube `spacing` mm wide) or places one the project holds again \
          (`cloud`, its name), as an element: its middle on `at` (the origin) and its foot on the level, or with `origin: file` \
          where its file's coordinates put it, or with `origin: shared` where they put it as the map's, by the active location \
          (`acquire: true` first sets the location from the scan, so its middle lands at the origin and its foot on 0); `offset` raises its middle over the level, `angle` turns it. Returns its id, the \
-         scan's name, the points kept and read, and where its middle was in the file",
+         scan's name, the points kept and read, and where its middle was in the file. `index` (true, false or auto, the \
+         default: files over 64 MB) keeps every point in an index, `<project>_clouds/<name>.bimpc` beside the project (beside \
+         the scan's file, `<name>.bimpc`, while the project has no file), which views read as they zoom in; the project holds only the top of it (and `spacing` isn't used), \
+         and the reply gives the index's `path`, `count` and `bytes`. `index_dir` puts it in that folder instead, named \
+         `<project>_<name>.bimpc` (a desktop's Point cloud index folder)",
         point_cloud,
         Files::Read,
+    ),
+    edit_files(
+        "point_cloud_index",
+        ui_msg!("Point Cloud Index"),
+        &[],
+        "{cloud?, action?: find | info | rebuild | delete | purge, path?} looks after a scan's index (a `.bimpc` file, which \
+         `point_cloud` with `index` built). `find` (the default) finds it again: at `path`, which must be that scan's index, or \
+         where the project holds it, where it was built, or in the session's folder of indexes; a view draws the top of a scan \
+         whose index can't be found, and `open` lists those as `clouds_not_indexed`. `info` says where it is, its bytes and \
+         points, whether it's open and the files it came from. `rebuild` builds it again from those files. `delete` deletes \
+         its file and lets it go, the scan keeping the top the project holds. `purge` (no `cloud`) deletes the indexes in the \
+         project's folder of them (`<project>_clouds/`) and the session's that no scan names, what deleted scans left behind",
+        point_cloud_index,
+        Files::Write,
     ),
     edit_files(
         "import_mesh",
@@ -3363,7 +3381,7 @@ other_files(
         &[],
         "{view?: a level's, section's or elevation's name or id, or {3D} (the lowest level's plan unless given), hide?: [category, \
          …], show?: […], hide_elements?: [id, …], show_elements?: […], categories?: {category: override | null, …}, elements?: \
-         {id: override | null, …}, filters?: [{filter, hidden?, projection?, cut?, halftone?, transparency?}, …], phase?: name \
+         {id: override | null, …}, filters?: [{filter, hidden?, projection?, cut?, halftone?, transparency?, scan?}, …], phase?: name \
          | null, phase_filter?: name | null, options?: {set: option | null, …}, layers?: {drawing: [layer, …] | null, …}, template?: name | null, \
          background_grid?: {visible?, main?: {enabled?, color?: [r,g,b], pen?: 0..16}, sub?: {enabled?, color?, pen?}, \
          spacing?: [X,Y] (mm), divisions?: [X,Y] (1..1000), rotation?: degrees (-360..360)} | null, \
@@ -3382,7 +3400,7 @@ other_files(
          framing plan does); under roofs, `roofframing` (a framed roof's rafters, ridge boards, rims, trimmers, headers and \
          blocking in 3D and sections: hidden, its structure layer is drawn whole) and `roofframingline` (their outlines, \
          dashed, in a plan of the roof's level: hidden unless the plan shows them). An \
-         override is {hidden?, projection?: style, cut?: style, halftone?, transparency?}, a style {color?, weight? (a pen, \
+         override is {hidden?, projection?: style, cut?: style, halftone?, transparency?, scan?}, a style {color?, weight? (a pen, \
          0 to 16: 0 a hairline, the thinnest line the screen or printer draws at any scale; 1 to 16 widths on paper from 0.10 to \
          4 mm, 4 being 0.18 mm and 10 0.35 mm, a cut wall's outline), dash? (solid, dashed, dotted), fill?, foreground?, background?}, a colour [r, g, b] or \"#rrggbb\". \
          Foreground and background override independent pattern layers: {pattern: a fill pattern's name | null, color?: [r,g,b]}; \
@@ -3391,7 +3409,12 @@ other_files(
          Projection is what a plan sees below its cut plane, a section beyond its line and the annotation; cut is what the view \
          cuts; `fill` is the cut's poché, or a 3D view's surface; in a 3D view, and in what a section sees beyond its line, a \
          projection's `color` is the colour of the edges (weight and dash draw lines, and those are vectors). Halftone draws it \
-         halfway to the paper; transparency (percent) sees through it in a 3D view. Halftone and transparency only add: a \
+         halfway to the paper; transparency (percent) sees through it in a 3D view. `scan` is what a point cloud's points are \
+         coloured by (Revit's Color Mode): {by: normal | elevation | intensity, low?, high?}, `normal` their own colours, \
+         `elevation` their height from blue through green to red between `low` and `high` (mm in the model; the scan's own foot \
+         and head where not given), `intensity` through the same colours by each point's rank among the scan's intensities, \
+         weakest blue and strongest red (a scan whose file had none keeps its colours); a projection `fill` still colours them \
+         all one colour over it. Halftone and transparency only add: a \
          filter or an element can lighten what its category doesn't, not take its category's away. Overrides merge into the last (null takes a field or the override away); an element's own \
          beats the filters applied (the first prevailing), which beat the category's. `filters` replaces the list applied; \
          `template` follows a view template; `reset` takes away all of the view's own settings. `phase` is the phase the view \
@@ -3428,10 +3451,12 @@ other_files(
         ui_msg!("Graphic Display Options"),
         &["GD"],
         "{view?: a 3D view's name or id ({3D} unless given), edges?: true | false, silhouette?: px, ambient_shadows?: true | \
-         false} how a 3D view draws its edges and shadows, as Revit's Graphic Display Options: `edges`, the lines where its \
+         false, eye_dome?: true | false} how a 3D view draws its edges and shadows, as Revit's Graphic Display Options: `edges`, the lines where its \
          surfaces meet in Shaded (on unless turned off; Hidden Line always draws them); `silhouette`, an outline that many \
          pixels wide (a whole number, 0 to 10; 0, the default, for none) round what stands in front of what is further off \
-         or of nothing; `ambient_shadows`, soft shadows where faces meet inside a corner (off unless turned on). What is left \
+         or of nothing; `ambient_shadows`, soft shadows where faces meet inside a corner (off unless turned on); `eye_dome`, \
+         eye-dome lighting, a point cloud's points darkened where they lie behind their neighbours, so its edges read (on \
+         unless turned off). What is left \
          out stays as it was; with none of them it only says what the view has",
         graphic_display_options,
     ),
@@ -5246,6 +5271,10 @@ fn with_links(s: &mut Session, mut reply: Value) -> Value {
     if !failed.is_empty() {
         reply["cads_not_reloaded"] = json!(failed);
     }
+    let failed = reindex(s);
+    if !failed.is_empty() {
+        reply["clouds_not_indexed"] = json!(failed);
+    }
     reply
 }
 
@@ -7032,6 +7061,7 @@ fn graphic_display_options(s: &mut Session, p: &Value) -> R {
         edges: on("edges")?.unwrap_or(was.edges),
         silhouette: silhouette.unwrap_or(was.silhouette),
         ambient_shadows: on("ambient_shadows")?.unwrap_or(was.ambient_shadows),
+        eye_dome: on("eye_dome")?.unwrap_or(was.eye_dome),
     };
     let view = match view {
         None if now != was => Some(s.model_mut().insert(Element::View3D(View3D::default_view()))),
@@ -7042,7 +7072,10 @@ fn graphic_display_options(s: &mut Session, p: &Value) -> R {
     {
         v3.display = now;
     }
-    Ok(json!({"view": view, "edges": now.edges, "silhouette": now.silhouette, "ambient_shadows": now.ambient_shadows}))
+    Ok(json!({
+        "view": view, "edges": now.edges, "silhouette": now.silhouette, "ambient_shadows": now.ambient_shadows,
+        "eye_dome": now.eye_dome,
+    }))
 }
 
 /// `[x, y, z]` in mm within the model's limits, or an error naming `key`.
@@ -10274,6 +10307,42 @@ fn level(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": id, "name": name}))
 }
 
+/// The scan `point_cloud` reads from `paths`, each of its `formats`, with `options`: its files read a piece at a time, held to
+/// the memory the machine has free for the `cap` points the project leaves, and several stations merged at `spacing`. The outer
+/// error is a file's; the inner, the scan's.
+fn read_scan(
+    s: &Session,
+    c: &str,
+    paths: &[PathBuf],
+    formats: Vec<cloud::Format>,
+    options: &cloud::Options,
+    cap: usize,
+    spacing: f64,
+) -> Result<Result<Cloud, String>, String> {
+    // A file is read a piece at a time, so what it takes is the points kept: held to what the machine has free.
+    let budget = match memory::Budget::start(cap as u64, cloud::KEPT_BYTES) {
+        Ok(b) => b.unwrap_or_else(memory::Budget::none),
+        Err(e) => return Err(bad(c, e)),
+    }
+    .watched(s.progress.clone());
+    let mut scans = Vec::with_capacity(paths.len());
+    for (path, format) in paths.iter().zip(formats) {
+        let len = std::fs::metadata(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+        if len > cloud::MAX_BYTES {
+            return Err(bad(c, format!("{} is too large ({len} bytes; up to {})", path.display(), cloud::MAX_BYTES)));
+        }
+        // Not buffered here: each reader buffers what it reads in a row, and LAS steps over what it doesn't keep.
+        let mut file = std::fs::File::open(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let read = cloud::read_from(&mut file, format, options, Some(&budget)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let source = path.file_name().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+        scans.push((source, read));
+    }
+    Ok(match <[_; 1]>::try_from(scans) {
+        Ok([(source, read)]) => Cloud::new(&source, read),
+        Err(scans) => cloud::merge(scans, spacing).and_then(|(read, stations)| Cloud::of_stations(read, stations)),
+    })
+}
+
 /// A scan brought in from a file, or one the project holds, placed: its middle on `at` and its foot on the level, or where the
 /// file's coordinates put it.
 fn point_cloud(s: &mut Session, p: &Value) -> R {
@@ -10301,7 +10370,7 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         (None, None) => {
             return Err(bad(
                 c,
-                "give `path`, a scan file (PTS, XYZ, PLY, LAS or E57) to bring in, or `cloud`, the name of a scan the project holds",
+                "give `path`, a scan file (PTS, XYZ, PLY, LAS, LAZ or E57) to bring in, or `cloud`, the name of a scan the project holds",
             ));
         }
         (None, Some(n)) => {
@@ -10354,21 +10423,20 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("the project's scans hold {held} points, all it may; delete the point clouds of one first")));
             }
             let options = cloud::Options { scale, spacing, cap: (cap / paths.len()).max(1) };
-            let mut scans = Vec::with_capacity(paths.len());
-            for (path, format) in paths.iter().zip(formats) {
-                let len = std::fs::metadata(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
-                if len > cloud::MAX_BYTES as u64 {
-                    return Err(bad(c, format!("{} is too large ({len} bytes; up to {})", path.display(), cloud::MAX_BYTES)));
-                }
-                let bytes = std::fs::read(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-                let read = cloud::read(&bytes, format, &options).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-                let source = path.file_name().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
-                scans.push((source, read));
-            }
-            let scan = match <[_; 1]>::try_from(scans) {
-                Ok([(source, read)]) => Cloud::new(&source, read),
-                Err(scans) => cloud::merge(scans, spacing).and_then(|(read, stations)| Cloud::of_stations(read, stations)),
+            let index = index_at(s, c, p, &paths, &name)?;
+            let key = cloud::ScanKey { paths: paths.clone(), index: index.clone(), scale, spacing, cap };
+            // A scan read ahead for these files and options is what reading them would give (`Session::read_scan_ahead`).
+            let ahead = s.scan_read.take().filter(|r| r.key == key).map(|r| r.cloud);
+            let scan = match (ahead, &index) {
+                (Some(cloud), _) => Ok(cloud),
+                (None, Some(out)) => index_scan(s, c, &paths, formats, scale, out, cap)?,
+                (None, None) => read_scan(s, c, &paths, formats, &options, cap, spacing)?,
             };
+            if s.keep_scan
+                && let Ok(cloud) = &scan
+            {
+                s.scan_read = Some(cloud::ScanRead { key, cloud: cloud.clone() });
+            }
             (name, scan.map_err(|e| bad(c, e))?, true)
         }
     };
@@ -10425,6 +10493,7 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         angle = a;
     }
     let (points, read) = (scan.len(), scan.read());
+    let index = scan.index().map(|r| json!({"path": r.path, "count": r.count, "bytes": scan.indexed().map(|i| i.source().size())}));
     let m = s.model_mut();
     if new {
         m.clouds.insert(name.clone(), scan);
@@ -10433,7 +10502,211 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         m.set_site(site);
     }
     let id = m.insert(Element::PointCloud(PointCloud { cloud: name.clone(), level, at, offset, angle }));
-    Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin, "acquired": acquired}))
+    Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin, "acquired": acquired, "index": index}))
+}
+
+/// Files of more than this many bytes are indexed when `point_cloud`'s `index` is `auto`: a few million points, past which a
+/// project's share of them is a thin one.
+const INDEX_BYTES: u64 = 64 << 20;
+
+/// Where `point_cloud` builds the index of scan `name` from `paths`, as its `index` says, if it does: in a folder beside the
+/// project named for it, `house_clouds/` beside `house.bimc`; beside the scan's first file while the project has none.
+fn index_at(s: &Session, c: &str, p: &Value, paths: &[PathBuf], name: &str) -> Result<Option<PathBuf>, String> {
+    let wanted = match p.get("index") {
+        None | Some(Value::Null) => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(Value::String(a)) if a == "auto" => None,
+        Some(v) => return Err(bad(c, format!("`index` is true, false or \"auto\", not {v}"))),
+    };
+    let big = || paths.iter().map(|p| std::fs::metadata(p).map_or(0, |m| m.len())).sum::<u64>() > INDEX_BYTES;
+    if !wanted.unwrap_or_else(big) {
+        return Ok(None);
+    }
+    // A session that may only read writes no index.
+    if s.read_only.is_some() {
+        return match wanted {
+            Some(true) => Err(bad(c, "this session may only read, so it builds no index: give `index: false`")),
+            _ => Ok(None),
+        };
+    }
+    let file: String = name.chars().map(|ch| if ch.is_alphanumeric() || " -_.()".contains(ch) { ch } else { '_' }).collect();
+    let stem = s.path.as_ref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned());
+    // In the folder of indexes given (the user's), named for the project and the scan; else beside the project, or, while it
+    // has no file, beside the scan's first file: the project holds its full path then.
+    let cache = match string(c, p, "index_dir")? {
+        Some(d) => Some(PathBuf::from(d)),
+        None => s.index_dir.clone(),
+    };
+    if let Some(dir) = cache {
+        let named = stem.map_or_else(|| file.trim().to_string(), |stem| format!("{stem}_{}", file.trim()));
+        return Ok(Some(dir.join(format!("{named}.bimpc"))));
+    }
+    let dir = match (&s.path, &stem) {
+        (Some(project), Some(stem)) => {
+            project.parent().map_or_else(|| PathBuf::from(format!("{stem}_clouds")), |d| d.join(format!("{stem}_clouds")))
+        }
+        _ => paths.first().and_then(|p| p.parent()).map_or_else(PathBuf::new, std::path::Path::to_path_buf),
+    };
+    Ok(Some(dir.join(format!("{}.bimpc", file.trim()))))
+}
+
+/// The scan `point_cloud` brings in from `paths` with every point of it in an index at `out`, and the top of the index, no
+/// more than `cap` points, in the project. The outer error is a file's; the inner, the scan's.
+fn index_scan(
+    s: &Session,
+    c: &str,
+    paths: &[PathBuf],
+    formats: Vec<cloud::Format>,
+    scale: f64,
+    out: &std::path::Path,
+    cap: usize,
+) -> Result<Result<Cloud, String>, String> {
+    let budget = match memory::Budget::start(cap as u64, cloud::KEPT_BYTES) {
+        Ok(b) => b.unwrap_or_else(memory::Budget::none),
+        Err(e) => return Err(bad(c, e)),
+    }
+    .watched(s.progress.clone());
+    let mut files = Vec::with_capacity(paths.len());
+    for (path, format) in paths.iter().zip(formats) {
+        let file = std::fs::File::open(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let name = path.file_name().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+        files.push(cloud::index::Input { name, src: Box::new(file), format });
+    }
+    if let Some(dir) = out.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| bad(c, format!("the folder {} can't be made: {e}", dir.display())))?;
+    }
+    let built = cloud::index::build(files, scale, out, cap, Some(&budget), s.progress.clone()).map_err(|e| bad(c, e))?;
+    let r = cloud::lod::IndexRef {
+        path: cloud::lod::relative(out, s.path.as_deref()),
+        full: Some(out.to_string_lossy().into_owned()),
+        id: cloud::lod::IndexRef::id_of(built.id),
+        count: built.count,
+        levels: built.levels,
+        sources: paths.iter().map(|p| std::path::absolute(p).unwrap_or_else(|_| p.clone()).to_string_lossy().into_owned()).collect(),
+        scale: Some(scale),
+    };
+    let scan = match <[_; 1]>::try_from(built.stations) {
+        Ok([one]) => Cloud::new(&one.source, built.scan),
+        Err(stations) => Cloud::of_stations(built.scan, stations),
+    };
+    Ok(scan.and_then(|cloud| cloud.with_index(r)).and_then(|cloud| {
+        cloud.attach(s.path.as_deref())?;
+        Ok(cloud)
+    }))
+}
+
+/// A scan's index: found again (at `path`, or where the project holds it), said of, built again from its files, or deleted;
+/// or the project's indexes no scan names, deleted.
+fn point_cloud_index(s: &mut Session, p: &Value) -> R {
+    let c = "point_cloud_index";
+    let action = string(c, p, "action")?.unwrap_or_else(|| "find".into());
+    if action == "purge" {
+        return purge_indexes(s, c);
+    }
+    let name = string(c, p, "cloud")?.ok_or_else(|| bad(c, "give `cloud`, the name of a scan the project holds"))?;
+    let scan = s.model.clouds.get(&name).cloned().ok_or_else(|| bad(c, format!("the project holds no scan named `{name}`")))?;
+    let r = scan.index().cloned().ok_or_else(|| bad(c, format!("scan `{name}` has no index: the project holds all its points")))?;
+    let found = || cloud::lod::places(&r, s.path.as_deref(), s.index_dir.as_deref()).into_iter().find(|at| at.is_file());
+    match action.as_str() {
+        "find" => {}
+        "info" => {
+            let at = scan.indexed().map(|i| i.path().to_path_buf()).or_else(found);
+            let bytes = at.as_ref().and_then(|at| std::fs::metadata(at).ok()).map(|m| m.len());
+            return Ok(json!({
+                "cloud": name, "path": r.path, "found": at.map(|at| at.to_string_lossy().into_owned()), "bytes": bytes,
+                "count": r.count, "levels": r.levels, "open": scan.indexed().is_some(), "sources": r.sources,
+            }));
+        }
+        "delete" => {
+            if s.read_only.is_some() {
+                return Err(bad(c, "this session may only read, so it deletes no index"));
+            }
+            // An index open stays readable to whoever holds it (the file is deleted when the last one lets go of it).
+            let at = scan.indexed().map(|i| i.path().to_path_buf()).or_else(found);
+            if let Some(at) = &at {
+                std::fs::remove_file(at).map_err(|e| bad(c, format!("{} can't be deleted: {e}", at.display())))?;
+            }
+            s.model_mut().clouds.insert(name.clone(), scan.without_index());
+            return Ok(json!({"cloud": name, "deleted": at.map(|at| at.to_string_lossy().into_owned())}));
+        }
+        "rebuild" => {
+            if r.sources.is_empty() {
+                return Err(bad(c, format!("scan `{name}`'s index doesn't say what files it was built from: bring them in again")));
+            }
+            let paths: Vec<PathBuf> = r.sources.iter().map(PathBuf::from).collect();
+            let mut formats = Vec::with_capacity(paths.len());
+            for path in &paths {
+                let ext = path.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
+                formats.push(cloud::Format::from_extension(&ext).map_err(|e| bad(c, format!("{}: {e}", path.display())))?);
+            }
+            let out = found().unwrap_or_else(|| cloud::lod::resolve(&r.path, s.path.as_deref()));
+            let held: usize = s.model.clouds.iter().filter(|(n, _)| **n != name).map(|(_, c)| c.len()).sum();
+            let cap = cloud::MAX_CLOUD_POINTS.saturating_sub(held).max(1);
+            let scale = r.scale.unwrap_or(1000.0);
+            let built = index_scan(s, c, &paths, formats, scale, &out, cap)?.map_err(|e| bad(c, e))?;
+            let count = built.index().map_or(0, |r| r.count);
+            s.model_mut().clouds.insert(name.clone(), built);
+            return Ok(json!({"cloud": name, "path": out.to_string_lossy(), "count": count}));
+        }
+        a => return Err(bad(c, format!("`action` is find, info, rebuild, delete or purge, not {a}"))),
+    }
+    let Some(path) = string(c, p, "path")? else {
+        scan.attach_in(s.path.as_deref(), s.index_dir.as_deref()).map_err(|e| bad(c, e))?;
+        return Ok(json!({"cloud": name, "path": r.path}));
+    };
+    let at = beside(s, &path);
+    let r = cloud::lod::IndexRef { path: cloud::lod::relative(&at, s.path.as_deref()), full: Some(at.to_string_lossy().into_owned()), ..r };
+    let moved = scan.with_index(r.clone()).map_err(|e| bad(c, e))?;
+    moved.attach(s.path.as_deref()).map_err(|e| bad(c, e))?;
+    s.model_mut().clouds.insert(name.clone(), moved);
+    Ok(json!({"cloud": name, "path": r.path}))
+}
+
+/// The indexes in the project's folder of them (`<project>_clouds/`) and in the user's (`index_dir`) that no scan of the
+/// project names, deleted: what a scan deleted, or undone, left behind.
+fn purge_indexes(s: &mut Session, c: &str) -> R {
+    if s.read_only.is_some() {
+        return Err(bad(c, "this session may only read, so it deletes no index"));
+    }
+    let project = s.path.clone().ok_or_else(|| bad(c, "the project has no file, so no folder of indexes to purge: save it first"))?;
+    let stem = project.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let named: std::collections::BTreeSet<PathBuf> = s
+        .model
+        .clouds
+        .values()
+        .filter_map(Cloud::index)
+        .flat_map(|r| cloud::lod::places(r, s.path.as_deref(), s.index_dir.as_deref()))
+        .filter_map(|p| std::fs::canonicalize(p).ok())
+        .collect();
+    let mut dirs = Vec::new();
+    dirs.extend(project.parent().map(|d| (d.join(format!("{stem}_clouds")), String::new())));
+    dirs.extend(s.index_dir.clone().map(|d| (d, format!("{stem}_"))));
+    let mut deleted = Vec::new();
+    for (dir, prefix) in dirs {
+        let Ok(files) = std::fs::read_dir(&dir) else { continue };
+        for f in files.flatten() {
+            let path = f.path();
+            let ours = path.extension().is_some_and(|e| e == "bimpc")
+                && path.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&prefix));
+            let canon = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            if ours && !named.contains(&canon) && std::fs::remove_file(&path).is_ok() {
+                deleted.push(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    Ok(json!({"deleted": deleted}))
+}
+
+/// Every scan's index opened; the scans whose index couldn't be, as `{cloud, error}`: a view draws the top of them the project
+/// holds.
+fn reindex(s: &Session) -> Vec<Value> {
+    s.model
+        .clouds
+        .iter()
+        .filter_map(|(name, scan)| {
+            scan.attach_in(s.path.as_deref(), s.index_dir.as_deref()).err().map(|error| json!({"cloud": name, "error": error}))
+        })
+        .collect()
 }
 
 // ---------- CAD drawings ----------

@@ -111,8 +111,11 @@ fn section_framing_refreshes_after_cloud_data_changes_without_element_edits() {
     use bimcraft_core::geom::P2;
     use bimcraft_core::model::PointCloud;
     let cloud = |span| {
-        Cloud::new("Envelope probe", Scan { origin: [0.0; 3], points: vec![[0.0; 3], [span, 1000.0, 0.0]], colours: None, read: 2 })
-            .unwrap()
+        Cloud::new(
+            "Envelope probe",
+            Scan { origin: [0.0; 3], points: vec![[0.0; 3], [span, 1000.0, 0.0]], colours: None, intensity: None, read: 2 },
+        )
+        .unwrap()
     };
     let mut session = Session::new();
     session.script(r#"section {"start":[-2000,-2000],"end":[2000,-2000]}"#).unwrap();
