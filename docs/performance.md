@@ -308,6 +308,38 @@ drawing it (walls' fills, regions, the floor below), which per-element fragments
 Not yet in reach: the elevations' sheet, drawn from the 3D scene, takes 14.8 s at 10 storeys (7.1 s of it building the
 scene) and doesn't finish at 100, as the 3D view doesn't; and the schedules' sheet is as long as its rows.
 
+### Edits that looked at every element again (2026-11-27)
+
+Features added after piece 6 had put loops over every element back in the path of every command, so an edit of the
+annotated tower cost 310 ms again, and placing the wall schedule on a sheet went quadratic. Each is now asked of the
+lookup, its loop kept as the test's twin:
+
+- a move found the strip footings glued to the walls it moved among every element, twice, even when it moved no wall
+  (`glue::footings_of`): now the lookup's strip footings, which it keeps as a kind a project has few of;
+- a move made the tile index of every wall and run to ask which runs a moved end was on: now `walls::RunsNear`, the same
+  runs from the lookup's height bands, and only when a wall or a run moves; the doors and windows a moved wall carries come
+  from what points at it;
+- the check after every command looked at every element for the circuits: now the lookup's circuits;
+- a wall's openings for its quantities (the wall schedule, IFC) were looked for among every element, wall by wall: now
+  what points at the wall;
+- a dimension's points looked at every component of the project and asked each column for its plan's range before how
+  far it is: now the components the lookup keeps by level and plan tile, and the distance first; and the linked models
+  drawn in came from every element: now the lookup's links, none asked when nothing is loaded.
+
+Release, Apple M4 Pro, median of three, each edit undone after it:
+
+| | 361,393 elements, before | after | 1,200,101 elements, before | after |
+|---|---:|---:|---:|---:|
+| Move a column 10 mm | 92 ms | 0.7 ms | 310 ms | 1.4 ms |
+| Move a detail line / a text note | 92 / 92 ms | 0.5 / 0.4 ms | 310 / 311 ms | 1.0 / 0.9 ms |
+| Slide a wall with its doors and the walls joined to it | 93 ms | 2.8 ms | 312 ms | 3.7 ms |
+| A new dimension by points on walls | 84 ms | 1.9 ms | 328 ms | 6.8 ms |
+| A viewport / a note on a sheet moved (with undo) | 90 / 88 ms | 0.9 / 0.4 ms | | 3.0 / 0.8 ms |
+| A new sheet and the wall schedule placed on it (with undo) | 55,364 ms | 163 ms | not measured (quadratic) | 570 ms |
+
+The plans, schedules, checks and files are the ones before: the full check still runs after every command in tests and
+is held to the incremental one, and each lookup query is tested against the loop it replaced.
+
 ## 3D on the graphics card
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model on a view worker), and

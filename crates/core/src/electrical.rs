@@ -1181,7 +1181,10 @@ pub(crate) fn check_circuits(m: &Model) -> Result<(), String> {
     let mut owner: BTreeMap<Guid, Id> = BTreeMap::new();
     let mut numbers: BTreeMap<(Id, u32), Id> = BTreeMap::new();
     let mut poles_on: BTreeMap<Id, u32> = BTreeMap::new();
-    for (&id, e) in m.elements.iter() {
+    // The circuits from the lookup, in order of id as every element would give them: the check after a command that moved
+    // one wall looked at every element of the project for them.
+    let circuits: Vec<Id> = m.lookup().rare("circuit").collect();
+    for (id, e) in circuits.into_iter().filter_map(|id| Some((id, m.elements.get(id)?))) {
         let Element::Circuit(c) = e else { continue };
         let who = format!("circuit {id}");
         if c.name.chars().count() > MAX_TEXT {

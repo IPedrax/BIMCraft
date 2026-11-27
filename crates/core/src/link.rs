@@ -108,11 +108,15 @@ pub fn placement(to: &Model, l: &crate::model::Link, from: &Model) -> (P2, f64, 
 /// The model the views draw: `m`, with what each of its loaded links builds. The model itself where it links nothing.
 /// A link that can't be brought in is left out.
 pub fn seen(m: &Arc<Model>) -> Arc<Model> {
-    let links: Vec<(&crate::model::Link, &Arc<Model>)> = m
-        .elements
-        .values()
-        .filter_map(|e| match e {
-            Element::Link(l) => m.loaded.get(&l.path).map(|other| (l, other)),
+    if m.loaded.is_empty() {
+        return Arc::clone(m);
+    }
+    // The links from the lookup, in order of id, rather than from every element: a plan and a dimension ask this.
+    let lookup = m.lookup();
+    let links: Vec<(&crate::model::Link, &Arc<Model>)> = lookup
+        .rare("link")
+        .filter_map(|id| match m.elements.get(id) {
+            Some(Element::Link(l)) => m.loaded.get(&l.path).map(|other| (l, other)),
             _ => None,
         })
         .collect();

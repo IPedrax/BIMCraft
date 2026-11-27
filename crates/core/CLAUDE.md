@@ -116,6 +116,15 @@ say (a type, a level, a neighbour) as a dependency of that cache. A new part of 
 A new kind is also edited at random by one of the oracles, or named in `oracle_tests.rs`'s `NOT_EDITED_AT_RANDOM`:
 `every_kind_of_element_is_edited_at_random_or_named_as_not` fails until one or the other is done.
 
+**Nothing in a command's path looks at every element.** An edit of one element of a million costs milliseconds only while
+the work after it follows what changed; one loop over `m.elements` in a command, a check or a helper they call makes every
+edit as slow as the project is big (a footing's glue, the circuits' check and a move's run index each did, and each cost
+an edit of 360,000 elements 20 to 90 ms). Ask the lookup instead (`Model::lookup`): what points at an element
+(`referrers`), the walls near a point (`walls_near_at`), the kinds a project has few of (`rare`, and add a kind to
+`derived::RARE` when it is one), components by level and tile (`components_near`), runs near a point
+(`walls::RunsNear`); keep the loop over every element as the test's twin. `examples/performance.rs` times the edits on the
+tower: compare two sizes, as below.
+
 ## Shared geometry definitions
 
 `Model::types`, `materials` and `families` use `shared::Shared`: ordinary reads and mutable map/type access work through

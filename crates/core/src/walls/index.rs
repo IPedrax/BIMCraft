@@ -156,7 +156,9 @@ impl Index {
     }
 
     /// The runs whose bodies reach the box `[x0, y0, x1, y1]`, grown by `grow` mm, at heights `lo` to `hi`, by
-    /// id: what a run staying put asks of the runs a command took, to stretch to the joins they had.
+    /// id: what a run staying put asks of the runs a command took, to stretch to the joins they had. A move asks
+    /// [`RunsNear::runs_near_box`], which tests hold to this.
+    #[cfg(test)]
     pub(crate) fn runs_near_box(&self, b: [f64; 4], grow: f64, lo: f64, hi: f64) -> Vec<Id> {
         let grown = [b[0] - grow, b[1] - grow, b[2] + grow, b[3] + grow];
         let tiled = (grown.iter().all(|v| v.is_finite() && v.abs() < 1e12)).then(|| {
@@ -181,6 +183,92 @@ impl Index {
         ids.dedup();
         ids.retain(|id| self.run_spans.get(id).is_some_and(|&(bottom, top)| lo < top && bottom < hi));
         ids
+    }
+}
+
+/// The runs' half of [`Index`], answered from the model's lookup for a few queries rather than made of every element: what
+/// a command moving one wall or one run asks. The same runs as [`Index::runs_near`] and [`Index::runs_near_box`] give, by
+/// id: those of the heights asked found among the lookup's runs banded near them (a run's section reaches at most twice
+/// its depth past its line's heights, as it is banded no steeper than [`crate::derived`]'s limit) and the few it doesn't
+/// band, then held to the index's own test of plan tiles and heights.
+pub(crate) struct RunsNear<'a> {
+    m: &'a Model,
+    lookup: std::sync::Arc<crate::derived::Lookup>,
+    /// How far past its line's heights a run's section may reach: twice the deepest (or widest round) run type's, and a
+    /// millimetre. Not finite, every run is a candidate.
+    margin: f64,
+}
+
+/// A run's heights and the tiles its body reaches ([`Index::new`]'s), or none for a run in no tile.
+type Reach = ((f64, f64), Option<((i64, i64), (i64, i64))>);
+
+impl<'a> RunsNear<'a> {
+    pub(crate) fn new(m: &'a Model) -> Self {
+        let deepest = m.types.runs.values().flat_map(|t| t.values()).map(|t| t.depth.abs().max(t.width.abs())).fold(0.0, f64::max);
+        RunsNear { m, lookup: m.lookup(), margin: 2.0 * deepest + 1.0 }
+    }
+
+    /// The runs whose heights may overlap `lo` to `hi`, with their heights and tiles: every run that does, among others.
+    fn candidates(&self, lo: f64, hi: f64) -> Vec<(Id, Reach)> {
+        let (lo, hi) = (lo - self.margin, hi + self.margin);
+        let mut ids: std::collections::BTreeSet<Id> = self.lookup.other().collect();
+        for (g, _) in self.lookup.groups() {
+            if let crate::derived::Group::Run { .. } = g {
+                ids.extend(self.lookup.group_between(g, lo, hi));
+            }
+        }
+        ids.into_iter().filter_map(|id| Some((id, self.reach(self.m.elements.get(id)?)?))).collect()
+    }
+
+    /// Run `e`'s heights and tiles, as [`Index::new`] finds them; none for another element or a run of no type.
+    fn reach(&self, e: &Element) -> Option<Reach> {
+        e.run()?;
+        let g = self.m.run_geom(e)?;
+        let grow = g.width / 2.0 + 2.0 * TOL;
+        let b = [g.a[0].min(g.b[0]) - grow, g.a[1].min(g.b[1]) - grow, g.a[0].max(g.b[0]) + grow, g.a[1].max(g.b[1]) + grow];
+        let tiles = b
+            .iter()
+            .all(|v| v.is_finite() && v.abs() < 1e12)
+            .then(|| ((tile(b[0]), tile(b[1])), (tile(b[2]), tile(b[3]))))
+            .filter(|((a, b), (c, d))| (c - a + 1).saturating_mul(d - b + 1) <= MAX_TILES);
+        Some((g.z_span(), tiles))
+    }
+
+    /// [`Index::runs_near`].
+    pub(crate) fn runs_near(&self, node: P2, lo: f64, hi: f64) -> Vec<Id> {
+        let at = (node.0.is_finite() && node.1.is_finite()).then(|| (tile(node.0), tile(node.1)));
+        self.candidates(lo, hi)
+            .into_iter()
+            .filter(|(_, ((bottom, top), tiles))| {
+                lo < *top
+                    && *bottom < hi
+                    && match (at, tiles) {
+                        (Some((x, y)), Some(((a, b), (c, d)))) => (*a..=*c).contains(&x) && (*b..=*d).contains(&y),
+                        _ => true,
+                    }
+            })
+            .map(|(id, _)| id)
+            .collect()
+    }
+
+    /// [`Index::runs_near_box`].
+    pub(crate) fn runs_near_box(&self, b: [f64; 4], grow: f64, lo: f64, hi: f64) -> Vec<Id> {
+        let grown = [b[0] - grow, b[1] - grow, b[2] + grow, b[3] + grow];
+        let asked = (grown.iter().all(|v| v.is_finite() && v.abs() < 1e12))
+            .then(|| ((tile(grown[0]), tile(grown[1])), (tile(grown[2]), tile(grown[3]))))
+            .filter(|((a, b), (c, d))| (c - a + 1).saturating_mul(d - b + 1) <= MAX_TILES);
+        self.candidates(lo, hi)
+            .into_iter()
+            .filter(|(_, ((bottom, top), tiles))| {
+                lo < *top
+                    && *bottom < hi
+                    && match (asked, tiles) {
+                        (Some(((a, b), (c, d))), Some(((e, f), (g, h)))) => a <= *g && *e <= c && b <= *h && *f <= d,
+                        _ => true,
+                    }
+            })
+            .map(|(id, _)| id)
+            .collect()
     }
 }
 
@@ -243,6 +331,45 @@ mod tests {
         agree(&s.model);
         // Walls meeting on the tiles' edges (every 6 m), crossing, and ending on each other, storeys apart.
         agree(&crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 2).unwrap());
+    }
+
+    #[test]
+    fn the_runs_near_a_point_or_a_box_from_the_lookup_are_the_indexs() {
+        let mut s = Session::new();
+        s.reset(crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 2).unwrap_or_else(|e| panic!("{e}")), None);
+        // Footings under walls, a sloped beam, a steep pipe the lookup doesn't band, and runs on the tiles' edges.
+        for (cmd, p) in [
+            ("strip_footing", json!({"points": [[0, 0], [12000, 0]]})),
+            ("beam", json!({"points": [[6000, 6000], [18000, 6000]], "offset": 3000, "end_offset": 3600})),
+            ("pipe", json!({"points": [[12000, 12000], [12010, 12000]], "offset": 0, "end_offset": 3000})),
+            ("conduit", json!({"points": [[5999, 0], [6001, 12000]], "offset": 2500})),
+        ] {
+            s.execute(cmd, &p).unwrap_or_else(|e| panic!("{cmd}: {e}"));
+        }
+        let m = &s.model;
+        let (index, near) = (Index::new(m), RunsNear::new(m));
+        let mut asked = 0;
+        for e in m.elements.values() {
+            let boxed = match e {
+                Element::Wall(w) => Some((crate::derived::axis_box(w), m.base_z(w) - TOL, m.top_z(w) + TOL)),
+                e => m.run_geom(e).map(|g| {
+                    let (lo, hi) = g.z_span();
+                    ([g.a[0].min(g.b[0]), g.a[1].min(g.b[1]), g.a[0].max(g.b[0]), g.a[1].max(g.b[1])], lo, hi)
+                }),
+            };
+            let Some((b, lo, hi)) = boxed else { continue };
+            assert_eq!(near.runs_near_box(b, 2.0 * TOL, lo, hi), index.runs_near_box(b, 2.0 * TOL, lo, hi), "{e:?}");
+            for p in [P2(b[0], b[1]), P2(b[2], b[3])] {
+                assert_eq!(near.runs_near(p, lo - TOL, hi + TOL), index.runs_near(p, lo - TOL, hi + TOL), "{e:?} at {p:?}");
+            }
+            asked += 1;
+        }
+        assert!(asked > 100, "{asked}");
+        for (lo, hi) in [(f64::NEG_INFINITY, f64::INFINITY), (f64::NAN, 1.0), (0.0, 1e13)] {
+            assert_eq!(near.runs_near(P2(6000.0, 0.0), lo, hi), index.runs_near(P2(6000.0, 0.0), lo, hi));
+            assert_eq!(near.runs_near(P2(f64::NAN, 0.0), lo, hi), index.runs_near(P2(f64::NAN, 0.0), lo, hi));
+            assert_eq!(near.runs_near_box([0.0, 0.0, 1e13, 1.0], 0.0, lo, hi), index.runs_near_box([0.0, 0.0, 1e13, 1.0], 0.0, lo, hi));
+        }
     }
 
     /// Each wall's geometry found through the index is what it is found among every wall.

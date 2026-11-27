@@ -117,15 +117,12 @@ pub(crate) fn wall_of(m: &Model, id: Id) -> Option<Id> {
 
 /// Every strip footing glued to one of the walls `walls`, by its id and the wall's: the footings a command that
 /// changes those walls must take along.
+/// The footings come from the lookup's strip footings, in order of id, not from every element: a command moving one
+/// element of a million looked at all of them twice.
 pub(crate) fn footings_of(m: &Model, walls: &[Id]) -> Vec<(Id, Id)> {
-    let mut out = Vec::new();
-    for id in m.elements.keys().copied().collect::<Vec<_>>() {
-        if m.elements.get(id).is_some_and(|e| e.category() == "stripfooting")
-            && let Some(w) = wall_of(m, id)
-            && walls.contains(&w)
-        {
-            out.push((id, w));
-        }
+    if walls.is_empty() {
+        return Vec::new();
     }
-    out
+    let footings: Vec<Id> = m.lookup().rare("stripfooting").collect();
+    footings.into_iter().filter_map(|id| Some((id, wall_of(m, id)?))).filter(|(_, w)| walls.contains(w)).collect()
 }
