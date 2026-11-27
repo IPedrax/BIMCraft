@@ -1502,7 +1502,7 @@ msgstr ""
 msgid "Applied."
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:475
+#: crates/ui-egui/src/footer.rs:477
 #: crates/ui-egui/src/properties.rs:4344
 msgid "Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden"
 msgstr "Gilt für alle Ansichten; fängt am aktivierten Hauptraster oder Unterraster der aktiven Ansicht, auch wenn dieses ausgeblendet ist"
@@ -1534,7 +1534,7 @@ msgid "Apply Changes"
 msgstr ""
 
 #: crates/ui-egui/src/editor/temp_hide.rs:233
-#: crates/ui-egui/src/footer.rs:441
+#: crates/ui-egui/src/footer.rs:443
 msgid "Apply Hide/Isolate to View"
 msgstr "Ausblenden/Isolieren auf Ansicht anwenden"
 
@@ -1999,7 +1999,7 @@ msgid "Background Color"
 msgstr "Hintergrundfarbe"
 
 #: crates/ui-egui/src/background_grid.rs:98
-#: crates/ui-egui/src/footer.rs:456
+#: crates/ui-egui/src/footer.rs:458
 #: crates/ui-egui/src/graphics.rs:125
 #: crates/ui-egui/src/graphics.rs:664
 #: crates/ui-egui/src/templates.rs:699
@@ -5664,7 +5664,7 @@ msgstr "Detailgrad"
 msgid "Detail Level: Coarse draws what is cut in one poché, Medium adds the layers and the symbols of openings, Fine the patterns"
 msgstr "Detailgrad: Grob zeichnet Schnittflächen in einem Vollton, Mittel ergänzt die Schichten und die Symbole der Öffnungen, Fein die Muster"
 
-#: crates/ui-egui/src/footer.rs:393
+#: crates/ui-egui/src/footer.rs:395
 msgid "Detail Level: the family forms the 3D view draws, as their Visibility Settings say"
 msgstr "Detailgrad: die Körper der Familie, die die 3D-Ansicht zeichnet, wie ihre Sichtbarkeitseinstellungen es angeben"
 
@@ -8199,7 +8199,7 @@ msgstr ""
 msgid "Graphic Display Options"
 msgstr "Grafikanzeigeoptionen"
 
-#: crates/ui-egui/src/footer.rs:387
+#: crates/ui-egui/src/footer.rs:389
 msgid "Graphic Display Options..."
 msgstr "Grafikanzeigeoptionen..."
 
@@ -8319,11 +8319,11 @@ msgstr ""
 msgid "Grid rotation"
 msgstr "Rasterdrehung"
 
-#: crates/ui-egui/src/footer.rs:468
+#: crates/ui-egui/src/footer.rs:470
 msgid "Grid settings…"
 msgstr "Rastereinstellungen…"
 
-#: crates/ui-egui/src/footer.rs:474
+#: crates/ui-egui/src/footer.rs:476
 #: crates/ui-egui/src/properties.rs:4343
 msgid "Grid snapping"
 msgstr "Rasterfang"
@@ -8544,7 +8544,7 @@ msgid "Hide Category"
 msgstr "Kategorie ausblenden"
 
 #: crates/ui-egui/src/editor/temp_hide.rs:223
-#: crates/ui-egui/src/footer.rs:429
+#: crates/ui-egui/src/footer.rs:431
 msgid "Hide Category (HC)"
 msgstr "Kategorie ausblenden (HC)"
 
@@ -8561,7 +8561,7 @@ msgid "Hide Element (EH): leave the selected elements out of this view"
 msgstr "Element ausblenden (EH): die ausgewählten Elemente aus dieser Ansicht weglassen"
 
 #: crates/ui-egui/src/editor/temp_hide.rs:222
-#: crates/ui-egui/src/footer.rs:428
+#: crates/ui-egui/src/footer.rs:430
 msgid "Hide Element (HH)"
 msgstr "Element ausblenden (HH)"
 
@@ -8577,11 +8577,11 @@ msgstr ""
 msgid "Hide annotation"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:497
+#: crates/ui-egui/src/footer.rs:499
 msgid "High Contrast Point Clouds"
 msgstr "Punktwolken mit hohem Kontrast"
 
-#: crates/ui-egui/src/footer.rs:492
+#: crates/ui-egui/src/footer.rs:494
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr "Punktwolken mit hohem Kontrast: die Scans dieser Ansicht in einer kräftigen Farbe zeichnen, damit lesbar wird, was sie zeigen; erneut für ihre eigenen Farben. Ein Scan mit eigener Farbe unter Sichtbarkeit/Grafik behält sie."
 
@@ -9310,12 +9310,12 @@ msgid "Invert"
 msgstr "Invertieren"
 
 #: crates/ui-egui/src/editor/temp_hide.rs:225
-#: crates/ui-egui/src/footer.rs:431
+#: crates/ui-egui/src/footer.rs:433
 msgid "Isolate Category (IC)"
 msgstr "Kategorie isolieren (IC)"
 
 #: crates/ui-egui/src/editor/temp_hide.rs:224
-#: crates/ui-egui/src/footer.rs:430
+#: crates/ui-egui/src/footer.rs:432
 msgid "Isolate Element (HI)"
 msgstr "Element isolieren (HI)"
 
@@ -10109,11 +10109,11 @@ msgstr "Modell verknüpfen (LK): ein anderes Projekt, eine BIMCraft-Datei oder e
 msgid "Link PDF…"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:416
+#: crates/ui-egui/src/footer.rs:418
 msgid "Linked 3D View"
 msgstr "Verknüpfte 3D-Ansicht"
 
-#: crates/ui-egui/src/footer.rs:413
+#: crates/ui-egui/src/footer.rs:415
 msgid "Linked 3D View: the 3D view beside this plan, cut to its level and to what it shows as it pans or changes level; again to put the 3D view back as it was"
 msgstr "Verknüpfte 3D-Ansicht: die 3D-Ansicht neben diesem Grundriss, auf sein Geschoss und auf das zugeschnitten, was er zeigt, wenn er verschoben wird oder das Geschoss wechselt; erneut, um die 3D-Ansicht wie zuvor wiederherzustellen"
 
@@ -10437,7 +10437,7 @@ msgid "Main Model"
 msgstr "Hauptmodell"
 
 #: crates/ui-egui/src/background_grid.rs:145
-#: crates/ui-egui/src/footer.rs:466
+#: crates/ui-egui/src/footer.rs:468
 msgid "Main grid"
 msgstr "Hauptraster"
 
@@ -15417,7 +15417,7 @@ msgid "Reset Temporary Hide/Isolate"
 msgstr "Temporäres Ausblenden/Isolieren zurücksetzen"
 
 #: crates/ui-egui/src/editor/temp_hide.rs:234
-#: crates/ui-egui/src/footer.rs:444
+#: crates/ui-egui/src/footer.rs:446
 msgid "Reset Temporary Hide/Isolate (HR)"
 msgstr "Temporäres Ausblenden/Isolieren zurücksetzen (HR)"
 
@@ -15513,15 +15513,15 @@ msgstr ""
 msgid "Rev."
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:483
+#: crates/ui-egui/src/footer.rs:485
 msgid "Reveal Hidden Elements"
 msgstr "Ausgeblendete Elemente anzeigen"
 
-#: crates/ui-egui/src/footer.rs:482
+#: crates/ui-egui/src/footer.rs:484
 msgid "Reveal Hidden Elements (RH): draw what this view hides in magenta; again to hide it"
 msgstr "Ausgeblendete Elemente anzeigen (RH): Ausgeblendetes dieser Ansicht in Magenta zeichnen; erneut zum Ausblenden"
 
-#: crates/ui-egui/src/footer.rs:510
+#: crates/ui-egui/src/footer.rs:512
 msgid "Revealing hidden elements"
 msgstr "Ausgeblendete Elemente werden angezeigt"
 
@@ -16933,7 +16933,7 @@ msgstr ""
 msgid "Show as Underlay"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:458
+#: crates/ui-egui/src/footer.rs:460
 msgid "Show background grids, change their settings, or toggle grid snapping"
 msgstr "Hintergrundraster anzeigen, ihre Einstellungen ändern oder den Rasterfang umschalten"
 
@@ -16942,7 +16942,7 @@ msgid "Show fills and patterns"
 msgstr ""
 
 #: crates/ui-egui/src/background_grid.rs:143
-#: crates/ui-egui/src/footer.rs:465
+#: crates/ui-egui/src/footer.rs:467
 msgid "Show grids"
 msgstr "Raster anzeigen"
 
@@ -17894,7 +17894,7 @@ msgid "Subcategory"
 msgstr ""
 
 #: crates/ui-egui/src/background_grid.rs:161
-#: crates/ui-egui/src/footer.rs:467
+#: crates/ui-egui/src/footer.rs:469
 msgid "Subgrid"
 msgstr "Unterraster"
 
@@ -18360,12 +18360,12 @@ msgstr "Element temporär ausblenden"
 
 #: crates/ui-egui/src/editor/temp_hide.rs:216
 #: crates/ui-egui/src/editor/temp_hide.rs:245
-#: crates/ui-egui/src/footer.rs:423
+#: crates/ui-egui/src/footer.rs:425
 msgid "Temporary Hide/Isolate"
 msgstr "Temporär ausblenden/isolieren"
 
 #: crates/ui-egui/src/editor/temp_hide.rs:215
-#: crates/ui-egui/src/footer.rs:421
+#: crates/ui-egui/src/footer.rs:423
 msgid "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
 msgstr "Temporär ausblenden/isolieren: Auswahl oder deren Kategorien in dieser Ansicht ausblenden oder isolieren, bis zurückgesetzt wird"
 
@@ -20696,7 +20696,7 @@ msgstr "In diesem Netzwerk sichtbar"
 msgid "Visual Style"
 msgstr "Darstellungsstil"
 
-#: crates/ui-egui/src/footer.rs:377
+#: crates/ui-egui/src/footer.rs:379
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr "Darstellungsstil: wie die 3D-Ansicht Flächen darstellt: Schattiert, Verdeckte Linien (WF, HL und SD legen sie fest) oder Drahtmodell"
 
@@ -22448,7 +22448,7 @@ msgid "{} (CAD drawing)"
 msgstr ""
 
 #: crates/ui-egui/src/editor/temp_hide.rs:245
-#: crates/ui-egui/src/footer.rs:511
+#: crates/ui-egui/src/footer.rs:513
 msgid "{} (HR resets)"
 msgstr "{} (HR setzt zurück)"
 
