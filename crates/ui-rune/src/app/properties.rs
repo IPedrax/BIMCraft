@@ -10,7 +10,7 @@ use rune::TextEdit;
 use super::App;
 use crate::lang::{t, tf};
 use crate::props::apply::{self, Command, Edit};
-use crate::props::panel::{Editor, Panel};
+use crate::props::panel::{Editor, Panel, Subject};
 use crate::typeprops;
 use crate::views::ViewKind;
 
@@ -70,7 +70,15 @@ impl App {
             ViewKind::Plan(id) if self.session.model.level(id).is_some() => Some(id),
             _ => None,
         };
-        let panel = Panel::of(&self.session.model, &self.selection, narrowed, plan);
+        // Nothing selected and a tool in hand: the palette is about what the tool places, whose type the Type Selector picks.
+        let placing = if self.selection.is_empty() { self.tool.and_then(crate::options::category_of) } else { None };
+        let panel = match placing {
+            Some(category) => {
+                let pick = self.bar.settings.pick(&self.session.model, category);
+                Panel::tool(&self.session.model, category, pick)
+            }
+            None => Panel::of(&self.session.model, &self.selection, narrowed, plan),
+        };
         self.palette.fields = panel
             .all_rows()
             .filter(|r| matches!(r.editor, Editor::Text { .. }))
@@ -143,6 +151,10 @@ impl App {
     /// Type `i` of the Type Selector's list was picked: its list closes, and the shown elements are of that type.
     pub fn pick_type(&mut self, i: usize) -> bool {
         self.palette.open = None;
+        // For a tool in hand the type is what it places, not an element's.
+        if let Subject::New(category) = self.palette.panel.subject {
+            return self.pick_for_tool(category, i);
+        }
         let made = apply::set_type(&self.palette.panel, i);
         self.carry_out(made)
     }

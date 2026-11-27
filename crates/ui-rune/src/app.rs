@@ -168,6 +168,8 @@ pub struct App {
     pub cursor: Option<(f32, f32)>,
     /// The Properties palette: what it shows for the selection, and the text being typed into it (`app/properties.rs`).
     pub palette: Palette,
+    /// The Options Bar of the tool in hand: what it sets and the text typed into its fields (`app/options.rs`).
+    pub bar: Bar,
     /// The temporary dimensions of the element selected alone, each with the number being typed into it (`app/tempdim.rs`).
     pub temp: Vec<tempdim::TempField>,
     /// A command's refusal, as the core says it.
@@ -224,6 +226,7 @@ impl App {
             selection: Vec::new(),
             cursor: None,
             palette: Palette::new(),
+            bar: Bar::new(),
             temp: Vec::new(),
             message: None,
             dialogs: dialogs::Dialogs::default(),
@@ -371,6 +374,8 @@ impl App {
 
     /// Where a pick at the pointer would land, with a tool in hand: nowhere without one, or with the pointer off the plan.
     fn reland(&mut self) {
+        // The Options Bar and the palette follow the tool in hand.
+        self.sync_bar();
         let (Some(_), Some(at), Some(level)) = (self.tool, self.cursor, self.level) else {
             self.landing = None;
             return;
@@ -413,6 +418,7 @@ impl App {
         }
         if self.tool.take().is_some() {
             self.landing = None;
+            self.sync_bar();
             return true;
         }
         let some = !self.selection.is_empty();
@@ -736,7 +742,9 @@ impl App {
 
 mod grips;
 mod menu;
+mod options;
 mod properties;
+pub use options::Bar;
 pub use properties::Palette;
 mod tempdim;
 mod tooling;

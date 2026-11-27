@@ -72,6 +72,8 @@ impl App {
             };
             if clicked { tooling::advance(spec, &ctx, &self.picked) } else { tooling::finish(spec, &ctx, &self.picked) }
         };
+        // What the Options Bar has set joins the params of what the click makes.
+        let step = self.feed_options(spec, step);
         match step {
             Step::More => {}
             Step::Ignore => {
