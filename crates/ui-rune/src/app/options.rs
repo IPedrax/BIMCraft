@@ -46,6 +46,7 @@ impl App {
             return;
         }
         self.bar_store();
+        self.forget_typed();
         self.bar.tool = self.tool;
         self.bar.open = None;
         let units = self.session.model.units;

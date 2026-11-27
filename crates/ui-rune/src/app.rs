@@ -170,6 +170,8 @@ pub struct App {
     pub palette: Palette,
     /// The Options Bar of the tool in hand: what it sets and the text typed into its fields (`app/options.rs`).
     pub bar: Bar,
+    /// The length and angle typed while a tool has a point picked (`app/reading.rs`).
+    pub typed: crate::reading::Typed,
     /// The temporary dimensions of the element selected alone, each with the number being typed into it (`app/tempdim.rs`).
     pub temp: Vec<tempdim::TempField>,
     /// A command's refusal, as the core says it.
@@ -227,6 +229,7 @@ impl App {
             cursor: None,
             palette: Palette::new(),
             bar: Bar::new(),
+            typed: crate::reading::Typed::default(),
             temp: Vec::new(),
             message: None,
             dialogs: dialogs::Dialogs::default(),
@@ -405,6 +408,10 @@ impl App {
     /// when there was nothing to do.
     pub fn escape(&mut self) -> bool {
         if std::mem::take(&mut self.region) {
+            return true;
+        }
+        // What is typed is given up first.
+        if self.typed_escape() {
             return true;
         }
         // An open list of the palette closes first.
@@ -729,13 +736,14 @@ impl App {
     /// The status bar's line.
     pub fn status(&self) -> String {
         let hovered = self.hovered.and_then(|id| self.session.model.elements.get(id).map(|e| (e.category(), id)));
+        let reading = self.reading_line();
         status::line(&status::Facts {
             level: &self.views.title,
             cursor: self.cursor_mm(),
             hovered,
             selected: self.selection.len(),
             tool: self.tool.and_then(crate::tools::label),
-            message: self.message.as_deref(),
+            message: reading.as_deref().or(self.message.as_deref()),
         })
     }
 }
@@ -744,6 +752,7 @@ mod grips;
 mod menu;
 mod options;
 mod properties;
+mod reading;
 pub use options::Bar;
 pub use properties::Palette;
 mod tempdim;

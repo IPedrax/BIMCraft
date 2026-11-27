@@ -14,6 +14,8 @@ use crate::tooling::{self, Chain, Command, Ctx, Held, Step, Tooling};
 impl App {
     /// A click has just picked a point with a tool in hand: the tool takes it.
     pub(super) fn tool_took_point(&mut self) {
+        // A click spends what was typed.
+        self.forget_typed();
         self.drive(true);
     }
 
@@ -22,11 +24,18 @@ impl App {
         if self.tool.is_none() || self.picked.is_empty() {
             return false;
         }
+        // Enter with a length or an angle typed places the point they make.
+        if self.place_typed() {
+            return true;
+        }
         self.drive(false)
     }
 
     /// Backspace: the last point picked is given back. False when none has been, so the key goes on.
     pub fn back_point(&mut self) -> bool {
+        if self.typed_backspace() {
+            return true;
+        }
         if self.tool.is_none() || self.picked.pop().is_none() {
             return false;
         }
