@@ -5487,7 +5487,7 @@ msgstr "Abgebrochen"
 msgid "Demolition"
 msgstr "Abbruch"
 
-#: crates/core/src/commands.rs:16671
+#: crates/core/src/commands.rs:16673
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -5564,7 +5564,7 @@ msgstr "Oberkante/Unterkante lösen"
 msgid "Detach Top/Base: the tops and bases of the walls and columns their own again"
 msgstr ""
 
-#: crates/core/src/commands.rs:16461
+#: crates/core/src/commands.rs:16463
 #: crates/ui-egui/src/draw.rs:693
 #: crates/ui-egui/src/editor/document.rs:645
 #: crates/ui-egui/src/structure.rs:111
@@ -20166,7 +20166,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Ausrichtung entsperren"
 
-#: crates/core/src/commands.rs:17019
+#: crates/core/src/commands.rs:17021
 msgid "Unnamed"
 msgstr "Unbenannt"
 
