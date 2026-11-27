@@ -51,6 +51,9 @@ pub enum Action {
     DeleteType,
     ReloadLink,
     RemoveLink,
+    /// The plan or section the row is, shown under the plan on screen (`underlay`); and the plan on screen's underlay taken off.
+    ShowAsUnderlay,
+    RemoveUnderlay,
 }
 
 impl Action {
@@ -69,6 +72,8 @@ impl Action {
                 | Action::DeleteType
                 | Action::ReloadLink
                 | Action::RemoveLink
+                | Action::ShowAsUnderlay
+                | Action::RemoveUnderlay
         )
     }
 
@@ -102,6 +107,8 @@ impl Action {
             Action::EditType => "Edit Type",
             Action::ReloadLink => "Reload",
             Action::RemoveLink => "Remove",
+            Action::ShowAsUnderlay => "Show as Underlay",
+            Action::RemoveUnderlay => "Remove Underlay",
         }
     }
 

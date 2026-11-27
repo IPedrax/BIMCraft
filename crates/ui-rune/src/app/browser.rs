@@ -58,7 +58,19 @@ impl App {
     /// What the browser's menu offers over what the click was on.
     pub fn browser_menu_items(&self) -> Vec<Vec<Item>> {
         match &self.views.menu {
-            Some((_, _, target)) => context::browser_items(&self.session.model, target),
+            Some((_, _, target)) => {
+                let mut groups = context::browser_items(&self.session.model, target);
+                // A plan or a section can go under the plan on screen, and that plan's underlay can be taken off: before the folding items.
+                if let Target::View(kind @ (ViewKind::Plan(_) | ViewKind::Section(_))) = target {
+                    let item = |action, enabled| Item { action, enabled };
+                    let at = groups.len().saturating_sub(1);
+                    groups.insert(
+                        at,
+                        vec![item(Action::ShowAsUnderlay, self.can_underlay(*kind)), item(Action::RemoveUnderlay, self.has_underlay())],
+                    );
+                }
+                groups
+            }
             None => Vec::new(),
         }
     }
@@ -79,6 +91,14 @@ impl App {
                 }
             }
             (Action::CreatePrintSet, Target::View(kind)) => self.create_print_set(kind),
+            (Action::ShowAsUnderlay, Target::View(kind)) => {
+                if let Some(source) = views::element_id(&self.session.model, kind) {
+                    self.show_as_underlay(source);
+                }
+            }
+            (Action::RemoveUnderlay, _) => {
+                self.remove_underlay();
+            }
             (Action::EditType, Target::Type(category, name)) => {
                 self.open_type(TypeKey { category, name });
             }

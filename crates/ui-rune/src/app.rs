@@ -36,6 +36,7 @@ mod schedule;
 mod section;
 pub mod settings;
 pub mod types;
+mod underlay;
 
 /// How near a click or a hover must be to a line to take it, points.
 const REACH: f32 = 4.0;
@@ -124,6 +125,8 @@ pub struct App {
     pub clip_out: Option<String>,
     pub paste_asked: Option<crate::clip::Mode>,
     pub pasting: Option<String>,
+    /// The underlay of the plan shown, drawn through the camera, and whether it is over the plan's lines (`app/underlay.rs`).
+    pub underlaid: Option<(Drawing, bool)>,
     /// The 3D view shown, with the thread that makes its picture (`orbit.rs`).
     pub orbit: Orbit,
     /// The sheet shown, with the thread that paints it (`paper.rs`).
@@ -213,6 +216,7 @@ impl App {
             clip_out: None,
             paste_asked: None,
             pasting: None,
+            underlaid: None,
             orbit: Orbit::new(),
             paper: Paper::new(),
             grid: Grid::default(),
@@ -315,6 +319,7 @@ impl App {
         self.live_scale.set(1.0);
         self.live_since = None;
         self.drawing = views::draw(&self.session.model, self.view, self.camera.view(self.size.0, self.size.1));
+        self.underlaid = self.underlay_drawing();
         self.revision += 1;
         if let (PlanMode::Pixels, Some(d)) = (self.mode, &self.drawing) {
             let view = self.camera.view(self.size.0, self.size.1);

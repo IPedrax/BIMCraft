@@ -78,8 +78,15 @@ pub fn plan(s: &App) -> El {
             text(words).key("plan-grip-tag").font(type_::LABEL).color(pal.accent).inert().pin(Some(x + 12.0), Some(y - 24.0), None, None)
         })
     });
-    let layers =
-        [base, lit("plan-selected", &selected, pal.accent, pal.accent_fill), lit("plan-hovered", &hovered, pal.hover, pal.hover_fill)];
+    let mut layers =
+        vec![base, lit("plan-selected", &selected, pal.accent, pal.accent_fill), lit("plan-hovered", &hovered, pal.hover, pal.hover_fill)];
+    // An underlay is another view drawn under the plan's lines, or over them (`App::underlaid`).
+    if let Some((drawing, front)) = &s.underlaid {
+        let under = memo("plan-underlay", (s.revision, size.0.to_bits(), size.1.to_bits()), || {
+            layer("plan-underlay", paint::base(drawing, size, true).shape)
+        });
+        layers.insert(usize::from(*front), under);
+    }
     // In `Live` the layers sit in one element the camera moves; in `Exact` they are the canvas's own children, as they were before the
     // live camera: with the wrapper bound at rest, a wheel notch over the house cost about twice as much on Linux's CPU renderer
     // (docs/areas/rune-ui.md, run 45532642548 against e282db8d6).
