@@ -52,7 +52,8 @@ impl Scene {
             return Made::Whole;
         }
         let (old, new) = (before.lookup(), after.lookup());
-        let index = crate::walls::Index::new(after);
+        // The walls' and runs' index kept with the model, brought up to date from the one before by what changed.
+        let index = after.wall_index();
         let thickest =
             [before, after].iter().flat_map(|m| m.types.wall.values().map(|t| t.thickness)).filter(|t| t.is_finite()).fold(0.0, f64::max);
         // What the scene draws that has no triangles yet: what touches it may give it some.

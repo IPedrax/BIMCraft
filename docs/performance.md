@@ -359,6 +359,23 @@ Release, Apple M4 Pro, 20 snaps near Level 1's walls:
 | A snap, median | 48 ms | 2.9 ms | 164 ms | 6.4 ms |
 | The first snap after an edit | 67 ms | 27 ms | 229 ms | 77 ms |
 
+### The walls' and runs' index brought up to date (2026-11-27)
+
+`walls::Index` (the walls and runs by plan tile and height, and the doors and windows by wall) is what a run's joins ask of
+its neighbours in a plan, and what the 3D scene brought up to date after an edit asks of the walls. It was made of every
+element for each new model: the first plan drawn after an edit of the annotated tower made it again, and so did each edit
+in the 3D view. It is now kept in chunks behind `Arc`s, and a command's model brings the one before up to date by what
+changed (`Index::updated`): made again where a level or the types changed, and with the walls attached to what is over or
+under them always put again. In tests every index brought up to date is held to the one made of every element.
+
+Release, Apple M4 Pro, median of five:
+
+| | 360,031 elements, before | after | 1,200,101 elements, before | after |
+|---|---:|---:|---:|---:|
+| Level 1's plan drawn after an edit | 129 ms | 112 ms | 198 ms | 134 ms |
+
+The rest of that draw is the plan's own work (126 ms at 1.2 million with nothing changed): per-element fragments are next.
+
 ## 3D on the graphics card
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model on a view worker), and
