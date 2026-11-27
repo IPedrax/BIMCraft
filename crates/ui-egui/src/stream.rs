@@ -399,7 +399,9 @@ impl Stream {
                 look
             }
         };
-        // The card's packing: made again for another mesh, or a look that colours otherwise.
+        // The card's packing: made again for another mesh, or a look that colours otherwise. The card lets go of the old
+        // packing's nodes after this frame, so what it holds now is asked for again.
+        let mut repacked = false;
         match on {
             On::Card(mesh) => {
                 let same = self
@@ -412,6 +414,7 @@ impl Stream {
                     let packing = Packing { id: self.next_pack, look: Arc::clone(&look), origin: mesh.origin, owners };
                     self.packing = Some((Arc::downgrade(mesh), Arc::new(packing)));
                     self.ready.clear();
+                    repacked = true;
                 }
             }
             On::Processor => {
@@ -420,6 +423,7 @@ impl Stream {
                 }
             }
         }
+        let held = |k: &Key| !repacked && held(k);
         let packing = self.packing.as_ref().map(|(_, p)| Arc::clone(p));
         let asked = Asked { model: Arc::downgrade(model), view, cam: *cam, reboxed, most, pack: packing.as_ref().map(|p| p.id) };
         if !self.asked.as_ref().is_some_and(|a| a.same(&asked)) {
@@ -622,11 +626,24 @@ mod tests {
         let owner = mesh.owners.iter().position(|o| o.id == id).unwrap() as u32 + 1;
         assert_eq!(stream.ready.len(), wanted);
         assert!(stream.ready.iter().all(|r| r.owner == owner && r.dots.count > 0 && r.dots.words.len() == 3 * r.dots.count as usize));
-        // Another mesh packs them again; what the card holds is never asked for.
+        // Another mesh packs them again, even those the card holds in the old packing, which it lets go of.
         let other = Arc::new(Mesh::new(&scene, &look).unwrap());
         stream.frame(&ctx, &model, None, &near, None, 10_000_000, On::Card(&other), &|_| true);
-        assert!(stream.pack().is_some_and(|p| p != first));
-        assert!(stream.ready.is_empty(), "the old packing's are dropped, and the card holds the rest");
+        let second = stream.pack().unwrap();
+        assert_ne!(second, first);
+        assert_eq!(stream.ready.len(), wanted, "every node packed again for the new packing");
+        assert!(stream.ready.iter().all(|r| r.dots.count > 0));
+        // Once the card holds them in this packing, the same frame asks for nothing.
+        stream.ready.clear();
+        stream.frame(&ctx, &model, None, &near, None, 10_000_000, On::Card(&other), &|_| true);
+        assert_eq!(stream.pack(), Some(second));
+        assert!(stream.ready.is_empty(), "what the card holds is never asked for again");
+        // A look that colours otherwise (eye-dome lighting turned off in the view) packs them all again too.
+        s.execute("graphic_display_options", &serde_json::json!({"eye_dome": false})).unwrap();
+        let unlit = Arc::clone(&s.model);
+        stream.frame(&ctx, &unlit, None, &near, None, 10_000_000, On::Card(&other), &|_| true);
+        assert!(stream.pack().is_some_and(|p| p != second));
+        assert_eq!(stream.ready.len(), wanted, "every node asked for again, though the card held them");
         // A model with no index open streams nothing.
         let mut plain = (*model).clone();
         plain.clouds.clear();
