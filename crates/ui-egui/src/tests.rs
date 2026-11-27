@@ -3442,7 +3442,7 @@ fn project_units_offer_the_decimals_their_units_allow_and_the_project_keeps_the_
     h.run();
     press(&mut h, "1/16\"");
     assert!(h.get_all_by_role(Role::ComboBox).any(|n| n.value().as_deref() == Some("1/16\"")), "sixteenths picked");
-    press(&mut h, "Escape");
+    press(&mut h, "Cancel");
 }
 
 #[test]
