@@ -6,10 +6,15 @@ use bimcraft_core::model::Element;
 use super::*;
 use crate::app::App;
 
-/// A stair on the sample's level, far from the house; its id.
+/// A stair of a type of its own on the sample's level, far from the house; its id. (A stair made with no type is solid down to its level and
+/// has none to edit.)
 fn stair(app: &mut App) -> Id {
     let level = app.level.expect("a level");
-    let made = app.session.execute("stair", &json!({"start": [-30000.0, -30000.0], "end": [-26000.0, -30000.0], "level": level}));
+    let made = app.session.execute("type", &json!({"category": "stair", "name": "Test stair", "waist": 150.0}));
+    assert!(made.is_ok(), "{made:?}");
+    let made = app
+        .session
+        .execute("stair", &json!({"start": [-30000.0, -30000.0], "end": [-26000.0, -30000.0], "level": level, "type": "Test stair"}));
     assert!(made.is_ok(), "{made:?}");
     app.session.model.elements.iter().filter(|(_, e)| matches!(e, Element::Stair(_))).map(|(id, _)| *id).max().expect("a stair")
 }

@@ -109,6 +109,7 @@ fn ok_makes_the_bars_through_the_command_and_a_field_that_is_wrong_keeps_the_dia
         ("top.diameter", "12.5"),
         ("stirrup.diameter", "8"),
         ("stirrup.spacing", "200"),
+        ("cover", "25"),
     ] {
         put(&mut d, key, text);
     }

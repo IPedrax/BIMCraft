@@ -155,6 +155,11 @@ pub struct StairType {
 impl StairType {
     /// Opens on the type of the stair selected. Why not, in words.
     pub fn open(m: &Model, selection: &[Id]) -> Result<StairType, String> {
+        if let [id] = selection
+            && matches!(m.elements.get(*id), Some(bimcraft_core::model::Element::Stair(st)) if st.type_name.is_empty())
+        {
+            return Err(t("That stair has no type: it is solid down to its level.").to_string());
+        }
         let name = match selection {
             [id] => crate::typeprops::of_element(m, *id).filter(|k| k.category == "stair").map(|k| k.name),
             _ => None,

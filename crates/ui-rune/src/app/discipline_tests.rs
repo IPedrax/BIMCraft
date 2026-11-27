@@ -41,6 +41,7 @@ fn what_is_typed_in_a_box_is_read_by_the_dialog_and_a_press_runs_the_command() {
         ("Top bars: Diameter", "12.5"),
         ("Stirrups: Diameter", "8"),
         ("Stirrups: Spacing", "200"),
+        ("Cover", "25"),
     ] {
         let i = edit_named(&app, name);
         app.dialogs.discipline_edit(i).text = text.to_string();

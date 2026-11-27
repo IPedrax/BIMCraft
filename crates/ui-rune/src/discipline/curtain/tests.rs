@@ -114,6 +114,7 @@ fn the_borders_the_fits_and_the_rest_are_chosen_and_ok_puts_the_pattern_on_the_t
     let mut app = App::sample();
     let id = curtain_wall(&mut app);
     let mut d = Pattern::open(&app.session.model, &[id]).unwrap_or_else(|why| panic!("{why}"));
+    let before = d.l.borders.clone();
     d.choose(BORDER, 1, &mut app);
     d.choose(BORDER + 3, 1, &mut app);
     d.choose(COLUMN_FIT, 1, &mut app);
@@ -121,7 +122,8 @@ fn the_borders_the_fits_and_the_rest_are_chosen_and_ok_puts_the_pattern_on_the_t
     d.choose(CONTINUOUS, 1, &mut app);
     d.press("anchor", 0, &mut app);
     let b = &d.l.borders;
-    assert!(b.left.is_some() && b.top.is_some() && b.right.is_none() && b.bottom.is_none());
+    assert!(b.left.is_some() && b.top.is_some(), "the ones chosen: {b:?}");
+    assert!(b.right == before.right && b.bottom == before.bottom, "and no other: {b:?} {before:?}");
     assert_eq!(
         (d.l.columns.fit, d.l.rows.justify, d.l.continuous, d.l.anchor_rows),
         (Fit::Fixed, Justify::End, Continuous::Horizontal, true)
