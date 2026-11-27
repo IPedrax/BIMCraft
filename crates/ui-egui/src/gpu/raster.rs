@@ -18,11 +18,17 @@ pub fn point_features() -> wgpu::Features {
 /// The features a device is asked for to draw any model: `asked`, and [`point_features`] where `adapter` has them. Never more
 /// than the adapter has, so the device is made whatever it lacks.
 pub fn features_for(adapter: &wgpu::Adapter, asked: wgpu::Features) -> wgpu::Features {
-    if adapter.get_info().backend != wgpu::Backend::Gl && adapter.features().contains(point_features()) {
+    if trying() && adapter.get_info().backend != wgpu::Backend::Gl && adapter.features().contains(point_features()) {
         asked | point_features()
     } else {
         asked
     }
+}
+
+/// Whether the compute pass is tried: only when `BIMCRAFT_COMPUTE_POINTS` is `1`. On an RTX 3090 under Vulkan it drew none of a
+/// test's points and the process stopped, so until that's found the cards draw quads, as ever.
+pub fn trying() -> bool {
+    std::env::var("BIMCRAFT_COMPUTE_POINTS").is_ok_and(|v| v == "1")
 }
 
 /// How a device's 3D view draws a scan's points, for the log.

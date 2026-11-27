@@ -253,7 +253,9 @@ Eye-dome lighting (Graphic Display Options) darkens each point by how far it lie
 `view3d::eye_dome` does on the processor: on the card in the edges' pass (`dome` in `gpu.wgsl`), off the opaque depth, the points'
 pixels known by their plane; in a parallel view `cs_near` first finds the nearest depth in the picture. Off, it costs nothing.
 
-On a card with 64-bit atomics (wgpu's `SHADER_INT64` and `SHADER_INT64_ATOMIC_MIN_MAX`: Vulkan with `VK_KHR_shader_atomic_int64`,
+**Experimental, off unless `BIMCRAFT_COMPUTE_POINTS=1`** (`raster::trying`): on an RTX 3090 under Vulkan the compute pass drew none
+of a test's points and the process then stopped, so until that's found every card draws quads, as tested. With it on: on a card
+with 64-bit atomics (wgpu's `SHADER_INT64` and `SHADER_INT64_ATOMIC_MIN_MAX`: Vulkan with `VK_KHR_shader_atomic_int64`,
 DirectX 12 with shader model 6.6, Metal with MSL 2.4), the points are drawn the way the processor's `raster_points` draws them
 (Schütz, Kerbl and Wimmer, 2022) rather than as quads (`gpu/raster.rs`, `gpu/points.wgsl`). The window asks for the two features
 when it makes its device, only where the adapter has them (`features_for`), and the log says which way the points are drawn
