@@ -90,12 +90,17 @@ fn a_length_that_is_no_length_is_the_message_and_the_point_stays_unpicked() {
 }
 
 #[test]
-fn a_wall_drawn_as_a_rectangle_takes_no_typed_line_and_rotate_turns_by_the_angle_typed() {
+fn a_wall_drawn_as_a_rectangle_takes_its_width_and_rotate_turns_by_the_angle_typed() {
     let mut app = App::sample();
     app.set_tool("wall");
     app.set_shape(Shape::Rectangle);
     click(&mut app, A);
-    assert!(!app.type_text("5"), "a rectangle's numbers are not a line's length");
+    assert!(
+        app.type_text("5") && app.status().contains("Width"),
+        "a rectangle's number is its width, not a line's length: {}",
+        app.status()
+    );
+    app.typed.clear();
     app.set_shape(Shape::Line);
     // A wall of its own: the house's may be held by dimensions, which refuse to turn.
     let level = app.level.unwrap_or_default();

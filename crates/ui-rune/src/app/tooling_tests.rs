@@ -120,7 +120,11 @@ fn a_shape_makes_its_walls_as_one_undo_step_and_previews_what_the_next_click_mak
     app.set_shape(Shape::Line);
     click(&mut app, A);
     hover(&mut app, B);
-    assert!(app.shape_preview().is_empty(), "a line is drawn by the chain's own segment, which the pick layer shows");
+    assert_eq!(
+        app.shape_preview().len(),
+        1,
+        "a line is drawn by the chain's own segment (the pick layer), and its ghost is the wall as thick as its type"
+    );
     app.set_shape(Shape::Circle);
     assert!(app.picked.is_empty(), "another shape starts again");
 }
