@@ -13,6 +13,7 @@ mod adaptive_editor;
 mod adaptive_place;
 mod adaptive_view;
 mod assistant;
+mod background;
 mod background_grid;
 pub mod bench;
 mod browser;
@@ -1158,6 +1159,7 @@ pub struct BimApp {
     phasing_dialog: Option<phasing::PhasingDialog>,
     /// Graphic Display Options (GD), while open.
     display_dialog: Option<display::DisplayDialog>,
+    background_dialog: Option<background::BackgroundDialog>,
     /// View Range (a plan's Properties, Edit…), while open.
     view_range_dialog: Option<viewrange::RangeDialog>,
     /// Manage > Annotation Settings > Halftone/Underlay, while open.
@@ -2147,6 +2149,7 @@ impl BimApp {
             templates_dialog: None,
             phasing_dialog: None,
             display_dialog: None,
+            background_dialog: None,
             view_range_dialog: None,
             halftone_dialog: None,
             project_info_dialog: None,
@@ -2903,6 +2906,7 @@ impl BimApp {
             || self.templates_dialog.is_some()
             || self.phasing_dialog.is_some()
             || self.display_dialog.is_some()
+            || self.background_dialog.is_some()
             || self.view_range_dialog.is_some()
             || self.halftone_dialog.is_some()
             || self.project_info_dialog.is_some()
@@ -4313,9 +4317,20 @@ impl BimApp {
             Sheet::Section(_) => {
                 matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish | Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. })
             }
-            Sheet::View3D => {
-                matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint | Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. })
-            }
+            Sheet::View3D => matches!(
+                self.tool,
+                Tool::Demolish
+                    | Tool::Paint
+                    | Tool::Unpaint
+                    | Tool::CurtainGrid { .. }
+                    | Tool::CurtainSegment { .. }
+                    | Tool::Door
+                    | Tool::Window
+                    | Tool::Move(_)
+                    | Tool::Copy(_)
+                    | Tool::Rotate { .. }
+                    | Tool::Mirror { .. }
+            ),
             Sheet::Paper(_) => self.tool == Tool::Text,
             _ => false,
         };
@@ -7264,7 +7279,10 @@ impl BimApp {
             (Sheet::Section(_), Tool::Modify) => {
                 return msg!("Click to select what the view cuts or sees; the middle button pans, the wheel zooms.");
             }
-            (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), Tool::Level) => {
+            (Sheet::Section(_), Tool::Level) => {
+                return msg!("Click where the new level goes, or type its elevation in the Options Bar, then Create.");
+            }
+            (Sheet::Paper(_), Tool::Level) => {
                 return msg!("Type the new level's elevation in the Options Bar, then Create.");
             }
             (Sheet::Section(_) | Sheet::Paper(_), Tool::Text) => {
@@ -7295,6 +7313,27 @@ impl BimApp {
             }
             (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_) | Tool::Attach | Tool::Trim(_) | Tool::TrimTo { .. }) => {}
             (Sheet::View3D, Tool::Paste) => return msg!("Click on the work plane where the pasted elements go. Esc cancels."),
+            (Sheet::View3D, Tool::Door | Tool::Window) => {
+                return msg!("Point at a wall: the opening shows where a click puts it. Space flips it; Esc stops.");
+            }
+            (Sheet::View3D, Tool::Move(None) | Tool::Copy(None)) => {
+                return msg!("Click the base point on the model. Turned to a side with the triad, points go up and down as well as along.");
+            }
+            (Sheet::View3D, Tool::Move(Some(_)) | Tool::Copy(Some(_))) => {
+                return msg!("Click where the base point goes: the selection shows where it would stand.");
+            }
+            (Sheet::View3D, Tool::Rotate { start: None, .. }) => {
+                return msg!("Click the start of the angle on the model, about the centre shown.");
+            }
+            (Sheet::View3D, Tool::Rotate { .. }) => return msg!("Click the end of the angle: the selection shows how it would turn."),
+            (Sheet::View3D, Tool::Mirror { draw: false, .. }) => return msg!("Click a wall, a line or a grid to mirror about."),
+            (Sheet::View3D, Tool::Mirror { start: None, .. }) => return msg!("Click the mirror axis's first point on the model."),
+            (Sheet::View3D, Tool::Mirror { .. }) => return msg!("Click its second point: the selection shows how it would mirror."),
+            (Sheet::View3D, Tool::Level) => {
+                return msg!(
+                    "Click where the new level goes: at the height of what is under the cursor, or, turned to a side with the triad, anywhere."
+                );
+            }
             // A paste follows the cursor in these views as in a plan; a section's level lines are picked.
             (Sheet::Section(_) | Sheet::Paper(_), Tool::Paste) | (Sheet::Section(_), Tool::PickLevel) => {}
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), _) => {
@@ -7743,11 +7782,12 @@ impl BimApp {
         let Some((id, sc)) = self.shown_schedule() else { return };
         // The right-click menu, on the schedule and on each of its cells.
         let groups = self.context_items();
+        let levels = self.level_choices();
         let mut chosen = None;
         Frame::new().fill(pal().surface).inner_margin(16.0).show(ui, |ui| {
             ui.set_min_size(ui.available_size());
             let ground = ui.interact(ui.max_rect(), ui.id().with("schedule menu"), egui::Sense::click());
-            context::menu(&ground, &groups, &mut chosen);
+            context::menu(&ground, &groups, &levels, &mut chosen);
             let name = self.view_name(self.sheet);
             ui.label(RichText::new(&name).heading());
             ui.add_space(8.0);
@@ -7791,7 +7831,7 @@ impl BimApp {
                                     if r.clicked() {
                                         picked = Some((ids.clone(), ui.input(|i| i.modifiers)));
                                     }
-                                    context::menu(&r, &groups, &mut chosen);
+                                    context::menu(&r, &groups, &levels, &mut chosen);
                                 }
                                 ui.end_row();
                             }
@@ -7845,6 +7885,7 @@ impl BimApp {
         self.templates_window(ctx);
         self.phasing_window(ctx);
         self.display_window(ctx);
+        self.background_window(ctx);
         self.view_range_window(ctx);
         self.halftone_window(ctx);
         self.project_info_window(ctx);

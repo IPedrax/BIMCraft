@@ -310,7 +310,15 @@ impl BimApp {
         // Modify and Demolish pick what is under the cursor, and the section tools take their references from it.
         let picks = matches!(
             self.tool,
-            Tool::Modify | Tool::Demolish | Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. }
+            Tool::Modify
+                | Tool::Demolish
+                | Tool::Dimension(..)
+                | Tool::Move(_)
+                | Tool::Copy(_)
+                | Tool::Level
+                | Tool::DetailLine(_)
+                | Tool::Trim(_)
+                | Tool::TrimTo { .. }
         );
         // The level line under the cursor, though a wall or a floor lies nearer: what Aligned to Picked Level takes.
         let pick_level =

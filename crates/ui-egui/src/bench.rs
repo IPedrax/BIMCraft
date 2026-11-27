@@ -14,6 +14,10 @@
 //! view 3d                      the default 3D view (`view plan` the first plan)
 //! orbit 60                     Shift and the middle button dragged 6 px a frame for 60 frames
 //! idle 2                       two seconds of frames with nothing asked
+//! select wall                  every element of a category selected (`select 100003 100004` those ids)
+//! keys HH                      the letters typed, as a keyboard shortcut is
+//! click 640 520                a primary click at that point of the window, in points (`rclick` the secondary button)
+//! hover 700 500                the pointer moved there, nothing pressed
 //! screenshot /tmp/plan.png     the window as it shows now
 //! quit
 //! ```
@@ -38,12 +42,27 @@ const SETTLED_FRAMES: u32 = 5;
 pub enum Step {
     Open(PathBuf),
     Wait(Duration),
-    Zoom { notches: u32, inward: bool },
-    Pan { dx: f32, dy: f32, frames: u32 },
+    Zoom {
+        notches: u32,
+        inward: bool,
+    },
+    Pan {
+        dx: f32,
+        dy: f32,
+        frames: u32,
+    },
     View3d,
     ViewPlan,
     Orbit(u32),
     Idle(Duration),
+    /// Every element of a category, or these ids.
+    Select(String),
+    Keys(String),
+    Click {
+        at: Pos2,
+        secondary: bool,
+    },
+    Hover(Pos2),
     Screenshot(PathBuf),
     Quit,
 }
@@ -94,7 +113,21 @@ pub fn parse(text: &str) -> Result<Vec<Step>, String> {
             "view" if rest == "3d" => Step::View3d,
             "view" if rest == "plan" => Step::ViewPlan,
             "quit" if rest.is_empty() => Step::Quit,
-            _ => return Err(bad("not a step: open, wait, zoom, pan, view, orbit, idle, screenshot or quit")),
+            "select" if !rest.is_empty() => Step::Select(rest.to_string()),
+            "hover" => {
+                let v = numbers(2)?;
+                Step::Hover(Pos2::new(v[0] as f32, v[1] as f32))
+            }
+            "click" | "rclick" => {
+                let v = numbers(2)?;
+                Step::Click { at: Pos2::new(v[0] as f32, v[1] as f32), secondary: word == "rclick" }
+            }
+            "keys" if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_alphabetic()) => Step::Keys(rest.to_ascii_uppercase()),
+            _ => {
+                return Err(bad(
+                    "not a step: open, wait, zoom, pan, view, orbit, idle, select, keys, click, rclick, hover, screenshot or quit",
+                ));
+            }
         });
     }
     Ok(out)
@@ -262,6 +295,44 @@ impl Bench {
                     self.finish(None);
                 }
             }
+            Step::Select(what) => {
+                let m = &app.session.model;
+                let ids: Vec<bimcraft_core::model::Id> = match what.split_whitespace().map(str::parse).collect::<Result<Vec<_>, _>>() {
+                    Ok(ids) => ids.into_iter().filter(|id| m.elements.contains_key(id)).collect(),
+                    Err(_) => m.elements.iter().filter(|(_, e)| e.category() == what).map(|(id, _)| *id).collect(),
+                };
+                let note = format!("{} selected", ids.len());
+                app.selection = ids;
+                self.finish(Some(note));
+            }
+            Step::Hover(at) => {
+                self.events.push(Event::PointerMoved(at));
+                self.pointer = Some(at);
+                self.finish(None);
+            }
+            Step::Click { at, secondary } => {
+                let button = if secondary { PointerButton::Secondary } else { PointerButton::Primary };
+                // Over it a frame, pressed the next, let go the one after.
+                match self.progress {
+                    0 => self.events.push(Event::PointerMoved(at)),
+                    1 => self.events.push(Event::PointerButton { pos: at, button, pressed: true, modifiers: Modifiers::NONE }),
+                    _ => {
+                        self.events.push(Event::PointerButton { pos: at, button, pressed: false, modifiers: Modifiers::NONE });
+                        self.pointer = Some(at);
+                        self.finish(None);
+                        return;
+                    }
+                }
+                self.progress += 1;
+            }
+            Step::Keys(letters) => {
+                for key in letters.chars().filter_map(|c| egui::Key::from_name(&c.to_string())) {
+                    for pressed in [true, false] {
+                        self.events.push(Event::Key { key, pressed, modifiers: Modifiers::NONE, repeat: false, physical_key: None });
+                    }
+                }
+                self.finish(None);
+            }
             Step::Screenshot(path) => {
                 if self.shot.is_none() {
                     self.shot = Some(path);
@@ -388,7 +459,7 @@ mod tests {
 
     #[test]
     fn a_scenario_reads_its_steps_and_says_which_line_is_not_one() {
-        let s = parse("open /a b.bimc\n# a comment\nwait 60\nzoom in 3\nzoom out 2\npan 10 -5 4\nview 3d\norbit 9\nidle 1.5\nscreenshot x.png\nquit\n")
+        let s = parse("open /a b.bimc\n# a comment\nwait 60\nzoom in 3\nzoom out 2\npan 10 -5 4\nview 3d\norbit 9\nidle 1.5\nselect wall\nkeys hh\nclick 10 20\nrclick 1 2\nhover 5 6\nscreenshot x.png\nquit\n")
             .unwrap();
         assert_eq!(
             s,
@@ -401,11 +472,18 @@ mod tests {
                 Step::View3d,
                 Step::Orbit(9),
                 Step::Idle(Duration::from_secs_f64(1.5)),
+                Step::Select("wall".into()),
+                Step::Keys("HH".into()),
+                Step::Click { at: Pos2::new(10.0, 20.0), secondary: false },
+                Step::Click { at: Pos2::new(1.0, 2.0), secondary: true },
+                Step::Hover(Pos2::new(5.0, 6.0)),
                 Step::Screenshot("x.png".into()),
                 Step::Quit,
             ]
         );
-        for bad in ["jump 3", "zoom sideways 2", "orbit 0", "orbit -1", "wait forever", "pan 1 2", "idle 1e9", "view 4d"] {
+        for bad in
+            ["jump 3", "zoom sideways 2", "orbit 0", "orbit -1", "wait forever", "pan 1 2", "idle 1e9", "view 4d", "keys H1", "select"]
+        {
             let e = parse(&format!("wait\n{bad}")).unwrap_err();
             assert!(e.starts_with("line 2:"), "{bad}: {e}");
         }

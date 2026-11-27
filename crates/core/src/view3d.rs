@@ -18,6 +18,7 @@ use crate::stairs;
 use crate::texture::Sampler;
 use crate::walls::{self, Axis, Plane};
 
+pub mod background;
 pub mod gpu;
 
 /// Shared CPU rendering workers, bounded so background work leaves input and I/O capacity.
@@ -5160,6 +5161,12 @@ impl Image {
             }
         }
         true
+    }
+
+    /// Whether pixel `i` (row by row) shows nothing: no surface there, nothing seen through, no line or point drawn over the
+    /// paper. Where a background shows.
+    pub fn empty_at(&self, i: usize) -> bool {
+        self.hit.get(i).is_none_or(|t| *t == u32::MAX) && self.rgba.get(i * 4..i * 4 + 3) == Some(&[PAPER.0, PAPER.1, PAPER.2][..])
     }
 
     fn index(&self, x: f64, y: f64) -> Option<usize> {

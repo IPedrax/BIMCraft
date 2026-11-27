@@ -1530,7 +1530,7 @@ impl Scene<'_> {
 
 /// Of the lines Align, Mirror and dimensions use on an element (a grid's, a wall's centre line,
 /// faces and ends, a door's or a window's centre and jambs), the one nearest `p`.
-fn nearest_line(m: &Model, id: Id, p: P2) -> Option<(P2, P2)> {
+pub(crate) fn nearest_line(m: &Model, id: Id, p: P2) -> Option<(P2, P2)> {
     m.reference_at(id, p, |_| true).and_then(|(r, _)| m.reference_line(&r).ok())
 }
 
@@ -4683,7 +4683,7 @@ impl BimApp {
 
     /// Mirror the selection across the line through `a` and `b`; with Copy (Revit's default), a
     /// mirrored copy.
-    fn reflect(&mut self, (a, b): (P2, P2)) {
+    pub(crate) fn reflect(&mut self, (a, b): (P2, P2)) {
         if a.dist(b) > TOL {
             let made = self.run("mirror", json!({"ids": self.selection, "axis": [point(a), point(b)], "copy": self.mirror_copy}));
             self.edited(made, self.mirror_copy);
@@ -4861,7 +4861,7 @@ impl BimApp {
 
     /// The Move and Copy tools' second point: the selection moved or copied by `to - from`. A copy
     /// is selected afterwards; with Multiple, the tool goes on copying from the same base point.
-    fn shift_selection(&mut self, from: P2, to: P2) {
+    pub(crate) fn shift_selection(&mut self, from: P2, to: P2) {
         if self.curtain_grid_moving().is_some() {
             self.move_grid_on_plan(from, to);
             return;

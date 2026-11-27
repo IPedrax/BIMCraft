@@ -1984,6 +1984,7 @@ impl BimApp {
         if subject == Subject::View3D {
             self.camera_properties(ui, active_3d);
             self.section_box_properties(ui);
+            self.background_properties(ui);
         }
         if view_shown {
             self.graphics_properties(ui);

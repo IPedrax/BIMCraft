@@ -723,6 +723,25 @@ element has no model pattern, or the lines aren't parallel or have no length), s
 sets it with `modify`. `pattern_origin` and `pattern_angle` are in the `modify`, `filled_region` and `floor` command docs, and
 `elements` shows them for a region and a floor even at their defaults.
 
+## A 3D view's background
+
+A 3D view may show something of its own where the model doesn't, as Revit's Graphic Display Options > Background
+(`view3d::background`, kept in `View3D::background`). Its fill is the canvas's paper (none, the default), one colour, two colours
+meeting at the picture's middle, a gradient through colours each at a percent down the view (1 to 16 of them, in any order,
+blended between and held past the ends), or a picture the project holds, filling the view (cut to its shape), fitted inside it or
+stretched over it. With a horizon on, everything the view shows at elevation 0 and below is the ground's colour, over the fill: its
+edge follows the camera as it turns (`horizon_y`: in perspective the eye's level, far off; a parallel view has no eye, so as if
+seen through the default lens, as far above the middle as the camera looks down: from the top the ground fills the view, from
+below the sky). The `background` command sets both; a picture given by `path` is taken into the project's
+pictures as `image` takes one, and Purge Unused counts the view as using it. In the window it is the Background row of the 3D view's
+Properties, whose button opens the Background dialog (`background.rs`): the kinds, a colour button for each colour, a gradient's
+colours with where each is (Add Color, Remove), a picture to browse for and how it lies, the Horizon and its ground's colour, a
+preview, OK, Apply and Cancel.
+
+The processor's picture has it painted in where nothing is drawn (`Background::paint`: no surface, nothing seen through and the
+paper showing), and so does `render`'s PNG. The card leaves those pixels clear (`Gpu::see_through`, the post pass's `display.w`),
+and the window paints the background under its picture, the colours as a mesh and a picture as a texture made once.
+
 ## View range and the underlay
 
 A plan's view range (`view_range.rs`; `Level::view_range`, `PlanView::view_range`, a template's `view_range`) is Revit's: four planes,

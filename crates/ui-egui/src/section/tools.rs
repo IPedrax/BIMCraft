@@ -26,6 +26,8 @@ impl BimApp {
             self.tool,
             Tool::Dimension(..)
                 | Tool::Move(_)
+                | Tool::Copy(_)
+                | Tool::Level
                 | Tool::Scale(_)
                 | Tool::DetailLine(_)
                 | Tool::DetailView(_)
@@ -134,7 +136,27 @@ impl BimApp {
                     }
                 }
             }
-            Tool::Move(base) => {
+            // A level where the click is: its line across the view at the cursor's height until then.
+            Tool::Level => {
+                if let Some(at) = cursor {
+                    let y = screen(at).y;
+                    p.extend(egui::Shape::dashed_line(&[egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)], stroke, 10.0, 6.0));
+                    let z = drawing_plane::DrawingPlane::of(m, id).map_or(at.1, |pl| pl.point(at)[2]);
+                    p.text(
+                        screen(at) + egui::vec2(12.0, -12.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        crate::lang::tf("Level at {}", &[&m.with_unit(z)]),
+                        egui::FontId::proportional(13.0),
+                        stroke.color,
+                    );
+                }
+                if clicked.is_some()
+                    && let Some(at) = cursor
+                {
+                    self.vertical_point(id, at);
+                }
+            }
+            Tool::Move(base) | Tool::Copy(base) => {
                 if let (Some(a), Some(b)) = (base, cursor) {
                     p.line_segment([screen(a), screen(b)], stroke);
                     p.text(
@@ -262,6 +284,26 @@ impl BimApp {
                 if self.run("move", json!({"view":view,"ids":self.selection,"by":[by.0,by.1]})).is_some() {
                     self.tool = Tool::Modify;
                 }
+            }
+            Tool::Copy(None) => self.tool = Tool::Copy(Some(at)),
+            // A copy as far along and up in the model as the view says: a level's only up or down.
+            Tool::Copy(Some(base)) if base.dist(at) > 1e-6 => {
+                let Some(plane) = drawing_plane::DrawingPlane::of(&self.session.model, view) else { return };
+                let d = plane.vector(at - base).map(|v| v.round() + 0.0);
+                let m = &self.session.model;
+                let levels = self.selection.iter().all(|id| matches!(m.elements.get(*id), Some(Element::Level(_))));
+                let by = if levels { [0.0, 0.0, d[2]] } else { d };
+                if let Some(made) = self.run("copy", json!({"ids": self.selection, "by": by}))
+                    && !self.multiple
+                {
+                    self.selection =
+                        made["ids"].as_array().map(|a| a.iter().filter_map(serde_json::Value::as_u64).collect()).unwrap_or_default();
+                    self.tool = Tool::Modify;
+                }
+            }
+            Tool::Level => {
+                let z = drawing_plane::DrawingPlane::of(&self.session.model, view).map_or(at.1, |pl| pl.point(at)[2]);
+                self.run("level", json!({"elevation": z.round() + 0.0}));
             }
             Tool::DetailLine(_) => self.place_detail_line(view, at),
             _ => {}

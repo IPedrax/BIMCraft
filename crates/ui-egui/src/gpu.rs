@@ -247,8 +247,12 @@ impl Store {
 
 /// A wireframe's picture drawn in parts because the card can't hold all its lines at once: what it is of, and how many parts
 /// are done (a part being one buffer's lines, once for all of them and again for what is tinted).
+/// What a streamed wireframe was drawn for: the camera, the box, the tints, whether ink is swapped and the ground left clear,
+/// and the marks.
+type WireKey = (Camera, Cut, Vec<(Id, Rgb)>, (bool, bool), Vec<PlaneMark>);
+
 struct WireStream {
-    key: (Camera, Cut, Vec<(Id, Rgb)>, bool, Vec<PlaneMark>),
+    key: WireKey,
     done: usize,
 }
 
@@ -474,6 +478,9 @@ pub struct Gpu {
     pub(crate) full_at: Option<u64>,
     /// Hidden line is drawn as a section is, paper and ink swapped on a dark canvas (`canvas::color`).
     pub(crate) swapped_ink: bool,
+    /// The view has a background of its own (`view3d::background`): where nothing is drawn the picture is left clear, for the
+    /// window to paint it under.
+    pub(crate) see_through: bool,
     /// The work plane and its patch, drawn over the picture where nothing opaque is nearer (the first [`MARKS`]).
     pub(crate) marks: Vec<PlaneMark>,
     /// Pass 5: the marks, blended over the picture.
@@ -1042,6 +1049,7 @@ impl Gpu {
             card_bytes: u64::MAX,
             full_at: None,
             swapped_ink: false,
+            see_through: false,
             marks: Vec::new(),
             marking,
         })
@@ -1412,7 +1420,8 @@ impl Gpu {
         // The view's edges, silhouettes and ambient shadows, as the processor draws them.
         let d = mesh.display;
         let silhouette = d.silhouette.min(bimcraft_core::view3d::MAX_SILHOUETTE) as f32;
-        put(&mut globals, &[if d.edges { 1.0 } else { 0.0 }, silhouette, if d.ambient_shadows { 1.0 } else { 0.0 }, 0.0]);
+        let clear = if self.see_through { 1.0 } else { 0.0 };
+        put(&mut globals, &[if d.edges { 1.0 } else { 0.0 }, silhouette, if d.ambient_shadows { 1.0 } else { 0.0 }, clear]);
         // The section box from the mesh's origin, as a surface's point is.
         let (lo, hi) = cut.unwrap_or_default();
         let from = |p: [f64; 3]| std::array::from_fn::<f32, 3, _>(|i| (p[i] - mesh.origin[i]) as f32);
@@ -1643,7 +1652,7 @@ impl Gpu {
         let streams = mesh.wireframe && lines > 0 && up.wires.count * WIRE > up.room;
         let mut stands_in = false;
         if streams {
-            let key = (*cam, cut, tints.to_vec(), self.swapped_ink, self.marks.clone());
+            let key = (*cam, cut, tints.to_vec(), (self.swapped_ink, self.see_through), self.marks.clone());
             let passes: &[&wgpu::RenderPipeline] = if tints.is_empty() { &[&self.wires] } else { &[&self.wires, &self.wires_tinted] };
             let buffers = up.wires.buffers.len();
             let total = buffers * passes.len();
@@ -1679,7 +1688,9 @@ impl Gpu {
                         }
                     }
                     let paper = if swapped > 0.5 { 26.0 / 255.0 } else { 1.0 };
-                    let load = if done == 0 {
+                    let load = if done == 0 && self.see_through {
+                        wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+                    } else if done == 0 {
                         wgpu::LoadOp::Clear(wgpu::Color { r: paper, g: paper, b: paper, a: 1.0 })
                     } else {
                         wgpu::LoadOp::Load
