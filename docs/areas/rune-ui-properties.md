@@ -188,3 +188,20 @@ What a tool in hand lets a person set before the click, so a tool no longer runs
   back to the selection; putting the tool down, to the plan.
 - **The widget** (`ui/options_bar.rs`): a row pinned over the plan's top left (under the shape bar), with lists that open under it, fields,
   and Chain or Gable.
+
+## Round 2: the typed length and angle
+
+With a tool in hand and a point picked, digits typed over the plan are a length from that point, Tab goes on to the angle (degrees
+counter-clockwise from east, a minus allowed) and Enter picks the point they make, toward the pointer when no angle is typed and as far as
+the pointer when no length is (egui's `typed_length` and `drawing.other`).
+
+- **`reading.rs`** (pure, tested without a window): `Typed` (the two fields and which Tab is on; a field starts with a digit or a point, an angle
+  also a minus, and once it has something takes any character, so a unit, feet and inches or a fraction go to `Units::parse`; 64 characters at most),
+  `point(base, cursor, typed, units)` (a length is above nothing and within `MAX_COORD`, an angle within a turn, the point finite and in
+  range, each refusal naming what was typed) and `reading(typed)`, the line the status bar shows while something is typed.
+- **`app/reading.rs`**: `type_text` (from the window's `Key::Text`), `typed_tab`, `typed_backspace`, `typed_escape` and `place_typed`, which pushes the
+  point and goes through `tool_took_point` as a click there would, so the Options Bar's settings, the core's refusals and a chain all apply as for a
+  click. A click, a change of tool and Escape spend what was typed; Backspace takes a typed character before it takes the last point.
+- **Which tools**: a wall with its Line shape (a rectangle's, a circle's or an arc's numbers are not a line's: not here yet), a run, a stair or ramp's
+  second point, a path, Move, Copy and Mirror. Rotate takes the number as an angle about its picked centre: Enter makes the two rays the machine
+  turns between and the rotation is the core's `rotate`.

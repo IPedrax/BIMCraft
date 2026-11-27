@@ -109,7 +109,15 @@ pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
     if s.dialogs.any() {
         return false;
     }
+    // Digits typed while a tool has a point picked are a length, and Tab goes on to the angle.
+    if let Key::Text(text) = &key.key
+        && !key.mods.cmd
+        && s.type_text(text)
+    {
+        return true;
+    }
     match (&key.key, key.mods.cmd, key.mods.shift) {
+        (Key::Tab, false, false) if s.typed_tab() => return true,
         (Key::Tab, false, back) => return s.step(back),
         (Key::Escape, false, _) => return s.escape(),
         (Key::Enter, false, _) => return s.finish_tool(),
@@ -130,6 +138,8 @@ pub fn on_key(s: &mut App, key: &KeyEvent, _: &mut Tx) -> bool {
 
 #[cfg(test)]
 mod dialog_tests;
+#[cfg(test)]
+mod reading_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

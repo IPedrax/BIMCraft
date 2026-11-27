@@ -122,7 +122,8 @@ of the view there), and a dimension's locks and equality.
 - **What egui adds to a click:** a door's or window's centring on its stretch of wall and its hand and facing (the click sends the
   point only; the core finds the wall), a wall's fixed-grid ends, a stair's or ramp's path with landings and winders (a stair is its
   two ends), the rafters of a roof by extrusion, dormers, shafts, slope arrows, mass, detail lines, grids, reference planes, sections
-  and cameras, the Revit shortcuts (they wait for the shared registry), and the typed length and angle (`draw::reading`, `typed`).
+  and cameras, the Revit shortcuts (they wait for the shared registry), and a shape's own typed numbers (a rectangle's width and height, a circle's radius: `draw::typed`). The typed length and angle of a line is built
+  ([the palette doc](rune-ui-properties.md#round-2-the-typed-length-and-angle)).
 - **Shapes that pick elements**: Fillet Arc, Pick Lines, Pick Faces and Tangent End Arc (which needs the wall before it) are left out
   of the bar; the machine refuses them if a test sets them. Open-ended shapes (spline, polyline) are not walls in the core.
 - **Previews of what stands:** a ghost of the wall's thickness, of a door in its wall, of a column. The pointer's glyph and the
