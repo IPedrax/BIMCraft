@@ -254,6 +254,64 @@ fn a_shared_nested_family_the_project_has_otherwise_is_kept_or_overwritten_as_an
 }
 
 #[test]
+fn reload_of_a_shared_child_keeps_the_hosts_parameter_association() {
+    let shared = "a7224f17-112c-43b3-a5ea-991c60d8ca26";
+    let child = |name: &str| {
+        let mut definition = box_definition(50.0);
+        definition["shared"] = json!(true);
+        definition["parameters"][0]["shared"] = json!(shared);
+        definition["parameters"][0]["name"] = json!(name);
+        definition["forms"][0]["profile"] = json!([[0, 0], [name, 0], [name, "D"], [0, "D"]]);
+        definition
+    };
+    let host = cabinet();
+    let mut definition = serde_json::to_value(&host.model.families["Cabinet"]).unwrap();
+    definition["nested"][0]["family"] = child("W");
+    let mut s = Session::new();
+    run(&mut s, "family", json!({"name": "Cabinet", "definition": definition}));
+    let before = extent(&s.model, "Cabinet", "Large");
+    for from_project in [false, true] {
+        let mut reloaded = copy(&s);
+        let params = if from_project {
+            json!({"name": "Box", "definition": child("Span"), "overwrite": "version"})
+        } else {
+            json!({"name": "Cabinet", "nest": {"name": "Box", "definition": child("Span"), "overwrite": "version"},
+                   "shared_nested": {"Box": "family"}})
+        };
+        run(&mut reloaded, "family", params);
+        let bindings = &reloaded.model.families["Cabinet"].nested_instances[0].params;
+        assert_eq!(bindings.get("Span"), Some(&crate::family::Expr::Formula("Width".into())));
+        assert!(!bindings.contains_key("W"));
+        assert_eq!(extent(&reloaded.model, "Cabinet", "Large"), before);
+    }
+}
+
+#[test]
+fn reload_of_a_shared_child_refuses_a_conflicting_project_override_even_in_preview() {
+    let mut s = Session::new();
+    let guid = "a7224f17-112c-43b3-a5ea-991c60d8ca26";
+    run(&mut s, "family", json!({"name":"Host","types":{"A":{}}}));
+    run(
+        &mut s,
+        "family",
+        json!({"name":"Box","shared":true,"parameters":[
+        {"name":"W","shared":guid,"instance":true,"value":40},
+        {"name":"Span","instance":true,"value":10}],"types":{"A":{}}}),
+    );
+    run(&mut s, "component", json!({"family":"Box","type":"A","at":[0,0],"params":{"W":65,"Span":15}}));
+    let before = s.model.to_json().unwrap();
+    let mut load = json!({"name":"Host","nest":{"name":"Box","definition":{"shared":true,
+        "parameters":[{"name":"Span","shared":guid,"instance":true,"value":80}],"types":{"A":{}}},"overwrite":"version"},
+        "shared_nested":{"Box":"family"},"dry_run":true});
+    let preview = err(&mut s, "family", load.clone());
+    assert!(preview.contains("Span"), "{preview}");
+    assert_eq!(s.model.to_json().unwrap(), before);
+    load["dry_run"] = json!(false);
+    assert_eq!(err(&mut s, "family", load), preview);
+    assert_eq!(s.model.to_json().unwrap(), before);
+}
+
+#[test]
 fn a_nested_material_follows_a_rename_and_counts_as_used() {
     let mut s = cabinet();
     run(&mut s, "material", json!({"name": "Oak", "color": [180, 140, 90]}));

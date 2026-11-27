@@ -310,26 +310,43 @@ impl Family {
     /// copy rewritten to it, as Revit holds one definition of a shared family. Rewriting a copy may change a family that
     /// nests it, so the walk is repeated until nothing changes, at most as deep as nesting goes. Whether anything changed.
     pub fn unify_shared(&mut self) -> bool {
+        let mut work = self.clone();
+        if work.try_unify_shared() == Ok(true) {
+            *self = work;
+            return true;
+        }
+        false
+    }
+
+    fn try_unify_shared(&mut self) -> Result<bool, String> {
         let mut any = false;
         for _ in 0..=MAX_NESTING + 1 {
             let mut changed = false;
             for (name, _) in self.shared_within() {
                 // Its first copy as it is now, after the names before it were made one.
                 let Some((_, first)) = self.shared_within().into_iter().find(|(n, _)| *n == name) else { continue };
-                changed |= self.replace_shared(&name, &first);
+                changed |= self.try_replace_shared(&name, &first)?;
             }
             any |= changed;
             if !changed {
                 break;
             }
         }
-        any
+        Ok(any)
     }
 
-    /// Every shared family nested in it named `name`, at any depth, made `definition`: one definition of a shared family.
-    /// Whether any was.
+    /// Every shared family nested in it named `name`, at any depth, made `definition`. A conflicting binding leaves it as it was.
     pub fn replace_shared(&mut self, name: &str, definition: &Family) -> bool {
-        replace_shared(&mut self.nested, name, definition, MAX_NESTING + 1)
+        let mut work = self.clone();
+        if work.try_replace_shared(name, definition) == Ok(true) {
+            *self = work;
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn try_replace_shared(&mut self, name: &str, definition: &Family) -> Result<bool, String> {
+        replace_shared(&mut self.nested, &mut self.nested_instances, name, definition, MAX_NESTING + 1)
     }
 
     /// Its parameters an instance's `params` name that hold words (a material, text, a URL): what is no formula there.
@@ -461,26 +478,44 @@ impl Family {
     }
 }
 
+/// Only the key names the child's parameter. Any expression on the right still names the host's parameters.
+fn reload_bindings(instances: &mut [NestedInstance], name: &str, old: &Family, incoming: &Family) -> Result<(), String> {
+    let names = super::reload::ReloadNames::between(old, incoming);
+    if names.checks_values() {
+        for inst in instances.iter_mut().filter(|i| i.family == name) {
+            names.move_values(&mut inst.params).map_err(|e| format!("nested family `{name}`: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
 /// Every shared family in `list` named `name`, at most `depth` deep, made `definition`; whether any was.
-fn replace_shared(list: &mut [NestedFamily], name: &str, definition: &Family, depth: usize) -> bool {
+fn replace_shared(
+    list: &mut [NestedFamily],
+    instances: &mut [NestedInstance],
+    name: &str,
+    definition: &Family,
+    depth: usize,
+) -> Result<bool, String> {
     if depth == 0 {
-        return false;
+        return Ok(false);
     }
     let mut any = false;
     for n in list.iter_mut() {
         if n.name == name && n.family.shared {
             if n.family != *definition {
                 // Its instances in this family were placed against its origin as it was: kept, so they stay put (O1).
+                reload_bindings(instances, name, &n.family, definition)?;
                 let placed = n.family.placed_origin;
                 n.family = definition.clone();
                 n.family.placed_origin = placed;
                 any = true;
             }
         } else {
-            any |= replace_shared(&mut n.family.nested, name, definition, depth - 1);
+            any |= replace_shared(&mut n.family.nested, &mut n.family.nested_instances, name, definition, depth - 1)?;
         }
     }
-    any
+    Ok(any)
 }
 
 /// What loading family `incoming`, named `name`, into a target holding `has` asks: whether the target has `name` defined
@@ -505,10 +540,28 @@ pub fn reconcile_shared(
     has: &dyn Fn(&str) -> Option<Family>,
     answers: &BTreeMap<String, Keep>,
 ) -> (Vec<(String, Family)>, Vec<String>) {
+    let mut work = incoming.clone();
+    match try_reconcile_shared(&mut work, name, has, answers) {
+        Ok(result) => {
+            *incoming = work;
+            result
+        }
+        Err(_) => Default::default(),
+    }
+}
+
+type SharedLoad = (Vec<(String, Family)>, Vec<String>);
+
+pub(crate) fn try_reconcile_shared(
+    incoming: &mut Family,
+    name: &str,
+    has: &dyn Fn(&str) -> Option<Family>,
+    answers: &BTreeMap<String, Keep>,
+) -> Result<SharedLoad, String> {
     let (mut takes, mut asked): (Vec<(String, Family)>, Vec<String>) = (Vec::new(), Vec::new());
     // Its copies of each shared family made one first (the first met), so what the target takes of one never brings back
     // another's copy that differs.
-    incoming.unify_shared();
+    incoming.try_unify_shared()?;
     for (s, def) in incoming.shared_within() {
         if s == name {
             continue;
@@ -518,11 +571,11 @@ pub fn reconcile_shared(
                 asked.push(s.clone());
                 match answers.get(&s).copied().unwrap_or_default() {
                     Keep::Project => {
-                        incoming.replace_shared(&s, &own);
+                        incoming.try_replace_shared(&s, &own)?;
                     }
                     Keep::Family => {
                         let overwritten = crate::commands::family_reload(def, &own, false);
-                        incoming.replace_shared(&s, &overwritten);
+                        incoming.try_replace_shared(&s, &overwritten)?;
                         takes.push((s, overwritten));
                     }
                 }
@@ -534,14 +587,14 @@ pub fn reconcile_shared(
     // A shared family taken from the target (Keep::Project) or overwritten may be nested in another taken before it, whose
     // definition was read before the change: each taken as `incoming` holds it once all are made, so every definition the
     // target takes holds the same copies, in whatever order they are applied.
-    incoming.unify_shared();
+    incoming.try_unify_shared()?;
     let now = incoming.shared_within();
     for (s, def) in &mut takes {
         if let Some((_, current)) = now.iter().find(|(n, _)| n == s) {
             def.clone_from(current);
         }
     }
-    (takes, asked)
+    Ok((takes, asked))
 }
 
 /// What loading a family into a family did.
@@ -565,6 +618,18 @@ pub struct Nesting {
 pub fn nest_into(
     list: &mut Vec<NestedFamily>,
     name: &str,
+    incoming: Family,
+    overwrite: Option<bool>,
+    answers: &BTreeMap<String, Keep>,
+) -> Result<Nesting, String> {
+    nest_with_instances(list, &mut [], name, incoming, overwrite, answers)
+}
+
+/// Load into a host with placed instances, carrying their parameter associations over a reload.
+pub fn nest_with_instances(
+    list: &mut Vec<NestedFamily>,
+    instances: &mut [NestedInstance],
+    name: &str,
     mut incoming: Family,
     overwrite: Option<bool>,
     answers: &BTreeMap<String, Keep>,
@@ -587,18 +652,22 @@ pub fn nest_into(
         ));
     }
     let mut work = list.clone();
+    let mut bindings = instances.to_vec();
     let has = |n: &str| find(&work, n).map(|f| f.family.clone());
-    let (takes, asked) = reconcile_shared(&mut incoming, name, &has, answers);
+    let (takes, asked) = try_reconcile_shared(&mut incoming, name, &has, answers)?;
     report.shared_asked = asked;
     for (s, def) in takes {
         match work.iter().position(|n| n.name == s) {
-            Some(j) => work[j].family = Family { placed_origin: work[j].family.placed_origin, ..def.clone() },
+            Some(j) => {
+                reload_bindings(&mut bindings, &s, &work[j].family, &def)?;
+                work[j].family = Family { placed_origin: work[j].family.placed_origin, ..def.clone() };
+            }
             None => {
                 report.shared_added.push(s.clone());
                 work.push(NestedFamily { name: s.clone(), family: def.clone(), ..Default::default() });
             }
         }
-        replace_shared(&mut work, &s, &def, MAX_NESTING + 1);
+        replace_shared(&mut work, &mut bindings, &s, &def, MAX_NESTING + 1)?;
     }
     let now = match at {
         Some(i) if work[i].family == incoming => {
@@ -608,6 +677,7 @@ pub fn nest_into(
         Some(i) => {
             let keep = overwrite.unwrap_or(true);
             let now = crate::commands::family_reload(incoming, &work[i].family, keep);
+            reload_bindings(&mut bindings, name, &work[i].family, &now)?;
             work[i].family = now.clone();
             report.overwritten = true;
             now
@@ -618,9 +688,10 @@ pub fn nest_into(
         }
     };
     if now.shared {
-        replace_shared(&mut work, name, &now, MAX_NESTING + 1);
+        replace_shared(&mut work, &mut bindings, name, &now, MAX_NESTING + 1)?;
     }
     *list = work;
+    instances.clone_from_slice(&bindings);
     Ok(report)
 }
 

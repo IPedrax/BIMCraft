@@ -83,7 +83,7 @@ impl FamilyEditor {
         if name.trim() == self.name.trim() || incoming.nests(self.name.trim()) {
             return Err(tf("{} can't be loaded into itself, nor into a family it nests", &[name]));
         }
-        nested::nest_into(&mut self.nested, name, incoming, overwrite, answers)
+        nested::nest_with_instances(&mut self.nested, &mut self.nested_instances, name, incoming, overwrite, answers)
     }
 
     /// Nested family `name` taken away, refused while an instance places it.

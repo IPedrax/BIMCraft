@@ -2286,7 +2286,7 @@ other_files(
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
          wall, a door's or window's plan with no symbols, a key a file at `path` holds that isn't a family's, which is left out). `definition` is a family as such a file holds it, given in place of `path` and loaded as the file would be (read strictly). On `path` or `definition`, `overwrite` chooses `no` (keep the project family), \
          `version` (replace the definition, retaining compatible values) or `version_and_values` (also use incoming values). \
-         Omitted: legacy merge. Project-only types and instance overrides stay; incoming formulas replace the old ones. \
+         Shared parameters match by GUID across renames, other parameters by name. Omitted: legacy merge. Project-only types and instance overrides stay; incoming formulas replace the old ones. \
          Nested families (T6a): `nest` loads a family (a file or a definition) into this one, carried whole inside it; one it \
          nests already defined otherwise is refused unless `overwrite` says version or version_and_values. A nested instance places \
          one of its types on a plane of this family (`host`, by GUID or by name as the Work Plane dialog names it; Ref. Level when \
@@ -18314,7 +18314,9 @@ fn nested_edits(c: &str, name: &str, f: &mut crate::family::Family, p: &Value, p
             Some(o) => return Err(bad(c, format!("`nest`'s `overwrite` is no, version or version_and_values, not `{o}`"))),
         };
         let answers = shared_answers(c, v.get("shared_nested"))?;
-        let done = crate::family::nested::nest_into(&mut f.nested, &nested_name, incoming, overwrite, &answers).map_err(|e| bad(c, e))?;
+        let done =
+            crate::family::nested::nest_with_instances(&mut f.nested, &mut f.nested_instances, &nested_name, incoming, overwrite, &answers)
+                .map_err(|e| bad(c, e))?;
         patches.shared_asked.extend(done.shared_asked);
         patches.nested_loaded.extend(done.shared_added);
         if !done.unchanged {
@@ -18386,19 +18388,6 @@ fn nested_edits(c: &str, name: &str, f: &mut crate::family::Family, p: &Value, p
 pub(crate) fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Family, keep_values: bool) -> crate::family::Family {
     // What stands of the family was placed against its origin as it was: kept, so it stays put where the origin moves (O1).
     incoming.placed_origin = old.placed_origin;
-    let compatible = |p: &crate::family::Parameter| {
-        old.parameters.iter().find(|q| {
-            q.name == p.name
-                && q.kind == p.kind
-                && q.instance == p.instance
-                && q.shared == p.shared
-                && !q.reporting
-                && !p.reporting
-                && q.of == p.of
-                && q.formula.is_none()
-                && p.formula.is_none()
-        })
-    };
     // Keep incoming defaults on new types before replacing the family's defaults.
     if keep_values {
         for (name, values) in &mut incoming.types {
@@ -18414,15 +18403,15 @@ pub(crate) fn family_reload(mut incoming: crate::family::Family, old: &crate::fa
         let target = incoming.types.entry(name.clone()).or_default();
         if keep_values || only_in_project {
             for p in incoming.parameters.iter().filter(|p| !p.instance) {
-                if let Some(q) = compatible(p) {
-                    target.insert(p.name.clone(), values.get(&p.name).unwrap_or(&q.value).clone());
+                if let Some(q) = old.reload_source(p) {
+                    target.insert(p.name.clone(), values.get(&q.name).unwrap_or(&q.value).clone());
                 }
             }
         }
     }
     if keep_values {
         for p in &mut incoming.parameters {
-            if let Some(q) = compatible(p) {
+            if let Some(q) = old.reload_source(p) {
                 p.value.clone_from(&q.value);
             }
         }
@@ -18438,6 +18427,30 @@ pub(crate) fn family_reload(mut incoming: crate::family::Family, old: &crate::fa
     crate::library::keep_parts(&mut old.nested, &mut incoming.nested);
     crate::library::keep_parts(&mut old.nested_instances, &mut incoming.nested_instances);
     incoming
+}
+
+/// A reload keeps the project identity of a renamed shared parameter and any value a placed element holds for it.
+fn reload_parameter_names(m: &mut Model, name: &str, incoming: &crate::family::Family) -> Result<(), String> {
+    let Some(old) = m.families.get(name) else { return Ok(()) };
+    let names = crate::family::reload::ReloadNames::between(old, incoming);
+    m.library.rename_family_parameters(name, &names);
+    if !names.checks_values() {
+        return Ok(());
+    }
+    let held = |e: &Element| e.family().is_some_and(|(f, _)| f == name) && e.params().is_some_and(|p| !p.is_empty());
+    // Look up the users before mutating, so elements of other families keep their revision stamps.
+    let ids: Vec<_> = m.elements.iter().filter(|(_, e)| held(e)).map(|(id, _)| *id).collect();
+    for id in ids {
+        if let Some(values) = m.elements.get_mut(id).and_then(Element::params_mut) {
+            names.move_values(values).map_err(|e| format!("element {id}: {e}"))?;
+        }
+    }
+    for e in crate::groups::member_elements_mut(m).filter(|e| held(e)) {
+        if let Some(values) = e.params_mut() {
+            names.move_values(values).map_err(|e| format!("group member of family `{name}`: {e}"))?;
+        }
+    }
+    Ok(())
 }
 
 /// A project's families: read one (`family {name}` alone costs no undo step), change one, make one
@@ -19021,17 +19034,35 @@ fn family(s: &mut Session, p: &Value) -> R {
     if loading || bringing {
         let project = &s.model.families;
         let has = |n: &str| if n == to { None } else { project.get(n).cloned() };
-        let (takes, asked) = crate::family::nested::reconcile_shared(&mut f, &to, &has, &answers);
+        let (takes, asked) = crate::family::nested::try_reconcile_shared(&mut f, &to, &has, &answers).map_err(|e| bad(c, e))?;
         shared_takes = takes;
         patches.shared_asked.extend(asked);
     }
     if f.shared {
         shared_takes.push((to.clone(), f.clone()));
     }
-    if dry {
+    let install = |m: &mut Model| -> Result<(), String> {
         if overwrite.is_some() {
+            reload_parameter_names(m, &to, &f)?;
+        }
+        m.families.insert(to.clone(), f.clone());
+        for (shared, definition) in &shared_takes {
+            if *shared != to {
+                reload_parameter_names(m, shared, definition)?;
+                m.families.insert(shared.clone(), definition.clone());
+            }
+            for family in m.families.values_mut() {
+                family.try_replace_shared(shared, definition)?;
+            }
+        }
+        Ok(())
+    };
+    if dry {
+        let shared_replacement =
+            (loading || bringing) && shared_takes.iter().any(|(n, def)| s.model.families.get(n).is_some_and(|was| was != def));
+        if overwrite.is_some() || shared_replacement {
             let mut preview = (*s.model).clone();
-            preview.families.insert(to.clone(), f.clone());
+            install(&mut preview).map_err(|e| bad(c, e))?;
             preview.sync_library();
             preview.check().map_err(|e| bad(c, e))?;
         }
@@ -19060,15 +19091,7 @@ fn family(s: &mut Session, p: &Value) -> R {
             }
         }
     }
-    m.families.insert(to.clone(), f.clone());
-    for (shared, definition) in &shared_takes {
-        if *shared != to {
-            m.families.insert(shared.clone(), definition.clone());
-        }
-        for family in m.families.values_mut() {
-            family.replace_shared(shared, definition);
-        }
-    }
+    install(m).map_err(|e| bad(c, e))?;
     Ok(json!({"name": to, "family": f, "options": f.options_json(), "warnings": warnings, "deleted_dimensions": patches.dimensions_dropped,
         "shared_conflicts": patches.shared_asked, "shared_loaded": shared_takes.iter().map(|(n, _)| n).collect::<Vec<_>>()}))
 }

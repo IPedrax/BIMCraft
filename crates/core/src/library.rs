@@ -625,6 +625,32 @@ impl Library {
         }
     }
 
+    /// Move the entries together so two shared parameters may exchange names on reload.
+    pub(crate) fn rename_family_parameters(&mut self, family: &str, names: &crate::family::reload::ReloadNames) {
+        let kind = Kind::FamilyParameter;
+        let mut moved = Vec::new();
+        for old in &names.replaced {
+            if let Some(id) = self.id(&kind, &format!("{family}: {old}")) {
+                self.remove(id);
+            }
+        }
+        for (from, to) in &names.renamed {
+            if let Some(id) = self.by_name.remove(&(kind.clone(), format!("{family}: {from}"))) {
+                moved.push((id, format!("{family}: {to}")));
+            }
+        }
+        for (id, name) in moved {
+            // A parameter removed in this reload may have held the destination name.
+            if let Some(displaced) = self.id(&kind, &name) {
+                self.remove(displaced);
+            }
+            if let Some(e) = self.by_id.get_mut(&id) {
+                e.name.clone_from(&name);
+                self.by_name.insert((kind.clone(), name), id);
+            }
+        }
+    }
+
     /// The design options of set `old` are of set `new` now.
     pub fn set_renamed(&mut self, old: &str, new: &str) {
         self.owner_renamed(&Kind::DesignOption, old, new);
