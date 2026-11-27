@@ -104,7 +104,7 @@ fn ok_changes_the_type_through_the_command_and_a_list_chooses_the_core_s_word() 
     let mut d = StairType::open(&app.session.model, &[id]).unwrap_or_else(|why| panic!("{why}"));
     let ways = d.choice(PLAN).expect("the ways it shows in plan");
     assert_eq!(ways.options.len(), 10);
-    d.choose(PLAN, 9, &mut app);
+    d.choose(PLAN, 1, &mut app);
     d.choose(ARROW, 3, &mut app);
     d.press("check", NUMBERS, &mut app);
     let at = SIZES.iter().position(|(k, _)| *k == "tread_cover").expect("a size");
@@ -113,7 +113,9 @@ fn ok_changes_the_type_through_the_command_and_a_list_chooses_the_core_s_word() 
     assert_eq!(d.press("ok", 0, &mut app), Outcome::Close, "{:?}", d.error());
     let kind = app.session.model.types.stair.get(&name).expect("the type").clone();
     let json = serde_json::to_value(&kind).expect("a type");
-    assert_eq!((json["plan"]["below"].as_str(), json["arrow"].as_str(), kind.numbers), (Some("not_shown"), Some("tick"), true));
+    // The usual way is left out of the type's JSON, so the choice is read off the field.
+    let below = serde_json::to_value(kind.plan.below).ok().and_then(|v| v.as_str().map(String::from));
+    assert_eq!((below.as_deref(), json["arrow"].as_str(), kind.numbers), (Some("no_break_visible"), Some("tick"), true));
     assert_eq!(kind.tread_cover, app.session.model.units.parse("20").expect("a length"));
     assert!(app.undo(), "one undo step");
     assert_eq!(app.session.model.types.stair.get(&name).map(|k| k.numbers), Some(false));
