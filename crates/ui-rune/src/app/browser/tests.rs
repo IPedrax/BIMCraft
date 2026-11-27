@@ -104,7 +104,8 @@ fn a_print_set_holds_the_views_picked_together_or_the_one_clicked_and_names_itse
     open_menu_over(&mut app, Target::View(sheets[2]));
     app.act(Action::CreatePrintSet);
     assert_eq!(app.session.model.print_sets.get("Print Set 2").map(|s| s.views.len()), Some(1), "a click outside the picked is the one");
-    open_menu_over(&mut app, Target::View(ViewKind::Ceiling(app.levels[0].0)));
+    let level = app.levels[0].0;
+    open_menu_over(&mut app, Target::View(ViewKind::Ceiling(level)));
     assert!(
         app.browser_menu_items().iter().flatten().any(|i| i.action == Action::CreatePrintSet && !i.enabled),
         "a ceiling plan cannot yet"
