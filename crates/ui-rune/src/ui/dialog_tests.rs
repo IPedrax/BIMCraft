@@ -302,3 +302,20 @@ fn the_locations_manager_offers_the_forms_of_the_commands_that_go_with_it() {
     assert_eq!(rt.state.dialogs.form.as_ref().map(|f| f.form.id), Some("specify_coordinates"), "Specify Coordinates at a Point");
     assert!(rt.state.dialogs.library.is_none(), "dialogs are open one at a time");
 }
+
+#[test]
+fn find_opens_the_start_dialog_and_new_empties_the_project() {
+    let mut rt = window();
+    press(&mut rt, Key::Command('k'), ctrl());
+    tap(&mut rt, "find-input");
+    rt.paste("start");
+    rt.frame(0.0);
+    rt.frame(0.0);
+    let hit = rt.state.found().iter().position(|h| h.found == crate::finder::Found::Start).expect("Start is found");
+    tap(&mut rt, &format!("hit-{hit}"));
+    assert!(rt.state.dialogs.start.is_some() && rt.find("start-new").is_some() && rt.find("start-open").is_some());
+    assert!(rt.state.session.model.elements.iter().count() > 0);
+    tap(&mut rt, "start-new");
+    assert!(rt.state.dialogs.start.is_none(), "New closes the dialog");
+    assert_eq!(rt.state.session.model.elements.iter().count(), 0, "and the project is a new one");
+}

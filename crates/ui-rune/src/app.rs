@@ -32,6 +32,7 @@ mod paper;
 mod schedule;
 mod section;
 pub mod settings;
+pub mod start;
 pub mod types;
 
 /// How near a click or a hover must be to a line to take it, points.
@@ -687,6 +688,9 @@ impl App {
     pub fn open_path(&mut self, path: std::path::PathBuf) -> bool {
         let opened = self.run("open", &json!({ "path": path }));
         if opened {
+            if self.session.path.is_some() {
+                self.note_recent(&path);
+            }
             (self.fitted, self.moved) = (false, false);
             self.history.clear();
             self.picked.clear();
@@ -706,7 +710,11 @@ impl App {
     }
 
     pub fn save_as(&mut self, path: std::path::PathBuf) -> bool {
-        self.run("save", &json!({ "path": path }))
+        let saved = self.run("save", &json!({ "path": path }));
+        if saved {
+            self.note_recent(&path);
+        }
+        saved
     }
 
     pub fn delete_selection(&mut self) -> bool {

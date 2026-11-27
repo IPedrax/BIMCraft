@@ -23,6 +23,7 @@ pub mod paper;
 pub mod profile;
 pub mod project;
 pub mod props;
+pub mod recent;
 pub mod sched;
 pub mod section;
 pub mod select;

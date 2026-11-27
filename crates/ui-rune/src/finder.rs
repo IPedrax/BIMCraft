@@ -27,6 +27,8 @@ pub enum Found {
     TypeProperties,
     /// Opens the manager of a kind of library entry (Materials, Line Styles, Phases…).
     Manage(Source),
+    /// Opens the Start dialog: New, Open, the recent files and the templates.
+    Start,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -97,6 +99,10 @@ fn ranked(query: &str, levels: &[(Id, String)]) -> Vec<Hit> {
     let settings = t("Settings");
     if matches(settings, query) {
         rows.push((rank(settings, &first), 1, Hit { label: settings.to_string(), note: t("Dialog").to_string(), found: Found::Settings }));
+    }
+    let start = t("Start");
+    if matches(start, query) {
+        rows.push((rank(start, &first), 1, Hit { label: start.to_string(), note: t("Dialog").to_string(), found: Found::Start }));
     }
     let types = t("Type Properties");
     if matches(types, query) {

@@ -24,6 +24,7 @@ mod schedule;
 mod section;
 mod settings;
 mod sheet;
+mod start;
 mod status_bar;
 mod tempdim;
 mod tools;
