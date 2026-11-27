@@ -66,6 +66,13 @@ sysinfo = { version = "0.40", default-features = false, features = ["system"] }
 # Text notes' fonts: IBM Plex's outlines, its weights too, read from the files the packages carry.
 ttf-parser = { version = "0.25", features = ["gvar-alloc"] }
 
+# egui-winit 0.36.2 gives the window an empty X11 WM_CLASS instance (`with_name(app_id, "")`), which
+# GNOME Shell matches to any launcher whose `StartupWMClass=` is empty (Remmina's Flatpak one is).
+# The vendored copy is that release with the one line changed to pass `app_id` as the instance too.
+# Drop this patch and `vendor/` once egui-winit upstream does the same.
+[patch.crates-io]
+egui-winit = { path = "vendor/egui-winit" }
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
