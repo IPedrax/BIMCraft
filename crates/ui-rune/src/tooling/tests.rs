@@ -382,7 +382,8 @@ fn corner() -> (World, Id, Id) {
     let mut app = App::sample();
     let level = app.level.expect("a level");
     let mut wall = |a: [f64; 2], b: [f64; 2]| {
-        assert!(app.run("wall", &json!({"points": [a, b], "level": level})), "{:?}", app.message);
+        let made = app.session.execute("wall", &json!({"points": [a, b], "level": level}));
+        assert!(made.is_ok(), "{made:?}");
         let walls = app.session.model.elements.iter().filter(|(_, e)| matches!(e, bimcraft_core::model::Element::Wall(_)));
         walls.map(|(id, _)| *id).max().expect("a wall")
     };
