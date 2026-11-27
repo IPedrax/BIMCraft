@@ -479,6 +479,68 @@ pub struct Override {
     /// Shown, a subcategory hidden unless a view shows it ([`Sub::off`]).
     #[serde(skip_serializing_if = "is_false")]
     pub shown: bool,
+    /// How a point cloud's points are coloured: by their own colours, their height or their intensity (Revit's Color Mode).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scan: Option<ScanColour>,
+}
+
+/// What a view colours a point cloud's points by: their own colours (`normal`), their height (`elevation`, through
+/// [`RAMP`] from `low` to `high`, mm in the model, or the scan's own foot and head where they aren't given), or their
+/// intensity (`intensity`, grey from the least to the most in the file; a scan with none keeps its own colours).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScanColour {
+    pub by: ScanBy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub low: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub high: Option<f64>,
+}
+
+/// What [`ScanColour`] colours by.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScanBy {
+    #[default]
+    Normal,
+    Elevation,
+    /// By intensity, through the colours of [`RAMP`] from the weakest return to the strongest, as a surveyor's viewer shows it.
+    Intensity,
+}
+
+/// The colours a height runs through, from the foot to the head: blue, cyan, green, yellow, red.
+pub const RAMP: [Rgb; 5] = [Rgb(0, 0, 255), Rgb(0, 255, 255), Rgb(0, 255, 0), Rgb(255, 255, 0), Rgb(255, 0, 0)];
+
+/// The colour `t` of the way along [`RAMP`], clamped to its ends.
+pub fn ramp(t: f64) -> Rgb {
+    let t = if t.is_finite() { t.clamp(0.0, 1.0) } else { 0.0 } * (RAMP.len() - 1) as f64;
+    let i = (t.floor() as usize).min(RAMP.len() - 2);
+    let f = t - i as f64;
+    let (a, b) = (RAMP[i], RAMP[i + 1]);
+    let mix = |x: u8, y: u8| (f64::from(x) + (f64::from(y) - f64::from(x)) * f).round().clamp(0.0, 255.0) as u8;
+    Rgb(mix(a.0, b.0), mix(a.1, b.1), mix(a.2, b.2))
+}
+
+/// The colour of intensity `v` (0 to 255 over its file's range) of a scan whose intensities rank as `levels` says
+/// ([`crate::cloud::Cloud::intensity_levels`]): along [`RAMP`] by its rank, so what's weak is blue and what's strong is red.
+pub fn intensity_colour(v: u8, levels: &[u8; 256]) -> Rgb {
+    ramp(f64::from(levels[usize::from(v)]) / 255.0)
+}
+
+impl ScanColour {
+    fn check(&self, who: &str) -> Result<(), String> {
+        for (k, v) in [("low", self.low), ("high", self.high)] {
+            if v.is_some_and(|v| !(v.is_finite() && v.abs() <= crate::model::MAX_COORD)) {
+                return Err(format!("{who}: the scan's colours' {k} is a height in mm, not {v:?}"));
+            }
+        }
+        if let (Some(lo), Some(hi)) = (self.low, self.high)
+            && lo >= hi
+        {
+            return Err(format!("{who}: the scan's colours run from a low ({lo}) below their high ({hi})"));
+        }
+        Ok(())
+    }
 }
 
 impl Override {
@@ -514,6 +576,7 @@ impl Override {
             halftone: self.halftone || base.halftone,
             transparency: if self.transparency > 0 { self.transparency } else { base.transparency },
             shown: self.shown || base.shown,
+            scan: self.scan.or(base.scan),
         }
     }
 
@@ -522,6 +585,9 @@ impl Override {
         self.cut.check(&format!("{who} cut"))?;
         if self.transparency > 100 {
             return Err(format!("{who}: transparency is a percent, 0 to 100, not {}", self.transparency));
+        }
+        if let Some(c) = &self.scan {
+            c.check(who)?;
         }
         Ok(())
     }
@@ -551,6 +617,8 @@ struct AppliedJson {
     halftone: bool,
     #[serde(default, skip_serializing_if = "is_zero")]
     transparency: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scan: Option<ScanColour>,
 }
 
 impl From<AppliedJson> for Applied {
@@ -562,6 +630,7 @@ impl From<AppliedJson> for Applied {
             halftone: a.halftone,
             transparency: a.transparency,
             shown: false,
+            scan: a.scan,
         };
         Applied { filter: a.filter, over }
     }
@@ -569,8 +638,8 @@ impl From<AppliedJson> for Applied {
 
 impl From<Applied> for AppliedJson {
     fn from(a: Applied) -> AppliedJson {
-        let Override { hidden, projection, cut, halftone, transparency, .. } = a.over;
-        AppliedJson { filter: a.filter, hidden, projection, cut, halftone, transparency }
+        let Override { hidden, projection, cut, halftone, transparency, scan, .. } = a.over;
+        AppliedJson { filter: a.filter, hidden, projection, cut, halftone, transparency, scan }
     }
 }
 
@@ -1455,6 +1524,11 @@ impl Look {
         let Some(o) = self.paint.get(&id) else { return base };
         let c = o.projection.fill.map_or(base, |[r, g, b]| Rgb(r, g, b));
         if o.halftone { self.fade.apply(c) } else { c }
+    }
+
+    /// What the view colours point cloud `id`'s points by ([`ScanColour`]): their own colours unless it says otherwise.
+    pub fn scan_colour(&self, id: Id) -> ScanColour {
+        self.paint.get(&id).and_then(|o| o.scan).unwrap_or_default()
     }
 
     /// Whether the view fills element `id`'s surfaces with a colour of its own (its projection's fill), whatever theirs are.

@@ -275,6 +275,8 @@ fn main() -> ExitCode {
     setup.device_descriptor = std::sync::Arc::new(move |adapter| {
         let mut descriptor = asked(adapter);
         descriptor.required_limits = bimcraft_ui_egui::limits_for(adapter, descriptor.required_limits);
+        // 64-bit atomics where the card has them, for the 3D view's points; a card without them draws them as quads.
+        descriptor.required_features = bimcraft_ui_egui::features_for(adapter, descriptor.required_features);
         descriptor
     });
     options.wgpu_options.wgpu_setup = eframe::egui_wgpu::WgpuSetup::CreateNew(setup);
@@ -297,6 +299,10 @@ fn main() -> ExitCode {
             format!("{} ({:?}, {:?}{kind}, driver {} {})", info.name, info.backend, info.device_type, info.driver, info.driver_info)
         });
         startup::up(up_files.as_ref(), graphics, adapter.as_deref().unwrap_or("no wgpu adapter"));
+        if let (Some(files), Some(state)) = (up_files.as_ref(), cc.wgpu_render_state.as_ref()) {
+            let by = bimcraft_ui_egui::points_drawn_by(state.device.features());
+            startup::note(&files.log, &format!("3D view's points: {by}"));
+        }
         // No graphics card: the frames are paced by what they cost the processor, and the status bar says so.
         if let Some(info) = info.filter(|info| bimcraft_ui_egui::pacing::software(info.device_type, &info.name)) {
             app.software_rendering(&info.name);

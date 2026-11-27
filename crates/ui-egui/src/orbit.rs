@@ -136,6 +136,12 @@ fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<Sce
     Some(SceneDone { streamed, model: job.model, view: job.view, scene, fitted, mesh })
 }
 
+/// How many of their points the 3D view draws at most, unless the user said (Settings > Graphics): on the card, and on the processor.
+/// The same since the processor draws points side by side on every thread (`view3d::raster_points`): ten million took 24 ms there
+/// on 32 threads, three million 21.
+pub(crate) const DETAIL_CARD: usize = 10_000_000;
+pub(crate) const DETAIL_PROCESSOR: usize = 10_000_000;
+
 /// Caps made: of which model, for which box.
 type Capped = (Arc<Model>, (P3, P3), Arc<Caps>);
 
@@ -452,6 +458,12 @@ pub struct Orbit {
     /// Fly mode, while the view flies (`fly.rs`); and whether the window holds the pointer for it.
     pub(crate) fly: Option<crate::fly::Fly>,
     pub(crate) fly_held: bool,
+    /// The nodes of indexed scans streamed in as the camera moves (`stream.rs`), and which of them the picture on screen was
+    /// drawn with: the card's nodes' version, or how many the processor's had come in.
+    pub(crate) stream: crate::stream::Stream,
+    painted_nodes: Option<(bool, u64)>,
+    /// How many of those points it draws at most (Settings > Graphics): none for [`DETAIL_CARD`] or [`DETAIL_PROCESSOR`].
+    pub(crate) detail_most: Option<u32>,
 }
 
 /// The next view's slot on the card.
@@ -520,6 +532,9 @@ impl Default for Orbit {
             caps_requested: None,
             fly: None,
             fly_held: false,
+            stream: crate::stream::Stream::default(),
+            painted_nodes: None,
+            detail_most: None,
         }
     }
 }
@@ -1385,6 +1400,52 @@ impl Orbit {
         OnCard::Ready(mesh, failed)
     }
 
+    /// How many points of the scans' indexes the picture draws at most: the user's, else the card's or the processor's.
+    fn nodes_most(&self, on_card: bool) -> usize {
+        self.detail_most.map_or(if on_card { DETAIL_CARD } else { DETAIL_PROCESSOR }, |n| n as usize)
+    }
+
+    /// The nodes of `model`'s indexed scans streamed for the picture through `cam` (`stream.rs`): ranked again as the camera, the
+    /// model or the look changes, read by the loaders, and on the card (`gpu`, drawing `mesh`) sent up a few a frame. What the
+    /// picture is drawn with: on the card, the version of the nodes it draws; on the processor, how many nodes have come in for
+    /// it. Nothing at all where no scan has its index open.
+    fn stream_nodes(
+        &mut self,
+        ctx: &egui::Context,
+        model: &Arc<Model>,
+        cam: Camera,
+        reboxed: Option<(P3, P3)>,
+        mesh: Option<&Arc<Mesh>>,
+        gpu: Option<&mut crate::gpu::Gpu>,
+    ) -> Option<(bool, u64)> {
+        if !crate::stream::Stream::wanted_in(model) {
+            self.stream.reset();
+            if let Some(gpu) = gpu {
+                gpu.node_packing(None);
+            }
+            return None;
+        }
+        let view = self.view;
+        match (mesh, gpu) {
+            (Some(mesh), Some(gpu)) => {
+                let most = self.nodes_most(true);
+                self.stream.frame(ctx, model, view, &cam, reboxed, most, crate::stream::On::Card(mesh), &|k| gpu.has_node(k));
+                gpu.node_packing(self.stream.pack());
+                let (ready, wanted) = self.stream.waiting();
+                gpu.upload_nodes(ready, wanted, crate::stream::FRAME_BYTES);
+                if self.stream.busy() {
+                    ctx.request_repaint();
+                }
+                Some((true, gpu.draw_nodes(self.stream.wanted())))
+            }
+            _ => {
+                let most = self.nodes_most(false);
+                self.stream.frame(ctx, model, view, &cam, reboxed, most, crate::stream::On::Processor, &|_| false);
+                Some((false, self.stream.shown(ctx)))
+            }
+        }
+    }
+
     /// The picture of `shot` on `p`, over the view's ground: drawn on the card from `mesh` where there is one, else on the
     /// processor, and with it what picks in it ([`Picker`]). It is drawn again only where what it shows has changed; the work
     /// plane's marks alone are laid again over it as it was. A card that fails is given up and the processor draws: what to say.
@@ -1398,6 +1459,10 @@ impl Orbit {
     ) -> Option<Status> {
         let Shown { model, scene, cam, tints, marks: plane_marks, dragged: reboxed, cut: boxed, caps } = shot;
         let mut failed = None;
+        // The nodes of indexed scans streamed in as the camera moves: drawn with the mesh on the card, or by the processor.
+        let on_card = mesh.filter(|_| card.gpu.is_some());
+        let nodes = self.stream_nodes(ctx, model, cam, reboxed, on_card, card.gpu.as_mut());
+        let same_nodes = self.painted_nodes == nodes;
         // The ground, which a canvas colour of the user's changes without making the drawing dark or light.
         let dark = color(render::PAPER);
         let same_caps = |held: &Option<Arc<Caps>>| match (held, &caps) {
@@ -1405,8 +1470,9 @@ impl Orbit {
             (None, None) => true,
             _ => false,
         };
-        if !matches!(&self.shown, Some((m, c, t, k, g, b, h)) if Arc::ptr_eq(m, model) && *c == cam && t.as_slice() == tints && *k == dark && *g == mesh.is_some() && *b == reboxed && same_caps(h))
+        if !matches!(&self.shown, Some((m, c, t, k, g, b, h)) if Arc::ptr_eq(m, model) && *c == cam && t.as_slice() == tints && *k == dark && *g == mesh.is_some() && *b == reboxed && same_caps(h) && same_nodes)
         {
+            self.painted_nodes = nodes;
             // The card's picture, if it makes one; the processor's if not, and if the card fails it for good.
             let (mut drawn, mut exact) = (false, true);
             if let (Some(mesh), Some(gpu)) = (mesh, card.gpu.as_mut()) {
@@ -1431,7 +1497,13 @@ impl Orbit {
                 // As the view shown says: what it hides, and the colours it draws in.
                 let look = self.look(model);
                 let look = if reboxed.is_some() { look.with_section_box(reboxed) } else { look };
-                let mut image = scene.render_in(&cam, tints, &look);
+                // The nodes the indexes' cache holds of those the picture wants; the loaders read the rest.
+                let mut image = if nodes.is_some() {
+                    let detail = view3d::scan_detail(model, &cam, &look, self.nodes_most(false), false);
+                    scene.render_detailed(&cam, tints, &look, &detail)
+                } else {
+                    scene.render_in(&cam, tints, &look)
+                };
                 if let Some(caps) = &caps {
                     image.capped(&cam, caps, tints, &look);
                 }
@@ -1748,6 +1820,7 @@ impl BimApp {
         let paste_plane = pasting.then(|| model.work_plane(active).resolve(&model).ok()).flatten();
         let paste_box = paste_plane.and_then(|_| self.paste_extent(&bimcraft_core::clipboard::Frame::ThreeD));
         let o = &mut self.orbit;
+        o.detail_most = self.scan_points;
         (o.rect, o.ppp) = (rect, ppp);
         o.show_view(&model, active);
         // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands

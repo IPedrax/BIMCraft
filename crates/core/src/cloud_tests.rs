@@ -101,8 +101,9 @@ fn units_spacing_and_files_it_cant_take() {
     for (p, says) in [
         (json!({"path": feet, "units": "furlong", "name": "f2"}), "mm, cm, m, in, ft"),
         (json!({"path": feet, "spacing": -1, "name": "f3"}), "spacing"),
-        (json!({"path": scan("units", "plan.dwg", "x")}), "PTS, XYZ, PLY, LAS or E57"),
-        (json!({"path": scan("units", "scan.laz", "x")}), "LAZ"),
+        (json!({"path": scan("units", "plan.dwg", "x")}), "PTS, XYZ, PLY, LAS, LAZ or E57"),
+        // A LAZ file is read as LAS whose points are compressed: one that isn't LAS at all says so.
+        (json!({"path": scan("units", "scan.laz", "x")}), if cfg!(feature = "laz") { "LASF" } else { "`laz` feature" }),
         (json!({"path": scan("units", "gone", "x").replace("gone", "not-there.xyz")}), "not-there.xyz"),
         (json!({"path": scan("units", "bad.xyz", "0 0 zero\n")}), "line 1"),
         (json!({}), "path"),
@@ -317,6 +318,8 @@ fn a_scan_shows_in_the_3d_view_in_its_own_colours_fitted_and_picked_as_its_eleme
 fn a_scan_with_no_colours_is_grey_and_a_view_can_colour_or_hide_it() {
     let mut s = Session::new();
     let id = run(&mut s, "point_cloud", json!({"path": scan("grey", "sheet.xyz", &sheet(None))}))["id"].as_u64().unwrap();
+    // The colours exactly: eye-dome lighting, which shades a surface turned away a little, off.
+    run(&mut s, "graphic_display_options", json!({"eye_dome": false}));
     let scene = Scene::new(&s.model);
     let cam = scene.fit(AZIMUTH, ELEVATION, 320, 240);
     let grey = |c: Rgb| c == Rgb(160, 160, 160);
@@ -562,4 +565,583 @@ fn a_project_file_with_too_many_scans_is_refused_before_the_extra_one_is_unpacke
         let e = e.unwrap_err();
         assert!(e.contains("scans") && e.contains(&MAX_CLOUDS.to_string()), "{e}");
     }
+}
+
+#[test]
+fn a_scan_read_ahead_on_another_session_is_placed_by_point_cloud_without_reading_it_again() {
+    let path = scan("ahead", "box.xyz", BOX);
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"name": "Level 9", "elevation": 30000}));
+    let before = s.history().len();
+    let params = json!({"path": path.clone(), "units": "m"});
+    let progress = std::sync::Arc::new(crate::progress::Progress::new());
+    let read = Session::read_scan_ahead(std::sync::Arc::clone(&s.model), s.path.clone(), &params, Some(progress)).unwrap();
+    // Reading it ahead changed nothing here.
+    assert_eq!((s.history().len(), s.model.clouds.len()), (before, 0));
+    // The file is gone: what places it is what was read.
+    std::fs::remove_file(&path).unwrap();
+    s.give_scan(read.clone());
+    let r = run(&mut s, "point_cloud", params.clone());
+    assert_eq!((r["points"].as_u64(), r["read"].as_u64()), (Some(4), Some(4)), "{r}");
+    assert_eq!(s.history().len(), before + 1, "one undo step");
+    // A scan read for other options, or for another file, is not taken: the file is read, and it's gone.
+    s.give_scan(read.clone());
+    let e = fails(&mut s, "point_cloud", json!({"path": path.clone(), "units": "mm", "name": "other"}));
+    assert!(e.contains("box.xyz"), "{e}");
+    // Nor one read before the project's other scans took some of its room: it would have kept more than it now may.
+    s.give_scan(read);
+    let e = fails(&mut s, "point_cloud", json!({"path": path.clone(), "units": "m", "name": "again"}));
+    assert!(e.contains("box.xyz"), "{e}");
+    // One read now is taken once, whatever the new scan is named: the next one reads the file.
+    let again = json!({"path": scan("ahead", "box.xyz", BOX), "units": "m", "name": "again"});
+    let read = Session::read_scan_ahead(std::sync::Arc::clone(&s.model), None, &again, None).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    s.give_scan(read);
+    run(&mut s, "point_cloud", again.clone());
+    assert!(fails(&mut s, "point_cloud", json!({"path": path.clone(), "units": "m", "name": "thrice"})).contains("box.xyz"));
+    // A refusal reading ahead is the command's.
+    let Err(e) = Session::read_scan_ahead(std::sync::Arc::clone(&s.model), None, &json!({"path": path, "name": "gone"}), None) else {
+        panic!("a file that's gone was read");
+    };
+    assert!(e.contains("box.xyz"), "{e}");
+}
+
+/// A wall face as [`sheet`]'s, red, with an intensity that rises from 0 at its foot to 4000 at its head.
+fn bright_sheet() -> String {
+    let mut text = String::new();
+    for i in 0..=100 {
+        for k in 0..=100 {
+            let (x, z) = (f64::from(i) * 0.02, f64::from(k) * 0.02);
+            text += &format!("{x} 0 {z} {} 255 0 0\n", k * 40);
+        }
+    }
+    text
+}
+
+/// The colours of the pixels of a picture that pick element `id`.
+fn colours_of(img: &Image, id: u64) -> Vec<Rgb> {
+    (0..img.height)
+        .flat_map(|y| (0..img.width).map(move |x| (f64::from(x) + 0.5, f64::from(y) + 0.5)))
+        .filter(|&(x, y)| img.pick(x, y) == Some(id))
+        .map(|(x, y)| img.color(x, y))
+        .collect()
+}
+
+/// Each point the card draws: its height in the model and its colour.
+fn dots(s: &Session) -> Vec<(f64, Rgb)> {
+    let mesh = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap();
+    mesh.dots.iter().map(|d| (d.at[2], Rgb(d.color as u8, (d.color >> 8) as u8, (d.color >> 16) as u8))).collect()
+}
+
+#[test]
+fn a_view_colours_a_scan_by_its_height_from_blue_at_its_foot_to_red_at_its_head() {
+    let mut s = Session::new();
+    let id =
+        run(&mut s, "point_cloud", json!({"path": scan("elevation", "sheet.xyz", &sheet(Some([255, 255, 255])))}))["id"].as_u64().unwrap();
+    run(&mut s, "graphics", json!({"view": "{3D}", "categories": {"pointcloud": {"scan": {"by": "elevation"}}}}));
+    // Each point in the ramp's colour for its height, from the scan's foot to its head.
+    let all = dots(&s);
+    let (foot, head) = all.iter().fold((f64::MAX, f64::MIN), |(lo, hi), d| (lo.min(d.0), hi.max(d.0)));
+    assert!((head - foot - 2000.0).abs() < 1.0, "{foot} {head}");
+    for &(z, c) in &all {
+        assert_eq!(c, crate::graphics::ramp((z - foot) / (head - foot)), "at {z}");
+    }
+    let at = |z: f64| all.iter().find(|d| (d.0 - z).abs() < 1.0).map(|d| d.1);
+    assert_eq!((at(foot), at(foot + 1000.0), at(head)), (Some(Rgb(0, 0, 255)), Some(Rgb(0, 255, 0)), Some(Rgb(255, 0, 0))));
+    // The processor's picture is coloured so too: no white, blue and red both.
+    let scene = Scene::new(&s.model);
+    let img = scene.render_in(&scene.fit(AZIMUTH, ELEVATION, 320, 240), &[], &Look::of_3d(&s.model));
+    let px = colours_of(&img, id);
+    assert!(px.len() > 3000 && !px.contains(&Rgb(255, 255, 255)), "{}", px.len());
+    assert!(px.iter().any(|c| c.2 > 200 && c.0 < 60) && px.iter().any(|c| c.0 > 200 && c.2 < 60));
+    // A range given: below it all blue, above it all red.
+    run(&mut s, "graphics", json!({"view": "{3D}", "categories": {"pointcloud": {"scan": {"by": "elevation", "low": 900, "high": 1100}}}}));
+    for (z, c) in dots(&s) {
+        if z < 900.0 {
+            assert_eq!(c, Rgb(0, 0, 255), "at {z}");
+        } else if z > 1100.0 {
+            assert_eq!(c, Rgb(255, 0, 0), "at {z}");
+        }
+    }
+    // A colour the view fills it with still wins.
+    run(&mut s, "graphics", json!({"view": "{3D}", "categories": {"pointcloud": {"projection": {"fill": [10, 20, 30]}}}}));
+    assert!(dots(&s).iter().all(|d| d.1 == Rgb(10, 20, 30)));
+    // A range upside down, or what isn't a mode, is refused.
+    for bad in [json!({"by": "elevation", "low": 5, "high": 1}), json!({"by": "elevation", "low": 5, "high": 5}), json!({"by": "height"})] {
+        fails(&mut s, "graphics", json!({"view": "{3D}", "categories": {"pointcloud": {"scan": bad}}}));
+    }
+}
+
+#[test]
+fn a_view_colours_a_scan_by_its_intensity_whatever_its_own_colours() {
+    let mut s = Session::new();
+    let r = run(&mut s, "point_cloud", json!({"path": scan("intensity", "bright.xyz", &bright_sheet()), "origin": "file"}));
+    let id = r["id"].as_u64().unwrap();
+    // Its own colours: red.
+    assert!(dots(&s).iter().all(|d| d.1 == Rgb(255, 0, 0)));
+    // By intensity, for this one scan: through the ramp by each one's rank among them, blue at its foot (the weakest) and red
+    // at its head.
+    run(&mut s, "graphics", json!({"view": "{3D}", "elements": {id.to_string(): {"scan": {"by": "intensity"}}}}));
+    let stretch = s.model.clouds.get("bright").unwrap().intensity_levels();
+    // They rise evenly, so their ranks are about what they are.
+    assert!(stretch.iter().enumerate().all(|(v, &r)| (i32::from(r) - v as i32).abs() <= 3), "{stretch:?}");
+    let all = dots(&s);
+    let (foot, head) = all.iter().fold((f64::MAX, f64::MIN), |(lo, hi), d| (lo.min(d.0), hi.max(d.0)));
+    for &(z, c) in &all {
+        let v = ((z - foot) / (head - foot) * 255.0).round() as u8;
+        assert_eq!(c, crate::graphics::intensity_colour(v, &stretch), "at {z}");
+    }
+    assert!(all.iter().any(|d| d.1.2 > 240 && d.1.0 < 10) && all.iter().any(|d| d.1.0 > 240 && d.1.2 < 10));
+    let scene = Scene::new(&s.model);
+    let img = scene.render_in(&scene.fit(AZIMUTH, ELEVATION, 320, 240), &[], &Look::of_3d(&s.model));
+    assert!(colours_of(&img, id).iter().any(|c| c.2 > 200 && c.0 < 60) && colours_of(&img, id).iter().any(|c| red(*c)));
+    // A plan colours it so too.
+    let level = s.model.levels()[0].0;
+    run(&mut s, "graphics", json!({"view": "Level 1", "categories": {"pointcloud": {"scan": {"by": "intensity"}}}}));
+    let d = render::plan(&s.model, level, 600, 600);
+    // Seen from above, the top of what it cuts: at 1200 mm of its 2 m, between the ramp's green and its yellow.
+    assert!(drawn(&d, |c| c.1 > 200 && c.0 > 60 && c.0 < 200 && c.2 < 30) > 50, "yellow-green, past the middle of the ramp");
+    // Its intensity goes with the project and comes back.
+    let file = std::env::temp_dir().join(format!("bimcraft-cloud-{}-intensity.bimc", std::process::id()));
+    run(&mut s, "save", json!({"path": file}));
+    let mut back = Session::new();
+    run(&mut back, "open", json!({"path": file}));
+    let (a, b) = (s.model.clouds.get("bright").unwrap(), back.model.clouds.get("bright").unwrap());
+    assert_eq!(a.intensity(), b.intensity());
+    assert_eq!(a.intensity().map(<[u8]>::len), Some(101 * 101));
+}
+
+#[test]
+fn a_scan_with_no_intensity_keeps_its_colours_when_a_view_asks_for_intensity() {
+    let mut s = Session::new();
+    run(&mut s, "point_cloud", json!({"path": scan("no-intensity", "sheet.xyz", &sheet(Some([255, 0, 0])))}));
+    assert_eq!(s.model.clouds.get("sheet").unwrap().intensity(), None);
+    run(&mut s, "graphics", json!({"view": "{3D}", "categories": {"pointcloud": {"scan": {"by": "intensity"}}}}));
+    let all = dots(&s);
+    assert!(!all.is_empty() && all.iter().all(|d| d.1 == Rgb(255, 0, 0)));
+}
+
+// ---------- A scan's index ----------
+
+use std::ops::Not;
+
+use crate::cloud::index::{TUNED, Tuning};
+
+/// A floor 6 m square half a metre up, a point every 10 mm, metres, red: 361,201 points.
+fn floor() -> String {
+    let mut text = String::new();
+    for i in 0..=600 {
+        for k in 0..=600 {
+            text += &format!("{} {} 0.5 255 0 0\n", f64::from(i) * 0.01, f64::from(k) * 0.01);
+        }
+    }
+    text
+}
+
+/// A session whose project is saved in a folder of this test's own as `house.bimc`, with the floor brought in indexed, small
+/// buckets and a sample of 20,000 points; and the project's file.
+fn indexed(test: &str) -> (Session, PathBuf, Value) {
+    TUNED.with(|t| t.set(Some((Tuning { bucket: 100_000, leaf: 2_000 }, 20_000))));
+    let path = scan(test, "floor.xyz", &floor());
+    let dir = PathBuf::from(&path).parent().unwrap().to_path_buf();
+    let _ = std::fs::remove_dir_all(dir.join("house_clouds"));
+    let project = dir.join("house.bimc");
+    let mut s = Session::new();
+    run(&mut s, "save", json!({"path": project}));
+    let r = run(&mut s, "point_cloud", json!({"path": path, "index": true, "origin": "file"}));
+    run(&mut s, "save", json!({}));
+    (s, project, r)
+}
+
+/// A plan of Level 1 two pixels to the millimetre, 400 px square about (`x`, `y`).
+fn close_plan(m: &crate::model::Model, x: f64, y: f64) -> render::Drawing {
+    let level = m.levels().first().map(|l| l.0).unwrap();
+    render::draw(m, level, render::View { scale: 2.0, cx: x, cy: y, width: 400, height: 400, angle: 0.0 })
+}
+
+#[test]
+fn an_index_is_kept_beside_a_saved_project_and_the_project_holds_its_top() {
+    // In a project without a file, the index is kept beside the scan's file, by its full path.
+    let mut s = Session::new();
+    let path = scan("unsaved", "dots.xyz", "0 0 0\n1 1 1\n");
+    let r = run(&mut s, "point_cloud", json!({"path": path, "index": true}));
+    let beside = PathBuf::from(&path).with_file_name("dots.bimpc");
+    assert_eq!(r["index"]["path"], beside.to_string_lossy().as_ref(), "{r}");
+    assert!(beside.exists() && s.model.clouds.get("dots").unwrap().indexed().is_some());
+    // Saved, then opened, the project finds it there.
+    let file = PathBuf::from(&path).with_file_name("elsewhere.bimc");
+    run(&mut s, "save", json!({"path": file}));
+    let mut t = Session::new();
+    let r = run(&mut t, "open", json!({"path": file}));
+    assert_eq!(r["clouds_not_indexed"], Value::Null, "{r}");
+    assert!(t.model.clouds.get("dots").unwrap().indexed().is_some());
+    // Not asked for, a small file holds all its points, as ever.
+    let r = run(&mut s, "point_cloud", json!({"path": scan("unsaved", "floor.xyz", "0 0 0\n1 1 1\n")}));
+    assert_eq!(r["index"], Value::Null);
+
+    let (s, project, r) = indexed("index");
+    assert_eq!(r["index"]["path"], "house_clouds/floor.bimpc", "{r}");
+    assert_eq!((r["read"].as_u64(), r["index"]["count"].as_u64()), (Some(361_201), Some(361_201)));
+    let points = r["points"].as_u64().unwrap();
+    assert!(points <= 20_000 && points > 1_000, "{points}");
+    assert!(project.parent().unwrap().join("house_clouds/floor.bimpc").exists());
+    let cloud = s.model.clouds.get("floor").unwrap();
+    assert!(cloud.indexed().is_some());
+    assert_eq!(cloud.stations(), &[]);
+}
+
+#[test]
+fn a_plan_zoomed_in_reads_the_index_for_every_point_it_shows() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let (s, project, _) = indexed("zoom");
+    let full = drawn(&close_plan(&s.model, 3000.0, 3000.0), red);
+    // Opened again, nothing has been read: drawn from what's read, it shows the top and says what it didn't read.
+    let mut t = Session::new();
+    let r = run(&mut t, "open", json!({"path": project}));
+    assert_eq!(r["clouds_not_indexed"], Value::Null, "{r}");
+    let (d, missing) = render::from_cache(|| close_plan(&t.model, 3000.0, 3000.0));
+    let top = drawn(&d, red);
+    assert!(missing > 0 && full > 3 * top, "{missing} {full} {top}");
+    // Drawn as an export draws it, it reads them, and then they're read.
+    assert_eq!(drawn(&close_plan(&t.model, 3000.0, 3000.0), red), full);
+    let (d, missing) = render::from_cache(|| close_plan(&t.model, 3000.0, 3000.0));
+    assert_eq!((missing, drawn(&d, red)), (0, full));
+    // Its points 10 mm apart, 20 px at this scale: a dot for each.
+    assert!(full > 300 * 4, "{full}");
+}
+
+#[test]
+fn a_scan_whose_index_is_gone_shows_its_top_until_the_index_is_found() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let (_, project, _) = indexed("gone");
+    let dir = project.parent().unwrap();
+    let moved = dir.join("elsewhere.bimpc");
+    std::fs::rename(dir.join("house_clouds/floor.bimpc"), &moved).unwrap();
+    let mut t = Session::new();
+    let r = run(&mut t, "open", json!({"path": project}));
+    assert_eq!(r["clouds_not_indexed"][0]["cloud"], "floor", "{r}");
+    let top = drawn(&close_plan(&t.model, 3000.0, 3000.0), red);
+    assert!(top > 0);
+    let e = fails(&mut t, "point_cloud_index", json!({"cloud": "floor"}));
+    assert!(e.contains("can't be opened"), "{e}");
+    let r = run(&mut t, "point_cloud_index", json!({"cloud": "floor", "path": "elsewhere.bimpc"}));
+    assert_eq!(r["path"], "elsewhere.bimpc");
+    assert!(drawn(&close_plan(&t.model, 3000.0, 3000.0), red) > 3 * top);
+    // Another file isn't taken for its index.
+    std::fs::write(dir.join("other.bimpc"), b"nothing").unwrap();
+    assert!(fails(&mut t, "point_cloud_index", json!({"cloud": "floor", "path": "other.bimpc"})).contains("isn't a BIMCraft"));
+    // A scan without one has none to find.
+    run(&mut t, "point_cloud", json!({"path": scan("gone", "box.xyz", BOX), "index": false}));
+    assert!(fails(&mut t, "point_cloud_index", json!({"cloud": "box"})).contains("has no index"));
+}
+
+#[test]
+fn a_3d_view_near_a_scan_reads_its_index_and_a_snap_finds_its_points() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let (s, _, r) = indexed("near");
+    let id = r["id"].as_u64().unwrap();
+    let scene = Scene::new(&s.model);
+    let far = scene.fit(AZIMUTH, ELEVATION, 320, 240);
+    let near = crate::view3d::Camera { scale: far.scale * 40.0, ..far };
+    let look = Look::default();
+    let few = crate::view3d::scan_detail(&s.model, &far, &look, 10_000_000, true).points();
+    let many = crate::view3d::scan_detail(&s.model, &near, &look, 10_000_000, true);
+    assert!(many.points() > few && many.missing == 0, "{} {few}", many.points());
+    let img = scene.render_detailed(&near, &[], &look, &many);
+    let plain = scene.render(&near, &[]);
+    assert!(pixels(&img, red) > pixels(&plain, red), "{} {}", pixels(&img, red), pixels(&plain, red));
+    let dot = (0..240)
+        .flat_map(|y| (0..320).map(move |x| (f64::from(x) + 0.5, f64::from(y) + 0.5)))
+        .find(|&(x, y)| red(img.color(x, y)) && red(plain.color(x, y)).not())
+        .unwrap();
+    assert_eq!(img.pick(dot.0, dot.1), Some(id));
+    // A snap finds a point of the index the project doesn't hold: there's one every 10 mm.
+    let cloud = s.model.clouds.get("floor").unwrap();
+    let o = cloud.origin();
+    let at = [1231.0 - o[0], 2341.0 - o[1]];
+    let z = (-10.0, 10.0);
+    assert!(cloud.nearest(at, 3.0, z).is_none());
+    let p = cloud.nearest_of_all(at, 3.0, z).unwrap();
+    assert!((f64::from(p[0]) - (1230.0 - o[0])).abs() < 1.0 && (f64::from(p[1]) - (2340.0 - o[1])).abs() < 1.0, "{p:?}");
+}
+
+#[test]
+fn an_index_kept_in_a_folder_of_indexes_is_found_there_when_the_project_is_copied_without_it() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    TUNED.with(|t| t.set(Some((Tuning { bucket: 100_000, leaf: 2_000 }, 20_000))));
+    let path = scan("cachedir", "floor.xyz", &floor());
+    let dir = PathBuf::from(&path).parent().unwrap().to_path_buf();
+    let cache = dir.join("indexes");
+    let _ = std::fs::remove_dir_all(&cache);
+    let project = dir.join("house.bimc");
+    let mut s = Session::new();
+    run(&mut s, "save", json!({"path": project}));
+    let r = run(&mut s, "point_cloud", json!({"path": path, "index": true, "index_dir": cache}));
+    assert!(cache.join("house_floor.bimpc").exists(), "{r}");
+    run(&mut s, "save", json!({}));
+    // The project, copied to another folder alone, finds it in the session's folder of indexes.
+    let elsewhere = dir.join("copy");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    std::fs::copy(&project, elsewhere.join("house.bimc")).unwrap();
+    std::fs::rename(cache.join("house_floor.bimpc"), cache.join("moved.bimpc")).unwrap();
+    std::fs::rename(cache.join("moved.bimpc"), cache.join("house_floor.bimpc")).unwrap();
+    let mut t = Session::new();
+    t.index_dir = Some(cache.clone());
+    let r = run(&mut t, "open", json!({"path": elsewhere.join("house.bimc")}));
+    assert_eq!(r["clouds_not_indexed"], Value::Null, "{r}");
+    assert!(t.model.clouds.get("floor").unwrap().indexed().is_some());
+}
+
+#[test]
+fn an_index_says_where_it_is_and_is_built_again_deleted_and_purged() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let (mut s, project, _) = indexed("actions");
+    let file = project.parent().unwrap().join("house_clouds/floor.bimpc");
+    let info = run(&mut s, "point_cloud_index", json!({"cloud": "floor", "action": "info"}));
+    assert_eq!((info["open"].as_bool(), info["count"].as_u64()), (Some(true), Some(361_201)), "{info}");
+    assert_eq!(info["bytes"].as_u64(), Some(std::fs::metadata(&file).unwrap().len()));
+    assert!(info["sources"][0].as_str().unwrap().ends_with("floor.xyz"));
+    // Built again from its files: another index, the same points.
+    let before = s.model.clouds.get("floor").unwrap().index().unwrap().id.clone();
+    let r = run(&mut s, "point_cloud_index", json!({"cloud": "floor", "action": "rebuild"}));
+    assert_eq!(r["count"].as_u64(), Some(361_201), "{r}");
+    let after = s.model.clouds.get("floor").unwrap();
+    assert!(after.index().unwrap().id != before && after.indexed().is_some());
+    // An index nothing names is purged; the scan's own isn't.
+    std::fs::write(project.parent().unwrap().join("house_clouds/left.bimpc"), b"x").unwrap();
+    let r = run(&mut s, "point_cloud_index", json!({"action": "purge"}));
+    assert_eq!(r["deleted"].as_array().map(Vec::len), Some(1), "{r}");
+    assert!(file.exists());
+    // Deleted: the file goes, and the scan keeps the top the project holds.
+    let r = run(&mut s, "point_cloud_index", json!({"cloud": "floor", "action": "delete"}));
+    assert!(r["deleted"].as_str().is_some() && !file.exists(), "{r}");
+    let kept = s.model.clouds.get("floor").unwrap();
+    assert!(kept.index().is_none() && !kept.is_empty());
+    assert!(fails(&mut s, "point_cloud_index", json!({"cloud": "floor", "action": "info"})).contains("has no index"));
+}
+
+#[test]
+fn a_session_that_may_only_read_builds_no_index_and_a_copy_over_co_work_keeps_the_index_it_cant_open() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let mut s = Session::new();
+    s.read_only = Some("a test");
+    let e = fails(&mut s, "point_cloud", json!({"path": scan("readonly", "dots.xyz", "0 0 0\n1 1 1\n"), "index": true}));
+    assert!(e.contains("only read"), "{e}");
+    // A guest's copy of the model holds the scan's index, as the host's file says it, and opens none of it.
+    let (host, _, _) = indexed("guest");
+    let text = host.model.to_json().unwrap();
+    let (copy, _) = crate::model::Model::read(&text).unwrap();
+    let cloud = copy.clouds.get("floor").unwrap();
+    assert!(cloud.index().is_some() && cloud.indexed().is_none());
+}
+
+// ---------- Streaming the 3D view, and eye-dome lighting ----------
+
+#[test]
+fn eye_dome_lighting_darkens_what_lies_behind_its_neighbours_and_leaves_a_flat_surface_lit() {
+    // Two planes facing a parallel camera: the left half a metre nearer than the right.
+    let (w, h) = (20, 10);
+    let depth: Vec<f32> = (0..w * h).map(|k| if k % w < 10 { 500.0 } else { 0.0 }).collect();
+    let lit = crate::view3d::eye_dome(&depth, (w, h), None, 10_000.0);
+    let at = |x: usize, y: usize| lit[y * w + x];
+    // The far plane's pixels beside the near one are dark; the rest of both, flat, are lit whole.
+    assert!(at(10, 5) < 0.2 && at(11, 5) < 0.2, "{} {}", at(10, 5), at(11, 5));
+    assert!((at(15, 5) - 1.0).abs() < 1e-6 && (at(3, 5) - 1.0).abs() < 1e-6 && (at(9, 5) - 1.0).abs() < 1e-6);
+    // Nothing at a pixel: lit, untouched.
+    let empty = vec![f32::NEG_INFINITY; w * h];
+    assert!(crate::view3d::eye_dome(&empty, (w, h), Some(5000.0), 10_000.0).iter().all(|&l| l == 1.0));
+}
+
+#[test]
+fn a_3d_view_draws_a_scan_s_edges_dark_with_eye_dome_lighting_unless_it_is_turned_off() {
+    let mut s = Session::new();
+    // Two red sheets, one a metre in front of the other and half over it.
+    let mut text = sheet(Some([255, 0, 0]));
+    for line in sheet(Some([255, 0, 0])).lines() {
+        let v: Vec<f64> = line.split(' ').map(|x| x.parse().unwrap()).collect();
+        text += &format!("{} -1 {} 255 0 0\n", v[0] + 1.0, v[2] + 1.0);
+    }
+    run(&mut s, "point_cloud", json!({"path": scan("dome", "two.xyz", &text)}));
+    let picture = |s: &Session| {
+        let scene = Scene::new(&s.model);
+        scene.render_in(&scene.fit(AZIMUTH, ELEVATION, 320, 240), &[], &Look::of_3d(&s.model))
+    };
+    let dark = |img: &Image| pixels(img, |c| c.0 < 120 && c.1 < 40 && c.2 < 40);
+    // On unless turned off.
+    let on = dark(&picture(&s));
+    assert_eq!(run(&mut s, "graphic_display_options", json!({}))["eye_dome"], true);
+    let r = run(&mut s, "graphic_display_options", json!({"eye_dome": false}));
+    assert_eq!(r["eye_dome"], false, "{r}");
+    let off = dark(&picture(&s));
+    assert!(on > off + 50, "{off} {on}");
+    // Turned off, a file says so, and the view keeps it; on again, as it was.
+    let file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    assert!(file.to_string().contains("\"eye_dome\":false"));
+    run(&mut s, "graphic_display_options", json!({"eye_dome": true}));
+    assert_eq!(dark(&picture(&s)), on);
+}
+
+#[test]
+fn a_view_streams_the_nodes_it_wants_most_first_and_packs_each_for_the_card_where_its_points_are() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let (s, _, _) = indexed("stream");
+    let scene = Scene::new(&s.model);
+    let far = scene.fit(AZIMUTH, ELEVATION, 320, 240);
+    let near = crate::view3d::Camera { scale: far.scale * 40.0, ..far };
+    let look = Look::default();
+    let wanted = crate::view3d::scan_wanted(&s.model, &near, &look, 10_000_000);
+    assert!(!wanted.is_empty());
+    // Nothing is read to say what's wanted, and it's what the picture's detail reads, in its order.
+    let detail = crate::view3d::scan_detail(&s.model, &near, &look, 10_000_000, true);
+    assert_eq!(detail.points(), wanted.iter().map(|w| w.index.source().node(w.node).unwrap().1 as usize).sum::<usize>());
+    // A node packed for the card comes back where its points are, to within its step, in their colour.
+    let w = &wanted[0];
+    let points = w.index.fetch(w.node).unwrap();
+    let origin = [1000.0, 2000.0, 0.0];
+    let packed = crate::view3d::node_dots(&look, origin, w, &points);
+    assert_eq!((packed.count as usize, packed.words.len()), (points.points.len(), 3 * points.points.len()));
+    let pc = match s.model.elements.get(w.owner) {
+        Some(crate::model::Element::PointCloud(pc)) => pc.clone(),
+        _ => panic!("a point cloud"),
+    };
+    let place = s.model.cloud_place(&pc);
+    for (i, p) in points.points.iter().enumerate() {
+        let [xy, z, colour] = [packed.words[3 * i], packed.words[3 * i + 1], packed.words[3 * i + 2]];
+        let q = [xy & 0xFFFF, xy >> 16, z];
+        let at = place(*p);
+        for a in 0..3 {
+            let back = f64::from(packed.min[a]) + f64::from(q[a]) * f64::from(packed.step[a]) + origin[a];
+            assert!((back - at[a]).abs() <= f64::from(packed.step[a]), "{a}: {back} {}", at[a]);
+        }
+        assert_eq!(colour, 255, "red");
+    }
+}
+
+#[cfg(feature = "laz")]
+#[test]
+fn a_copc_file_is_its_own_index_read_as_it_is_never_built_rebuilt_or_deleted() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let dir = std::env::temp_dir().join(format!("bimcraft-cloud-{}-copc", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("survey.copc.laz");
+    std::fs::write(&path, crate::cloud::copc::tests::copc(3_000)).unwrap();
+    let mut s = Session::new();
+    let r = run(&mut s, "point_cloud", json!({"path": path, "name": "survey"}));
+    assert_eq!((r["read"].as_u64(), r["index"]["count"].as_u64()), (Some(3_000), Some(3_000)), "{r}");
+    let cloud = s.model.clouds.get("survey").unwrap();
+    let index = cloud.index().unwrap();
+    assert_eq!(index.kind.as_deref(), Some("copc"));
+    assert!(cloud.indexed().is_some());
+    // Nothing was built beside it.
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    // Saved and opened, it's found and read again.
+    let project = dir.join("house.bimc");
+    run(&mut s, "save", json!({"path": project}));
+    let mut t = Session::new();
+    let r = run(&mut t, "open", json!({"path": project}));
+    assert_eq!(r["clouds_not_indexed"], Value::Null, "{r}");
+    // It's someone else's file: rebuild has nothing to build, and delete lets it go without deleting it.
+    assert!(fails(&mut t, "point_cloud_index", json!({"cloud": "survey", "action": "rebuild"})).contains("COPC"));
+    run(&mut t, "point_cloud_index", json!({"cloud": "survey", "action": "delete"}));
+    assert!(path.exists() && t.model.clouds.get("survey").unwrap().index().is_none());
+    // Asked not to index, it's read as LAZ, thinned into the project.
+    let r = run(&mut s, "point_cloud", json!({"path": path, "name": "plain", "index": false}));
+    assert_eq!(r["index"], Value::Null, "{r}");
+}
+
+// ---------- Detail by the output ----------
+
+/// A face 6 m wide and 3 m tall on y = 0, from `z0` m up, a point every 10 mm, metres, red: 180,901 points.
+fn face_at(z0: f64) -> String {
+    let mut text = String::new();
+    for i in 0..=600 {
+        for k in 0..=300 {
+            text += &format!("{} 0 {} 255 0 0\n", f64::from(i) * 0.01, z0 + f64::from(k) * 0.01);
+        }
+    }
+    text
+}
+
+/// A project saved in a folder of this test's own with `text` brought in indexed by its file's coordinates (small buckets, a
+/// sample of 20,000): its file.
+fn indexed_project(test: &str, text: &str) -> PathBuf {
+    TUNED.with(|t| t.set(Some((Tuning { bucket: 100_000, leaf: 2_000 }, 20_000))));
+    let path = scan(test, "scan.xyz", text);
+    let project = PathBuf::from(&path).parent().unwrap().join("house.bimc");
+    let mut s = Session::new();
+    run(&mut s, "save", json!({"path": project}));
+    run(&mut s, "point_cloud", json!({"path": path, "index": true, "origin": "file"}));
+    run(&mut s, "save", json!({}));
+    project
+}
+
+/// The project at `project` opened again, so nothing of its index has been read.
+fn fresh(project: &PathBuf) -> Session {
+    let mut t = Session::new();
+    run(&mut t, "open", json!({"path": project}));
+    t
+}
+
+/// How many nodes of the index a plan of Level 1 of the same 4 m square about (3, 3) m, at `scale` px a mm, reads, opened afresh.
+fn read_at(project: &PathBuf, scale: f64) -> u64 {
+    let s = fresh(project);
+    let level = s.model.levels().first().map(|l| l.0).unwrap();
+    let px = (4000.0 * scale) as u32;
+    render::draw(&s.model, level, render::View { scale, cx: 3000.0, cy: 3000.0, width: px, height: px, angle: 0.0 });
+    s.model.clouds.values().next().unwrap().indexed().unwrap().loads()
+}
+
+#[test]
+fn a_plan_reads_more_of_an_index_the_finer_its_output_and_finest_where_its_cut_cuts() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let low = indexed_project("output", &floor());
+    // An export at a finer scale or resolution reads deeper: each pixel is less of the model.
+    let (coarse, fine) = (read_at(&low, 0.02), read_at(&low, 0.4));
+    assert!(fine > coarse, "{coarse} {fine}");
+    // The same floor where Level 1's cut cuts it (at 1150 mm, within the band below the cut at 1200) is read finer than at
+    // 500 mm, well below it.
+    let mut band = String::new();
+    for line in floor().lines() {
+        band += &line.replacen(" 0.5 ", " 1.15 ", 1);
+        band.push('\n');
+    }
+    let cut = indexed_project("band", &band);
+    assert!(read_at(&cut, 0.02) > read_at(&low, 0.02), "{} {}", read_at(&cut, 0.02), read_at(&low, 0.02));
+}
+
+#[test]
+fn a_section_draws_the_points_of_a_scan_s_index_it_shows() {
+    let _serial = crate::cloud::lod::SERIAL.lock();
+    let mut s = fresh(&indexed_project("section-index", &face_at(0.0)));
+    let v = run(&mut s, "section", json!({"start": [-500, -1000], "end": [6500, -1000]}))["id"].as_u64().unwrap();
+    let view = render::section_fit(&s.model, v, 1200, 600);
+    // Drawn from what's read only, it shows the top the project holds; drawn as an export draws it, every point it shows.
+    let (top, missing) = render::from_cache(|| render::section_image(&s.model, &Scene::new(&s.model), v, view, &[]).unwrap());
+    let full = render::section_image(&s.model, &Scene::new(&s.model), v, view, &[]).unwrap();
+    assert!(missing > 0 && pixels(&full, red) > pixels(&top, red) + 1000, "{missing} {} {}", pixels(&full, red), pixels(&top, red));
+}
+
+// ---------- Points drawn all at once ----------
+
+#[test]
+fn points_drawn_side_by_side_keep_the_nearest_at_each_pixel_the_same_every_time() {
+    // A face and, half a metre in front of it, another in another colour over part of it: what shows is what's nearest, and
+    // drawing it again on all threads gives the same picture to the pixel.
+    let mut s = Session::new();
+    let mut text = sheet(Some([255, 0, 0]));
+    for line in sheet(Some([0, 0, 255])).lines().step_by(2) {
+        let v: Vec<f64> = line.split(' ').map(|x| x.parse().unwrap()).collect();
+        text += &format!("{} -0.5 {} 0 0 255\n", v[0] * 0.5, v[2] * 0.5);
+    }
+    let id = run(&mut s, "point_cloud", json!({"path": scan("atomic", "two.xyz", &text)}))["id"].as_u64().unwrap();
+    let scene = Scene::new(&s.model);
+    let cam = scene.fit(AZIMUTH, ELEVATION, 320, 240);
+    let a = scene.render(&cam, &[]);
+    let b = scene.render(&cam, &[]);
+    assert_eq!(a.rgba, b.rgba);
+    assert!(pixels(&a, blue) > 500 && pixels(&a, red) > 500, "{} {}", pixels(&a, blue), pixels(&a, red));
+    // Every pixel a point shows picks its scan.
+    let at =
+        (0..240).flat_map(|y| (0..320).map(move |x| (f64::from(x) + 0.5, f64::from(y) + 0.5))).find(|&(x, y)| blue(a.color(x, y))).unwrap();
+    assert_eq!(a.pick(at.0, at.1), Some(id));
 }

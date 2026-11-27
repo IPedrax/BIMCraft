@@ -2354,7 +2354,9 @@ pub fn section_camera(m: &Model, id: impl Key, view: View) -> Option<(Camera, Cl
 /// picture its cut, levels and grids ([`section`]) go over.
 pub fn section_image(m: &Model, scene: &Scene, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     let (cam, clip) = section_camera(m, id, view)?;
-    Some(scene.cut_in(&cam, &clip, tints, &Look::of(m, id)))
+    let look = Look::of(m, id);
+    let detail = scan_detail_for(m, &cam, &look);
+    Some(scene.cut_detailed(&cam, &clip, tints, &look, &detail))
 }
 
 /// What section or elevation `id` sees past its line through `view`, in hidden line, as [`section_image`] draws it from
@@ -2415,7 +2417,8 @@ pub fn section_picture_cancellable(
     let (cam, clip) = section_camera(m, id, view)?;
     let look = Look::of(m, id);
     let scene = Scene::section_cancellable(m, (&work.solids, &work.ranges, &work.placed, &work.boxes), &cam, &clip, &look, cancelled)?;
-    let image = scene.picture_cancellable(&cam, Some(&clip), tints, &look, cancelled);
+    let detail = scan_detail_for(m, &cam, &look);
+    let image = scene.cut_detailed_cancellable((&cam, &clip), tints, &look, cancelled, &detail);
     (!cancelled()).then_some(image)
 }
 
@@ -2423,10 +2426,12 @@ pub fn section_picture_cancellable(
 pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     let (cam, clip) = section_camera(m, id, view)?;
     let look = Look::of(m, id);
-    let picture = Scene::section(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), &cam, &clip, &look).cut_in(&cam, &clip, tints, &look);
+    let detail = scan_detail_for(m, &cam, &look);
+    let picture =
+        Scene::section(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), &cam, &clip, &look).cut_detailed(&cam, &clip, tints, &look, &detail);
     // Its twin, which tests hold it to: the picture of the whole scene.
     #[cfg(test)]
-    if let Err(e) = picture.same_as(&Scene::new(m).cut_in(&cam, &clip, tints, &look)) {
+    if let Err(e) = picture.same_as(&Scene::new(m).cut_detailed(&cam, &clip, tints, &look, &detail)) {
         panic!("a section's picture from what can show in it isn't the whole scene's: {e}");
     }
     Some(picture)
@@ -3450,6 +3455,47 @@ pub fn detail_at(m: &Model, id: impl Key, view: View, k: f32) -> Drawing {
     }
 }
 
+/// How much finer a plan reads a scan's index where its cut plane cuts it, within [`crate::snap::CUT_BAND`], than elsewhere.
+const BAND: f64 = 3.0;
+
+/// The most points of scans' indexes a picture `w` by `h` px draws: half a point a pixel, between [`crate::cloud::lod::DRAWN`]
+/// and four times it, so a sheet exported at a high resolution reads what it shows, and a small picture doesn't read less than
+/// a screen's.
+fn output_points(w: usize, h: usize) -> usize {
+    let most = crate::cloud::lod::DRAWN;
+    (w.saturating_mul(h) / 2).clamp(most, 4 * most)
+}
+
+/// The points of the scans' indexes a section's or an elevation's picture from `cam` reads, as a plan's are read: from the cache
+/// only where [`from_cache`] says, counting what it didn't have.
+fn scan_detail_for(m: &Model, cam: &view3d::Camera, look: &Look) -> view3d::Detail {
+    if m.clouds.values().all(|c| c.indexed().is_none()) {
+        return view3d::Detail::default();
+    }
+    let load = FROM_CACHE.with(|c| !c.get());
+    let most = output_points(cam.width as usize, cam.height as usize);
+    let detail = view3d::scan_detail(m, cam, look, most, load);
+    MISSING.with(|n| n.set(n.get() + detail.missing));
+    detail
+}
+
+thread_local! {
+    /// Whether plans drawn on this thread take only the nodes of scans' indexes read already ([`from_cache`]).
+    static FROM_CACHE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// The nodes they would have drawn that weren't read.
+    static MISSING: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// What `f` draws, its plans taking of the scans' indexes only the nodes read already, and how many they'd have read: what a
+/// window draws at once, reading the rest on a thread of its own and drawing again. Elsewhere a plan reads what it shows.
+pub fn from_cache<T>(f: impl FnOnce() -> T) -> (T, usize) {
+    let before = FROM_CACHE.with(|c| c.replace(true));
+    let missing = MISSING.with(|m| m.replace(0));
+    let out = f();
+    FROM_CACHE.with(|c| c.set(before));
+    (out, MISSING.with(|m| m.replace(missing)))
+}
+
 /// The points of the scans a plan sees, from its cut plane down to its view depth, as Revit draws a point cloud in plan: from
 /// above, each a dot [`view3d::DOT`] pixels wide in its colour (or the view's), the highest at each pixel on top, no more than
 /// [`view3d::DRAWN`] of them among the scans. Each scan is one picture, no bigger than its dots and clear where it has none, so
@@ -3468,23 +3514,87 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
     let (w, h) = (i64::from(d.view.width), i64::from(d.view.height));
     let (dot, half) = (view3d::DOT as i64, view3d::DOT as f64 / 2.0);
     let grey = Rgb(crate::cloud::GREY, crate::cloud::GREY, crate::cloud::GREY);
-    for (id, pc, cloud) in placed {
+    // The nodes of the scans' indexes the plan reads below the top the project holds: each in the slab and the picture, down
+    // to where its points are closer than a dot or two, one budget for all the scans, the most needed first.
+    let mut chosen: Vec<Vec<std::sync::Arc<crate::cloud::lod::Points>>> = vec![Vec::new(); placed.len()];
+    {
+        let view = d.view;
+        let indexed: Vec<(usize, &std::sync::Arc<crate::cloud::lod::Indexed>)> =
+            placed.iter().enumerate().filter_map(|(k, (_, _, c))| c.indexed().map(|ix| (k, ix))).collect();
+        let seens: Vec<Box<crate::cloud::lod::Seen<'static>>> = indexed
+            .iter()
+            .map(|&(k, _)| {
+                let place = m.cloud_place(placed[k].1);
+                let (depth, cut) = (range.depth, range.cut);
+                Box::new(move |lo: [f64; 3], hi: [f64; 3]| -> Option<f64> {
+                    let (mut x0, mut y0, mut z0, mut x1, mut y1, mut z1) =
+                        (f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+                    for c in 0..8 {
+                        let [x, y, z] = place(std::array::from_fn(|a| (if c >> a & 1 == 0 { lo[a] } else { hi[a] }) as f32));
+                        let (px, py) = view.px(P2(x, y));
+                        (x0, y0, x1, y1) = (x0.min(f64::from(px)), y0.min(f64::from(py)), x1.max(f64::from(px)), y1.max(f64::from(py)));
+                        (z0, z1) = (z0.min(z), z1.max(z));
+                    }
+                    let shows = z1 >= depth - TOL && z0 <= cut && x1 >= 0.0 && y1 >= 0.0 && x0 <= w as f64 && y0 <= h as f64;
+                    // Where the cut cuts what was measured, what's traced, read finer: a third of the spacing elsewhere.
+                    let band = z1 >= cut - crate::snap::CUT_BAND && z0 <= cut;
+                    shows.then_some(if band { view.scale * BAND } else { view.scale })
+                }) as Box<crate::cloud::lod::Seen<'static>>
+            })
+            .collect();
+        let asked: Vec<(&crate::cloud::lod::Indexed, &crate::cloud::lod::Seen<'_>)> =
+            indexed.iter().zip(&seens).map(|((_, ix), seen)| (ix.as_ref(), seen.as_ref())).collect();
+        let load = FROM_CACHE.with(|c| !c.get());
+        for (s, i) in crate::cloud::lod::select(&asked, output_points(w as usize, h as usize)) {
+            let Some(&(k, ix)) = indexed.get(s) else { continue };
+            match if load { ix.fetch(i) } else { ix.cached(i) } {
+                Some(p) => chosen[k].push(p),
+                None if !ix.settled(i) => MISSING.with(|m| m.set(m.get() + 1)),
+                None => {}
+            }
+        }
+    }
+    for (k, (id, pc, cloud)) in placed.into_iter().enumerate() {
         let place = m.cloud_place(pc);
         let colours = cloud.colours();
+        let stretch = cloud.intensity_levels();
+        let paint = look.scan_colour(id);
+        // The heights a ramp runs between: those the view gives, or the scan's own foot and head in the model.
+        let (low, high) = match (paint.low, paint.high, m.cloud_box(id)) {
+            (Some(lo), Some(hi), _) => (lo, hi),
+            (lo, hi, Some((foot, head))) => (lo.unwrap_or(foot[2]), hi.unwrap_or(head[2])),
+            (lo, hi, None) => (lo.unwrap_or(0.0), hi.unwrap_or(0.0)),
+        };
+        let nodes = &chosen[k];
+        let pieces = std::iter::once((cloud.points(), colours, cloud.intensity(), step)).chain(
+            nodes
+                .iter()
+                .map(|n| (n.points.as_slice(), n.colours.as_deref().map(Vec::as_slice), n.intensity.as_deref().map(Vec::as_slice), 1)),
+        );
         // Each point it sees: its dot's corner, px, its height and its colour.
         let mut seen: Vec<(i64, i64, f64, Rgb)> = Vec::new();
-        for (i, p) in cloud.points().iter().enumerate().step_by(step) {
-            let [x, y, z] = place(*p);
-            if !(range.depth - TOL..=range.cut).contains(&z) {
-                continue;
+        for (points, colours, intensity, step) in pieces {
+            for (i, p) in points.iter().enumerate().step_by(step) {
+                let [x, y, z] = place(*p);
+                if !(range.depth - TOL..=range.cut).contains(&z) {
+                    continue;
+                }
+                let (px, py) = d.view.px(P2(x, y));
+                let (x0, y0) = ((f64::from(px) - half).round(), (f64::from(py) - half).round());
+                if !(x0 > -(dot as f64) && y0 > -(dot as f64) && x0 < w as f64 && y0 < h as f64) {
+                    continue;
+                }
+                let own = || colours.and_then(|c| c.get(i)).map_or(grey, |c| Rgb(c[0], c[1], c[2]));
+                let base = match paint.by {
+                    crate::graphics::ScanBy::Elevation if high > low => crate::graphics::ramp((z - low) / (high - low)),
+                    crate::graphics::ScanBy::Elevation => crate::graphics::ramp(0.5),
+                    crate::graphics::ScanBy::Intensity => {
+                        intensity.and_then(|l| l.get(i)).map_or_else(own, |&v| crate::graphics::intensity_colour(v, &stretch))
+                    }
+                    crate::graphics::ScanBy::Normal => own(),
+                };
+                seen.push((x0 as i64, y0 as i64, z, look.surface(id, base)));
             }
-            let (px, py) = d.view.px(P2(x, y));
-            let (x0, y0) = ((f64::from(px) - half).round(), (f64::from(py) - half).round());
-            if !(x0 > -(dot as f64) && y0 > -(dot as f64) && x0 < w as f64 && y0 < h as f64) {
-                continue;
-            }
-            let base = colours.and_then(|c| c.get(i)).map_or(grey, |c| Rgb(c[0], c[1], c[2]));
-            seen.push((x0 as i64, y0 as i64, z, look.surface(id, base)));
         }
         let Some((lo, hi)) = seen.iter().fold(None, |b: Option<((i64, i64), (i64, i64))>, &(x, y, ..)| {
             let ((x0, y0), (x1, y1)) = b.unwrap_or(((x, y), (x, y)));
