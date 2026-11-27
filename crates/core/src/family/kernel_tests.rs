@@ -39,7 +39,7 @@ fn families() -> BTreeMap<String, Family> {
     let mut families = library(Language::English);
     let ring = json!([{"start":[0,0],"end":[40,0]}, {"start":[40,0],"end":[40,30]},
                       {"start":[40,30],"end":[0,30]}, {"start":[0,30],"end":[0,0]}]);
-    let circle = json!([{"centre":[10,10],"radius":5}]);
+    let circle = json!([{"centre":[10,10],"radius":8}]);
     let path = json!([{"start":[100,0],"end":[0,100],"turn":90}]);
     let forms = json!([
         {"sketch":ring,"from":0,"to":"H","material":"Panel","visibility":{"coarse":false}},
@@ -75,16 +75,8 @@ fn family_kernel_matches_the_direct_mesh_bit_for_bit() {
     for (name, family) in families() {
         for kind in family.types.keys() {
             let values = family.values(kind, &BTreeMap::new()).unwrap();
-            let actual = family.pieces(&values);
-            let expected = match direct(&family, &values) {
-                Ok(pieces) => pieces,
-                Err(error) if name != "All form operations" => {
-                    assert_eq!(actual.unwrap_err(), error, "{name} {kind}");
-                    continue;
-                }
-                Err(error) => panic!("{name} {kind}: {error}"),
-            };
-            let actual = actual.unwrap_or_else(|e| panic!("{name} {kind}: {e}"));
+            let expected = direct(&family, &values).unwrap_or_else(|e| panic!("{name} {kind}: {e}"));
+            let actual = family.pieces(&values).unwrap_or_else(|e| panic!("{name} {kind}: {e}"));
             built += actual.len();
             if name == "All form operations" {
                 assert_eq!(actual.len(), 6);
@@ -121,7 +113,7 @@ fn time_family_form_kernel_against_direct_mesh() {
             } else {
                 family.build(&MeshKernel, values, &mut HashMap::new(), &mut csg::Meter::default())
             };
-            let _ = black_box(pieces);
+            black_box(pieces.unwrap());
         }
         start.elapsed()
     };
