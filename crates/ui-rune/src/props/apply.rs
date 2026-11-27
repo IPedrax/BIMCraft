@@ -81,6 +81,12 @@ pub fn command(panel: &Panel, units: Units, key: &'static str, edit: Edit) -> Re
     }
 }
 
+/// The type that item `i` of the Type Selector's list is, for the tool in hand to place (`Settings::picks`).
+pub fn picked(panel: &Panel, i: usize) -> Option<crate::options::TypePick> {
+    let ty = panel.selector.as_ref()?.types.get(i)?;
+    Some(crate::options::TypePick { name: ty.name.clone(), family: ty.family.clone() })
+}
+
 /// The command that gives the shown elements type `i` of the Type Selector's list (a family's too, for a type of a family; a door or a
 /// window of one of the project's own is taken off its family): none when it is the type they have, or why it cannot be.
 pub fn set_type(panel: &Panel, i: usize) -> Result<Option<Command>, String> {

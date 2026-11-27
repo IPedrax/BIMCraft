@@ -38,6 +38,8 @@ pub enum Subject {
     Mixed(usize),
     /// Nothing selected: the plan of this level, its own properties.
     Plan(Id),
+    /// Nothing selected, a tool in hand: what it places, of this category (its type is what the Type Selector picks).
+    New(&'static str),
 }
 
 /// One option of a list: what it says, the value `modify` takes for it, and a second field the same command sets with it.
@@ -126,6 +128,18 @@ impl Panel {
             groups: Vec::new(),
             notes: Vec::new(),
             selector: None,
+        }
+    }
+
+    /// The palette of a tool in hand with nothing selected: the Type Selector of what it places, `pick`ed or the usual one. Its settings are
+    /// on the Options Bar.
+    pub fn tool(m: &Model, category: &'static str, pick: Option<&crate::options::TypePick>) -> Panel {
+        Panel {
+            subject: Subject::New(category),
+            title: tf("New {}", &[&category_name(category, false)]),
+            selector: Some(Selector::for_tool(m, category, pick)),
+            notes: vec![t("Click in the plan to place it. Its settings are on the Options Bar.").to_string()],
+            ..Panel::empty()
         }
     }
 
