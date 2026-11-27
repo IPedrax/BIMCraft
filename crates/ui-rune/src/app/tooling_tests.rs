@@ -375,7 +375,7 @@ fn a_wall_ghost_is_as_thick_as_its_type_and_a_door_or_a_column_stands_where_the_
     app.set_tool("column");
     hover(&mut app, A);
     let column = app.stands();
-    assert!(column.is_some_and(|(d, id)| d.owners.iter().any(|o| *o == Some(id))), "the column drawn as the plan draws it");
+    assert!(column.is_some_and(|(d, id)| d.owners.contains(&Some(id))), "the column drawn as the plan draws it");
     app.set_tool("column");
     app.set_tool("door");
     hover(&mut app, A);
