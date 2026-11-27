@@ -225,6 +225,8 @@ fn reload_only_carries_values_between_matching_shared_identities() {
     ] {
         let mut s = Session::new();
         run(&mut s, json!({"name":"Identity", "parameters":[{"name":"Size","value":100,"shared":old_shared}],"types":{"A":{"Size":150}}}));
+        let kind = bimcraft_core::library::Kind::FamilyParameter;
+        let old_entry = s.model.library.guid(&kind, "Identity: Size").unwrap();
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("identity.json");
         std::fs::write(
@@ -234,9 +236,108 @@ fn reload_only_carries_values_between_matching_shared_identities() {
         )
         .unwrap();
         run(&mut s, json!({"path":file,"overwrite":"version"}));
+        let entry = s.model.library.guid(&kind, "Identity: Size").unwrap();
+        assert_eq!(entry == old_entry, old_shared == new_shared);
         let f = &s.model.families["Identity"];
         assert_eq!(f.parameters[0].value, json!(expected));
         assert_eq!(f.types["A"]["Size"], json!(if expected == 100 { 150 } else { 250 }));
+    }
+}
+
+#[test]
+fn reload_keeps_values_by_shared_guid_when_the_incoming_family_swaps_parameter_names() {
+    let width = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let depth = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    for (policy, default_width, default_depth, type_width, type_depth) in
+        [("version", 10, 20, 11, 21), ("version_and_values", 30, 40, 31, 41)]
+    {
+        let mut s = Session::new();
+        run(
+            &mut s,
+            json!({"name":"Panel", "parameters":[
+            {"name":"Width", "shared":width, "value":10}, {"name":"Depth", "shared":depth, "value":20}
+        ], "types":{"A":{"Width":11,"Depth":21}, "Project only":{"Width":12}}}),
+        );
+        let kind = bimcraft_core::library::Kind::FamilyParameter;
+        let width_entry = s.model.library.guid(&kind, "Panel: Width").unwrap();
+        let depth_entry = s.model.library.guid(&kind, "Panel: Depth").unwrap();
+        run(
+            &mut s,
+            json!({"name":"Panel", "overwrite":policy, "definition":{"parameters":[
+            {"name":"Depth", "shared":width, "value":30}, {"name":"Width", "shared":depth, "value":40}
+        ], "types":{"A":{"Depth":31,"Width":41}, "Incoming only":{}}}}),
+        );
+        let family = &s.model.families["Panel"];
+        assert_eq!(s.model.library.guid(&kind, "Panel: Depth"), Some(width_entry));
+        assert_eq!(s.model.library.guid(&kind, "Panel: Width"), Some(depth_entry));
+        assert_eq!(family.parameters[0].value, default_width);
+        assert_eq!(family.parameters[1].value, default_depth);
+        assert_eq!(family.types["A"]["Depth"], type_width);
+        assert_eq!(family.types["A"]["Width"], type_depth);
+        assert_eq!(family.types["Project only"]["Depth"], 12);
+        assert_eq!(family.types["Project only"]["Width"], 20);
+        let values = family.values("Incoming only", &Default::default()).unwrap();
+        assert_eq!(values["Depth"], bimcraft_core::family::Val::Number(30.0));
+        assert_eq!(values["Width"], bimcraft_core::family::Val::Number(40.0));
+    }
+}
+
+#[test]
+fn reload_moves_shared_instance_overrides_to_the_new_name_and_undo_restores_them() {
+    let height = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    for (policy, default) in [("version", 50), ("version_and_values", 80)] {
+        let mut s = Session::new();
+        run(&mut s, json!({"name":"Panel", "parameters":[{"name":"Height","instance":true,"value":50,"shared":height}], "types":{"A":{}}}));
+        let placed = s.execute("component", &json!({"family":"Panel","type":"A","at":[0,0],"params":{"Height":65}})).unwrap();
+        let id = placed["id"].as_u64().unwrap();
+        s.execute("create_group", &json!({"ids":[id],"name":"Panels"})).unwrap();
+        let before = s.model.to_json().unwrap();
+        let mut reload = json!({"name":"Panel", "overwrite":policy, "definition":{
+            "parameters":[{"name":"Rise","instance":true,"value":80,"shared":height}],"types":{"A":{}}
+        }, "dry_run":true});
+        run(&mut s, reload.clone());
+        assert!(s.model.to_json().unwrap() == before);
+        reload["dry_run"] = json!(false);
+        run(&mut s, reload);
+        let params = s.model.elements.get(id).unwrap().params().unwrap();
+        assert_eq!(params.get("Rise"), Some(&json!(65)), "{policy}");
+        assert!(!params.contains_key("Height"));
+        assert_eq!(s.model.families["Panel"].parameters[0].value, default);
+        // The group definition must carry the same key when the project is reopened and the group placed again.
+        let (model, left_out) = bimcraft_core::model::Model::read(&s.model.to_json().unwrap()).unwrap();
+        assert!(left_out.is_empty());
+        let mut reopened = Session::new();
+        reopened.model = std::sync::Arc::new(model);
+        let group = reopened.execute("model_group", &json!({"type":"Panels","at":[200,0]})).unwrap();
+        let member = group["members"][0].as_u64().unwrap();
+        let new_params = reopened.model.elements.get(member).unwrap().params().unwrap();
+        assert_eq!(new_params.get("Rise"), Some(&json!(65)));
+        assert!(!new_params.contains_key("Height"));
+        s.execute("undo", &json!({})).unwrap();
+        assert!(s.model.to_json().unwrap() == before);
+    }
+}
+
+#[test]
+fn reload_refuses_to_replace_an_unrelated_value_at_the_new_shared_parameter_name() {
+    let height = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let mut s = Session::new();
+    run(
+        &mut s,
+        json!({"name":"Panel","parameters":[
+        {"name":"Height","instance":true,"value":50,"shared":height},
+        {"name":"Rise","instance":true,"value":10}
+    ],"types":{"A":{}}}),
+    );
+    s.execute("component", &json!({"family":"Panel","type":"A","at":[0,0],"params":{"Height":65,"Rise":20}})).unwrap();
+    let before = s.model.to_json().unwrap();
+    for dry in [true, false] {
+        let reload = json!({"name":"Panel", "overwrite":"version", "dry_run":dry, "definition":{
+            "parameters":[{"name":"Rise","instance":true,"value":80,"shared":height}],"types":{"A":{}}
+        }});
+        let err = s.execute("family", &reload).unwrap_err();
+        assert!(err.contains("Rise"), "{err}");
+        assert!(s.model.to_json().unwrap() == before, "a refused rename changed the project");
     }
 }
 

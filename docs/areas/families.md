@@ -1634,11 +1634,15 @@ says an older build would leave both fields out of a file.
 - `version` replaces the definition but keeps compatible project parameter defaults and existing type values.
 - `version_and_values` replaces the definition and takes its defaults and matching type values from the file.
 
-Compatibility means the same case-sensitive parameter name, kind, Type/Instance setting and shared GUID (including both absent).
+Shared parameters match by GUID across a rename. Two ordinary parameters match by their case-sensitive name.
+Both parameters must have the same kind and Type/Instance setting.
 Reporting parameters never carry values over. Family Type parameters also require the same `of` category; their values remain
 null until nested-family support. Neither compatible version is driven by
 a formula. Incoming formulas always belong to the new definition. Project-only types remain, keeping compatible values;
-new parameters and types use the incoming values. Explicit instance overrides are never rewritten by a family reload.
+new parameters and types use the incoming values. Placed instances keep their explicit values under the new shared name,
+as do parameter associations on nested instances. A reload is refused if a held value would move to an incompatible
+parameter or its destination already holds another override. The project library entry keeps its id and GUID on a shared rename.
+`family/reload.rs` matches parameters and moves values for project and nested instances.
 Optional definition fields omitted from an explicit replacement are reset, rather than retained from the old definition.
 Parts keep identities through the existing `keep_parts` rule. Model validation refuses an incompatible reload atomically;
 the normal undo restores a successful reload. `dry_run` previews the change without writing it.
