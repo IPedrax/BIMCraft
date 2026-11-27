@@ -260,7 +260,7 @@ fn the_manage_button_lists_the_managers_and_a_press_opens_one() {
     let mut rt = window();
     tap(&mut rt, "manage");
     assert_eq!(rt.state.dialogs.find.as_ref().map(|f| f.edit.text.as_str()), Some("manage"), "Find opens on the word");
-    assert!(rt.find("hit-11").is_some(), "the twelve managers are listed");
+    assert!(rt.find("hit-12").is_some(), "the thirteen managers are listed");
     tap(&mut rt, "hit-0");
     assert_eq!(rt.state.dialogs.library.as_ref().map(|d| d.info.source), Some(crate::library::Source::Materials));
     assert!(rt.state.dialogs.find.is_none() && rt.find("lib-apply").is_some());

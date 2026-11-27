@@ -124,3 +124,20 @@ fn a_location_is_changed_and_made_active_through_the_location_command() {
     assert_eq!(app.session.model.coordinates.active, "Rune Site");
     assert!(app.dialogs.library.as_ref().is_some_and(|d| d.json.get("active") == Some(&json!(true))));
 }
+
+#[test]
+fn a_loaded_classification_table_is_an_entry_shown_and_taken_out_through_its_command() {
+    let path = std::env::temp_dir().join(format!("rune-classification-{}.csv", std::process::id()));
+    std::fs::write(&path, "Code,Title\nA1,First\nA2,Second\n").expect("a table to load");
+    let mut app = App::sample();
+    let loaded = app.execute("classification_table", &json!({"path": path.to_string_lossy(), "system": "custom", "name": "Rune Table"}));
+    let _ = std::fs::remove_file(&path);
+    assert!(loaded.is_ok(), "{loaded:?}");
+    app.open_library(Source::Classification);
+    let d = app.dialogs.library.as_ref().expect("open");
+    assert!(d.names.iter().any(|n| n == "Rune Table"), "{:?}", d.names);
+    assert!(d.fields.is_empty(), "a table is loaded again, not edited");
+    assert_eq!(d.json.get("rows"), Some(&json!(2)), "{:?}", d.json);
+    assert!(app.library_delete(), "{:?}", app.dialogs.library.as_ref().map(|d| &d.error));
+    assert!(app.session.model.classification.tables.is_empty());
+}

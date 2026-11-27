@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::app::App;
 use crate::lang::t;
-use crate::library::takes;
+use crate::library::{deletes, takes};
 
 /// The dialog's width, points.
 const WIDTH: f32 = 560.0;
@@ -95,7 +95,7 @@ pub fn dialog(s: &App, k: &Kit, layer: &mut Vec<El>) {
         );
     }
     footer = footer.child(Button::new(t("New").to_string()).on_press(|s: &mut App| s.library_new()).build(k).key("lib-new"));
-    if d.selected.is_some() && takes(d.info, "delete") {
+    if d.selected.is_some() && deletes(d.info) {
         footer = footer.child(
             Button::new(t("Delete").to_string())
                 .variant(ButtonVariant::Danger)

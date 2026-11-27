@@ -27,6 +27,8 @@ pub enum Source {
     ObjectStyles,
     /// The project's named sites (Revit's Location, `LO`): the Survey Point's shared coordinates, true north, map system.
     Locations,
+    /// The classification tables the project holds (Uniclass, OmniClass, a table of the user's own), loaded from the user's files.
+    Classification,
 }
 
 /// How the command takes an entry.
@@ -47,7 +49,7 @@ pub struct Info {
     pub shape: Shape,
 }
 
-pub static ALL: [Info; 12] = [
+pub static ALL: [Info; 13] = [
     Info { source: Source::Materials, title: "Materials", command: "material", shape: Shape::Named },
     Info { source: Source::LineStyles, title: "Line Styles", command: "line_style", shape: Shape::Named },
     Info { source: Source::LinePatterns, title: "Line Patterns", command: "line_pattern", shape: Shape::Named },
@@ -60,6 +62,7 @@ pub static ALL: [Info; 12] = [
     Info { source: Source::Parameters, title: "Project Parameters", command: "parameter", shape: Shape::Named },
     Info { source: Source::ObjectStyles, title: "Object Styles", command: "object_styles", shape: Shape::Categories },
     Info { source: Source::Locations, title: "Locations", command: "location", shape: Shape::Named },
+    Info { source: Source::Classification, title: "Classification", command: "classification_table", shape: Shape::Named },
 ];
 
 impl Source {
@@ -72,6 +75,14 @@ impl Source {
     pub fn also(self) -> &'static [&'static str] {
         match self {
             Source::Locations => &["coordinates", "specify_coordinates", "rotate_project_north", "georeference", "convert_coordinates"],
+            Source::Classification => &[
+                "classification_systems",
+                "classification_parameters",
+                "classify",
+                "classification_check",
+                "classification_brief",
+                "classification_answer",
+            ],
             _ => &[],
         }
     }
@@ -105,6 +116,15 @@ pub fn entries(model: &Model, source: Source) -> Vec<(String, Value)> {
         Source::TextTypes => table!(model.text_types),
         Source::Parameters => table!(model.parameters),
         Source::ObjectStyles => table!(model.object_styles),
+        Source::Classification => model
+            .classification
+            .tables
+            .iter()
+            .map(|(name, t)| {
+                let rows = json!({"system": t.system, "key": t.key, "edition": t.edition, "source": t.source, "rows": t.items.len()});
+                (name.clone(), rows)
+            })
+            .collect(),
         Source::Locations => {
             let co = &model.coordinates;
             co.names()
@@ -132,6 +152,10 @@ pub fn takes(info: &Info, field: &str) -> bool {
 /// The fields of an entry that can be typed: its scalars (`props::editable`) that the command's params doc names. An object style's
 /// are all its scalars, since its command names the category and not the pens.
 pub fn editable(info: &Info, json: &Value) -> Vec<(String, Kind, String)> {
+    // A loaded table is read again from its file, with the command's form, not edited field by field.
+    if info.source == Source::Classification {
+        return Vec::new();
+    }
     let all = props::editable(json);
     match info.shape {
         Shape::Categories => all,
@@ -169,9 +193,15 @@ pub fn changes(info: &Info, name: &str, original: &Value, typed: &[(String, Kind
     }))
 }
 
+/// Whether the source's command takes an entry away: `delete`, or `remove` (a classification table).
+pub fn deletes(info: &Info) -> bool {
+    ["delete", "remove"].iter().any(|k| takes(info, k))
+}
+
 /// The command's parameters that delete the entry, when its command can.
 pub fn deletion(info: &Info, name: &str) -> Option<Value> {
-    takes(info, "delete").then(|| json!({"name": name, "delete": true}))
+    let key: &str = ["delete", "remove"].into_iter().find(|k| takes(info, k))?;
+    Some(json!({"name": name, key: true}))
 }
 
 #[cfg(test)]
@@ -226,6 +256,9 @@ mod tests {
         assert!(sites.iter().any(|(name, json)| *name == s.model.coordinates.active && json["active"] == json!(true)), "{sites:?}");
         assert!(sites.iter().all(|(_, json)| ["east", "north", "elevation", "angle", "scale"].iter().all(|k| json[k].is_number())));
         assert!(takes(Source::Locations.info(), "activate") && takes(Source::Locations.info(), "delete"));
+        let tables = Source::Classification.info();
+        assert!(deletes(tables) && !takes(tables, "delete"), "a table is taken out with `remove`");
+        assert_eq!(deletion(tables, "T"), Some(json!({"name": "T", "remove": true})));
     }
 
     #[test]
