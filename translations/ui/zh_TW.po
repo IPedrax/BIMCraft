@@ -1384,7 +1384,7 @@ msgstr "錨固"
 msgid "And:"
 msgstr "並且："
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:74
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:302
@@ -1443,7 +1443,7 @@ msgstr "註釋"
 msgid "Annotation"
 msgstr ""
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:73
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -5155,8 +5155,8 @@ msgstr "剪切"
 msgid "Cylinder"
 msgstr "圓柱體"
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5756
+#: crates/core/src/render.rs:6202
 msgid "DN"
 msgstr "下"
 
@@ -6767,7 +6767,7 @@ msgstr "端部區長度"
 msgid "End zone spacing"
 msgstr "端部區間距"
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:64
 msgid "Endpoint"
 msgstr "端點"
 
@@ -9197,7 +9197,7 @@ msgstr ""
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:66
 msgid "Intersection"
 msgstr "交點"
 
@@ -10789,7 +10789,7 @@ msgstr ""
 msgid "Middle of the text"
 msgstr "文字中心"
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:65
 msgid "Midpoint"
 msgstr "中點"
 
@@ -11384,7 +11384,7 @@ msgstr "NBR 17068：延伸 2 至 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492：平面採用圓環靶心 (±0.00)，剖面採用等邊三角形"
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4202
 msgid "NOT ENCLOSED"
 msgstr "未封閉"
 
@@ -11463,7 +11463,7 @@ msgstr ""
 msgid "Navigator"
 msgstr "導覽器"
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:71
 msgid "Nearest"
 msgstr "最近點"
 
@@ -13076,7 +13076,7 @@ msgid "Perimeter"
 msgstr "周長"
 
 #: crates/core/src/alignment.rs:72
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:68
 msgid "Perpendicular"
 msgstr "垂足"
 
@@ -14477,7 +14477,7 @@ msgstr ""
 msgid "Python: the Python scripts run in; BIMCraft has none of its own (3.9 or newer)"
 msgstr ""
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:69
 msgid "Quadrant"
 msgstr "象限點"
 
@@ -14495,7 +14495,7 @@ msgstr ""
 msgid "Query"
 msgstr ""
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4202
 msgid "REDUNDANT"
 msgstr "冗餘"
 
@@ -18154,7 +18154,7 @@ msgstr "刪除項目中未被使用的內容。每個類別保留一個類型；
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr "吸收形狀編輯後頂面的坡降：最多一層"
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:70
 msgid "Tangent"
 msgstr "切點"
 
@@ -19964,8 +19964,8 @@ msgstr ""
 msgid "Type:"
 msgstr "類型："
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5756
+#: crates/core/src/render.rs:6202
 msgid "UP"
 msgstr "上"
 

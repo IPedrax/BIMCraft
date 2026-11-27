@@ -1384,7 +1384,7 @@ msgstr "Ancoragem"
 msgid "And:"
 msgstr "E:"
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:74
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:302
@@ -1443,7 +1443,7 @@ msgstr "Anotar"
 msgid "Annotation"
 msgstr ""
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:73
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -5155,8 +5155,8 @@ msgstr "Corta"
 msgid "Cylinder"
 msgstr "Cilindro"
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5756
+#: crates/core/src/render.rs:6202
 msgid "DN"
 msgstr "DESCE"
 
@@ -6767,7 +6767,7 @@ msgstr "Comprimento nas pontas"
 msgid "End zone spacing"
 msgstr "Espaçamento nas pontas"
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:64
 msgid "Endpoint"
 msgstr "Extremidade"
 
@@ -9197,7 +9197,7 @@ msgstr "As coordenadas internas são as do próprio arquivo, onde está a geomet
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:66
 msgid "Intersection"
 msgstr "Interseção"
 
@@ -10789,7 +10789,7 @@ msgstr ""
 msgid "Middle of the text"
 msgstr "Meio do texto"
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:65
 msgid "Midpoint"
 msgstr "Ponto médio"
 
@@ -11384,7 +11384,7 @@ msgstr "NBR 17068: prolongamento de 2 a 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: Alvo em planta (±0,00), triângulo equilátero em corte"
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4202
 msgid "NOT ENCLOSED"
 msgstr "NÃO DELIMITADO"
 
@@ -11463,7 +11463,7 @@ msgstr "Iluminação Natural"
 msgid "Navigator"
 msgstr "Navegador"
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:71
 msgid "Nearest"
 msgstr "Mais próximo"
 
@@ -13076,7 +13076,7 @@ msgid "Perimeter"
 msgstr "Perímetro"
 
 #: crates/core/src/alignment.rs:72
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:68
 msgid "Perpendicular"
 msgstr "Perpendicular"
 
@@ -14477,7 +14477,7 @@ msgstr ""
 msgid "Python: the Python scripts run in; BIMCraft has none of its own (3.9 or newer)"
 msgstr ""
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:69
 msgid "Quadrant"
 msgstr "Quadrante"
 
@@ -14495,7 +14495,7 @@ msgstr "Quantitativos"
 msgid "Query"
 msgstr ""
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4202
 msgid "REDUNDANT"
 msgstr "REDUNDANTE"
 
@@ -18154,7 +18154,7 @@ msgstr "Tira o que nada no projeto usa. Cada categoria mantém um tipo; Desfazer
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr "Assume as quedas de um topo modelado: no máximo uma camada"
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:70
 msgid "Tangent"
 msgstr "Tangente"
 
@@ -19964,8 +19964,8 @@ msgstr "Digite onde fica o projeto, ou o nome ou código do sistema."
 msgid "Type:"
 msgstr "Tipo:"
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5756
+#: crates/core/src/render.rs:6202
 msgid "UP"
 msgstr "SOBE"
 

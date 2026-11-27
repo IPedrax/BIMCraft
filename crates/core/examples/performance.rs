@@ -44,7 +44,7 @@ fn run() -> Result<(), String> {
             "--report" => report_path = Some(value),
             "--storeys" => storeys = Some(value.parse::<u32>().map_err(|e| format!("storeys: {e}"))?),
             "--fixture" => fixture = value.clone(),
-            // Steps to leave out, by name (inspect, rooms, after_edit, plan, scene, sections, ifc, reopen): what doesn't finish at a size.
+            // Steps to leave out, by name (inspect, rooms, snap, after_edit, plan, scene, sections, ifc, reopen): what doesn't finish at a size.
             "--skip" => skip = value.split(',').map(str::to_string).collect(),
             "--rooms" => room_sample = value.parse().map_err(|e| format!("rooms: {e}"))?,
             // The tower with its plans detailed: about 2,000 2D elements a storey.
@@ -171,6 +171,21 @@ fn run() -> Result<(), String> {
             undos.sort_by(f64::total_cmp);
             report["ms"]["dimension_median"] = json!(made[made.len() / 2]);
             report["ms"]["dimension_undo_median"] = json!(undos[undos.len() / 2]);
+        }
+        // A point snapped near Level 1's walls, as the pointer moves while drawing: the first fills what the model keeps.
+        if !skipped("snap") {
+            let level = s.model.levels().first().map(|(id, _)| *id).ok_or("no levels")?;
+            let (reach, snaps) = (bimcraft_core::snap::Reach { point: 300.0, line: 300.0 }, bimcraft_core::snap::Snaps::default());
+            let mut times = Vec::new();
+            for i in 0..repeats.max(5) * 4 {
+                let p = bimcraft_core::geom::P2(3000.0 * (i % 10) as f64 + 50.0, 2050.0);
+                let start = Instant::now();
+                black_box(bimcraft_core::snap::snap(&s.model, level, p, reach, &[], false, &snaps));
+                times.push(start.elapsed().as_secs_f64() * 1000.0);
+            }
+            report["ms"]["snap_first"] = json!(times[0]);
+            times.sort_by(f64::total_cmp);
+            report["ms"]["snap_median"] = json!(times[times.len() / 2]);
         }
         // What the window waits for after an edit: the edited model's first plan, door schedule and rooms, each asked of a
         // model that has worked nothing out yet, as the frame after a command finds it.

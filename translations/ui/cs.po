@@ -1383,7 +1383,7 @@ msgstr "Kotvení"
 msgid "And:"
 msgstr "A:"
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:74
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:302
@@ -1442,7 +1442,7 @@ msgstr "Poznámka"
 msgid "Annotation"
 msgstr ""
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:73
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -5154,8 +5154,8 @@ msgstr "Řeže"
 msgid "Cylinder"
 msgstr "Válec"
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5756
+#: crates/core/src/render.rs:6202
 msgid "DN"
 msgstr "DOLŮ"
 
@@ -6766,7 +6766,7 @@ msgstr "Délka koncové zóny"
 msgid "End zone spacing"
 msgstr "Rozteč v koncové zóně"
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:64
 msgid "Endpoint"
 msgstr "Koncový bod"
 
@@ -9196,7 +9196,7 @@ msgstr ""
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:66
 msgid "Intersection"
 msgstr "Průsečík"
 
@@ -10788,7 +10788,7 @@ msgstr ""
 msgid "Middle of the text"
 msgstr "Střed textu"
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:65
 msgid "Midpoint"
 msgstr "Polovina"
 
@@ -11383,7 +11383,7 @@ msgstr "NBR 17068: přesah 2 až 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: terč v půdorysu (±0,00), rovnostranný trojúhelník v řezu"
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4202
 msgid "NOT ENCLOSED"
 msgstr "NEUZAVŘENÝ OBVOD"
 
@@ -11462,7 +11462,7 @@ msgstr ""
 msgid "Navigator"
 msgstr "Navigátor"
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:71
 msgid "Nearest"
 msgstr "Nejbližší"
 
@@ -13075,7 +13075,7 @@ msgid "Perimeter"
 msgstr "Obvod"
 
 #: crates/core/src/alignment.rs:72
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:68
 msgid "Perpendicular"
 msgstr "Kolmý"
 
@@ -14476,7 +14476,7 @@ msgstr ""
 msgid "Python: the Python scripts run in; BIMCraft has none of its own (3.9 or newer)"
 msgstr ""
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:69
 msgid "Quadrant"
 msgstr "Kvadrant"
 
@@ -14494,7 +14494,7 @@ msgstr ""
 msgid "Query"
 msgstr ""
 
-#: crates/core/src/render.rs:4193
+#: crates/core/src/render.rs:4202
 msgid "REDUNDANT"
 msgstr "NADBYTEČNÁ"
 
@@ -18153,7 +18153,7 @@ msgstr "Odstraní položky, které se v projektu nepoužívají. V každé kateg
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr "Přebírá spády tvarovaného horního líce: nejvýše jedna vrstva"
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:70
 msgid "Tangent"
 msgstr "Tečna"
 
@@ -19963,8 +19963,8 @@ msgstr ""
 msgid "Type:"
 msgstr "Typ:"
 
-#: crates/core/src/render.rs:5747
-#: crates/core/src/render.rs:6193
+#: crates/core/src/render.rs:5756
+#: crates/core/src/render.rs:6202
 msgid "UP"
 msgstr "NAHORU"
 
