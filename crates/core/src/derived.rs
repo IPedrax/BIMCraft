@@ -647,6 +647,8 @@ pub struct Derived {
     /// The walls' and runs' tile index ([`crate::walls::Index`]), with the token and version of the elements and the types it
     /// was made of: what a run's joins ask of its neighbours, kept so a plan of thousands of runs never scans every element.
     index: Mutex<Option<KeptIndex>>,
+    /// The index of the model this was copied from, taken to bring up to date when this one's is first asked for.
+    parent_index: Mutex<Option<KeptIndex>>,
     /// The box round every solid ([`crate::model::Model::model_box`]), with what it was made of: making every solid again for it
     /// cost a tower's 3D view seconds a frame.
     model_box: Mutex<Option<KeptBox>>,
@@ -718,12 +720,15 @@ impl Derived {
         made
     }
 
-    /// The tile index of the walls and runs of `elements` with `types`, made by `make` and kept until either changes.
+    /// The tile index of the walls and runs of `elements` with `types`, kept until either changes: the index of the model
+    /// this was copied from brought up to date by `update` with what changed, when it was made with the same types; else
+    /// made by `make`.
     pub(crate) fn index(
         &self,
         elements: &Elements,
         types: &crate::shared::Shared<crate::model::Types>,
         make: impl FnOnce() -> crate::walls::Index,
+        update: impl FnOnce(&crate::walls::Index, &BTreeSet<Id>) -> crate::walls::Index,
     ) -> Arc<crate::walls::Index> {
         let (token, version) = elements.state();
         if let Ok(now) = self.index.lock()
@@ -733,7 +738,11 @@ impl Derived {
         {
             return Arc::clone(index);
         }
-        let made = Arc::new(make());
+        let parent = self.parent_index.lock().ok().and_then(|mut p| p.take());
+        let made = match (parent, elements.touched()) {
+            (Some((t, v, of, parent)), Some(ids)) if (t, v) == elements.base() && of.is_of(types) => Arc::new(update(&parent, &ids)),
+            _ => Arc::new(make()),
+        };
         if let Ok(mut now) = self.index.lock() {
             *now = Some((token, version, types.identity(), Arc::clone(&made)));
         }
@@ -916,6 +925,7 @@ impl Clone for Derived {
             parent: self.current(),
             shafts: Mutex::new(None),
             index: Mutex::new(None),
+            parent_index: Mutex::new(self.index.lock().ok().and_then(|i| i.clone())),
             model_box: Mutex::new(None),
             plans: Mutex::new(None),
             tables: Mutex::new(None),

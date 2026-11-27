@@ -4,6 +4,7 @@
 //! any category whose bodies reach the node's tile (its body grown by its half width, so a run ending on another's middle
 //! is found there too) and whose heights overlap as [`crate::walls::stacked`] says for two runs.
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 use crate::geom::P2;
 use crate::model::{Element, Guid, Id, Model, TOL};
@@ -13,11 +14,12 @@ const MAX_REFERENCES: usize = 1_000_000;
 const TILE: f64 = 6000.0;
 const MAX_TILES: i64 = 4096;
 
-/// A tile's elements by how low they begin, and the tallest's height: of a tower's, what a wall can reach is its own
-/// storeys, not the 100 stacked in the tile.
-#[derive(Default)]
+/// A tile's elements by how low they begin, with their heights, and the tallest's height: of a tower's, what a wall can
+/// reach is its own storeys, not the 100 stacked in the tile.
+#[derive(Clone, Debug, Default)]
 struct Tile {
-    items: Vec<(f64, Id)>,
+    /// Each one's bottom, id and height, by bottom and then id.
+    items: Vec<(f64, Id, f64)>,
     tallest: f64,
 }
 
@@ -27,131 +29,308 @@ impl Tile {
     fn may_overlap(&self, lo: f64, hi: f64) -> impl Iterator<Item = Id> + '_ {
         // A wall's top is its bottom and its height, rounded: a margin well past what the rounding moves.
         let floor = lo - self.tallest - 1.0 - 1e-6 * lo.abs();
-        let start = self.items.partition_point(|(bottom, _)| *bottom < floor);
-        let end = self.items.partition_point(|(bottom, _)| bottom.total_cmp(&hi).is_lt());
-        self.items.get(start..end.max(start)).unwrap_or_default().iter().map(|(_, id)| *id)
+        let start = self.items.partition_point(|(bottom, ..)| *bottom < floor);
+        let end = self.items.partition_point(|(bottom, ..)| bottom.total_cmp(&hi).is_lt());
+        self.items.get(start..end.max(start)).unwrap_or_default().iter().map(|(_, id, _)| *id)
+    }
+
+    fn insert(&mut self, bottom: f64, id: Id, height: f64) {
+        let at = self.items.partition_point(|(b, i, _)| b.total_cmp(&bottom).then(i.cmp(&id)).is_lt());
+        self.items.insert(at, (bottom, id, height));
+        self.tallest = self.tallest.max(height);
+    }
+
+    fn remove(&mut self, id: Id) {
+        self.items.retain(|(_, i, _)| *i != id);
+        self.tallest = self.items.iter().fold(0.0, |t, (_, _, h)| t.max(*h));
+    }
+
+    /// The same as `other`, numbers to the bit.
+    #[cfg(test)]
+    fn same(&self, other: &Tile) -> bool {
+        self.tallest.to_bits() == other.tallest.to_bits()
+            && self.items.len() == other.items.len()
+            && self
+                .items
+                .iter()
+                .zip(&other.items)
+                .all(|(a, b)| a.0.to_bits() == b.0.to_bits() && a.1 == b.1 && a.2.to_bits() == b.2.to_bits())
     }
 }
 
+/// What one element puts in the index: a wall's or a run's heights and the tiles it reaches (none: it is a candidate
+/// everywhere), or the wall a door or a window is in.
+#[derive(Clone, Copy, Debug)]
+enum Placed {
+    Wall { span: (f64, f64), tiles: Option<[i64; 4]> },
+    Run { span: (f64, f64), tiles: Option<[i64; 4]> },
+    Opening(Guid),
+}
+
+#[cfg(test)]
+impl Placed {
+    fn same(&self, other: &Placed) -> bool {
+        let span = |a: (f64, f64), b: (f64, f64)| a.0.to_bits() == b.0.to_bits() && a.1.to_bits() == b.1.to_bits();
+        match (self, other) {
+            (Placed::Wall { span: a, tiles: s }, Placed::Wall { span: b, tiles: t }) => span(*a, *b) && s == t,
+            (Placed::Run { span: a, tiles: s }, Placed::Run { span: b, tiles: t }) => span(*a, *b) && s == t,
+            (Placed::Opening(a), Placed::Opening(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+/// Ids by chunk: what an edit copies of the index is the chunks it touched.
+const SHIFT: u32 = 10;
+
+/// The walls and the runs by plan tile and height, and the doors and windows by the wall they are in. Kept with a model
+/// ([`Model::wall_index`]) and brought up to date by what a command changed ([`Index::updated`]): its parts are shared
+/// behind `Arc`s with the index it came from, so an edit copies what it touched.
+#[derive(Clone, Debug, Default)]
 pub(crate) struct Index {
-    spans: BTreeMap<Id, (f64, f64)>,
-    hosts: BTreeMap<Guid, Vec<Id>>,
+    /// What each wall, run and opening put in it, by chunk of ids.
+    placed: BTreeMap<Id, Arc<BTreeMap<Id, Placed>>>,
+    /// Each wall's doors and windows, by id.
+    hosts: BTreeMap<Guid, Arc<Vec<Id>>>,
     /// Each tile's walls: those whose body, grown by a tolerance, reaches into it.
-    tiles: HashMap<(i64, i64), Tile>,
-    /// Walls in no tile: too long for them, or of no finite size.
-    everywhere: Vec<Id>,
-    /// The runs' own spans, tiles and the runs in no tile, kept apart from the walls' so that a
-    /// wall query never meets a run and a run query never meets a wall.
-    run_spans: BTreeMap<Id, (f64, f64)>,
-    run_tiles: HashMap<(i64, i64), Tile>,
-    run_everywhere: Vec<Id>,
+    tiles: HashMap<(i64, i64), Arc<Tile>>,
+    /// Walls in no tile: too long for them, or of no finite size, by id.
+    everywhere: Arc<Vec<Id>>,
+    /// The runs' own tiles and the runs in no tile, kept apart from the walls' so that a wall query never meets a run and a
+    /// run query never meets a wall.
+    run_tiles: HashMap<(i64, i64), Arc<Tile>>,
+    run_everywhere: Arc<Vec<Id>>,
+    /// How many tile entries it holds: past [`MAX_REFERENCES`], what comes in goes everywhere.
+    tiled: usize,
+    /// The walls attached to what is over or under them, whose heights that decides: brought up to date with every edit.
+    attached: Arc<std::collections::BTreeSet<Id>>,
+    /// The levels it was made with: the heights of everything in it are of them.
+    levels: Arc<Vec<(Id, u64)>>,
+}
+
+/// The model's levels, by id, and their elevations' bits.
+fn levels_of(m: &Model) -> Vec<(Id, u64)> {
+    m.levels().iter().map(|(id, l)| (*id, l.elevation.to_bits())).collect()
 }
 
 impl Index {
     pub(crate) fn new(m: &Model) -> Self {
-        let mut index = Self {
-            spans: BTreeMap::new(),
-            hosts: BTreeMap::new(),
-            tiles: HashMap::new(),
-            everywhere: Vec::new(),
-            run_spans: BTreeMap::new(),
-            run_tiles: HashMap::new(),
-            run_everywhere: Vec::new(),
-        };
-        let mut tiled = 0;
+        let mut index = Index { levels: Arc::new(levels_of(m)), ..Index::default() };
         for (&id, e) in &m.elements {
-            match e {
-                Element::Wall(w) => {
-                    let (lo, hi) = (m.base_z(w), m.top_z(w));
-                    index.spans.insert(id, (lo, hi));
-                    match reach(m, w).map(|[x0, y0, x1, y1]| ([tile(x0), tile(y0)], [tile(x1), tile(y1)])) {
-                        Some(([a, b], [c, d])) if (c - a + 1).saturating_mul(d - b + 1) <= MAX_TILES && tiled < MAX_REFERENCES => {
-                            for x in a..=c {
-                                for y in b..=d {
-                                    let tile = index.tiles.entry((x, y)).or_default();
-                                    tile.items.push((lo, id));
-                                    tile.tallest = tile.tallest.max(hi - lo);
-                                    tiled += 1;
-                                }
-                            }
-                        }
-                        _ => index.everywhere.push(id),
-                    }
-                }
-                crate::model::run_arm!(_) => {
-                    let Some(g) = m.run_geom(e) else { continue };
-                    let (lo, hi) = g.z_span();
-                    index.run_spans.insert(id, (lo, hi));
-                    // Its body's box, grown by its half width (and twice the tolerance, as a wall's is), so that a run
-                    // ending on its middle reaches that tile.
-                    let grow = g.width / 2.0 + 2.0 * TOL;
-                    let b = [g.a[0].min(g.b[0]) - grow, g.a[1].min(g.b[1]) - grow, g.a[0].max(g.b[0]) + grow, g.a[1].max(g.b[1]) + grow];
-                    match b.iter().all(|v| v.is_finite() && v.abs() < 1e12).then(|| {
-                        let [x0, y0, x1, y1] = [tile(b[0]), tile(b[1]), tile(b[2]), tile(b[3])];
-                        ([x0, y0], [x1, y1])
-                    }) {
-                        Some(([a, b], [c, d])) if (c - a + 1).saturating_mul(d - b + 1) <= MAX_TILES && tiled < MAX_REFERENCES => {
-                            for x in a..=c {
-                                for y in b..=d {
-                                    let tile = index.run_tiles.entry((x, y)).or_default();
-                                    tile.items.push((lo, id));
-                                    tile.tallest = tile.tallest.max(hi - lo);
-                                    tiled += 1;
-                                }
-                            }
-                        }
-                        _ => index.run_everywhere.push(id),
-                    }
-                }
-                Element::Door(o) | Element::Window(o) => {
-                    index.hosts.entry(o.host).or_default().push(id);
-                }
-                _ => {}
-            }
-        }
-        for tile in index.tiles.values_mut().chain(index.run_tiles.values_mut()) {
-            tile.items.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+            index.put(m, id, e);
         }
         index
+    }
+
+    /// This index, of the model a command changed into `m`, brought up to date where `ids` changed: the same index as
+    /// [`Index::new`] makes of `m`. Made again where a level changed (every height is of one) or where it holds as many
+    /// tile entries as it may (where they would have gone depends on the order they came in).
+    pub(crate) fn updated(&self, m: &Model, ids: &std::collections::BTreeSet<Id>) -> Index {
+        if *self.levels != levels_of(m) || ids.iter().any(|id| matches!(m.elements.get(*id), Some(Element::Level(_)))) {
+            return Index::new(m);
+        }
+        let mut index = self.clone();
+        let mut ids = ids.clone();
+        // A wall attached to a roof, a floor or another wall has the heights they give it: any edit may change them.
+        ids.extend(index.attached.iter().copied());
+        for id in ids {
+            index.take(id);
+            if let Some(e) = m.elements.get(id) {
+                index.put(m, id, e);
+            }
+        }
+        if index.tiled >= MAX_REFERENCES { Index::new(m) } else { index }
+    }
+
+    /// The same as `other`, numbers to the bit: what [`Index::updated`] is held to in tests.
+    #[cfg(test)]
+    pub(crate) fn same(&self, other: &Index) -> bool {
+        let placed = |a: &BTreeMap<Id, Arc<BTreeMap<Id, Placed>>>| -> Vec<(Id, Placed)> {
+            a.values().flat_map(|c| c.iter().map(|(id, p)| (*id, *p))).collect()
+        };
+        let tiles = |a: &HashMap<(i64, i64), Arc<Tile>>, b: &HashMap<(i64, i64), Arc<Tile>>| {
+            a.len() == b.len() && a.iter().all(|(k, t)| b.get(k).is_some_and(|u| t.same(u)))
+        };
+        let (a, b) = (placed(&self.placed), placed(&other.placed));
+        a.len() == b.len()
+            && a.iter().zip(&b).all(|((i, p), (j, q))| i == j && p.same(q))
+            && self.hosts.len() == other.hosts.len()
+            && self.hosts.iter().all(|(g, v)| other.hosts.get(g).is_some_and(|w| v == w))
+            && tiles(&self.tiles, &other.tiles)
+            && tiles(&self.run_tiles, &other.run_tiles)
+            && self.everywhere == other.everywhere
+            && self.run_everywhere == other.run_everywhere
+            && self.tiled == other.tiled
+            && self.attached == other.attached
+            && self.levels == other.levels
+    }
+
+    fn placed(&self, id: Id) -> Option<&Placed> {
+        self.placed.get(&(id >> SHIFT))?.get(&id)
+    }
+
+    fn span(&self, id: Id) -> Option<(f64, f64)> {
+        match self.placed(id)? {
+            Placed::Wall { span, .. } => Some(*span),
+            _ => None,
+        }
+    }
+
+    fn run_span(&self, id: Id) -> Option<(f64, f64)> {
+        match self.placed(id)? {
+            Placed::Run { span, .. } => Some(*span),
+            _ => None,
+        }
+    }
+
+    /// Every wall (`runs` false) or every run, by id.
+    fn all(&self, runs: bool) -> Vec<Id> {
+        self.placed
+            .values()
+            .flat_map(|c| c.iter())
+            .filter(|(_, p)| matches!((p, runs), (Placed::Wall { .. }, false) | (Placed::Run { .. }, true)))
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// Element `id`, `e` of `m`, put where it goes.
+    fn put(&mut self, m: &Model, id: Id, e: &Element) {
+        let placed = match e {
+            Element::Wall(w) => {
+                let (lo, hi) = (m.base_z(w), m.top_z(w));
+                let tiles = reach(m, w).map(|[x0, y0, x1, y1]| [tile(x0), tile(y0), tile(x1), tile(y1)]);
+                let tiles = self.tile_in(tiles, false, id, lo, hi);
+                if w.attach_base.is_some() || w.attach_top.is_some() {
+                    Arc::make_mut(&mut self.attached).insert(id);
+                }
+                Placed::Wall { span: (lo, hi), tiles }
+            }
+            crate::model::run_arm!(_) => {
+                let Some(g) = m.run_geom(e) else { return };
+                let (lo, hi) = g.z_span();
+                // Its body's box, grown by its half width (and twice the tolerance, as a wall's is), so that a run
+                // ending on its middle reaches that tile.
+                let grow = g.width / 2.0 + 2.0 * TOL;
+                let b = [g.a[0].min(g.b[0]) - grow, g.a[1].min(g.b[1]) - grow, g.a[0].max(g.b[0]) + grow, g.a[1].max(g.b[1]) + grow];
+                let tiles = b.iter().all(|v| v.is_finite() && v.abs() < 1e12).then(|| [tile(b[0]), tile(b[1]), tile(b[2]), tile(b[3])]);
+                let tiles = self.tile_in(tiles, true, id, lo, hi);
+                Placed::Run { span: (lo, hi), tiles }
+            }
+            Element::Door(o) | Element::Window(o) => {
+                let ids = Arc::make_mut(self.hosts.entry(o.host).or_default());
+                let at = ids.partition_point(|i| *i < id);
+                ids.insert(at, id);
+                Placed::Opening(o.host)
+            }
+            _ => return,
+        };
+        Arc::make_mut(self.placed.entry(id >> SHIFT).or_default()).insert(id, placed);
+    }
+
+    /// A wall's (or with `runs`, a run's) entries in `tiles`, `[x0, y0, x1, y1]`, from `lo` to `hi`: the tiles it is in, or
+    /// none, everywhere, where they are too many or the index holds as many entries as it may.
+    fn tile_in(&mut self, tiles: Option<[i64; 4]>, runs: bool, id: Id, lo: f64, hi: f64) -> Option<[i64; 4]> {
+        let tiles = tiles.filter(|[a, b, c, d]| (c - a + 1).saturating_mul(d - b + 1) <= MAX_TILES && self.tiled < MAX_REFERENCES);
+        let (map, everywhere) =
+            if runs { (&mut self.run_tiles, &mut self.run_everywhere) } else { (&mut self.tiles, &mut self.everywhere) };
+        match tiles {
+            Some([a, b, c, d]) => {
+                for x in a..=c {
+                    for y in b..=d {
+                        Arc::make_mut(map.entry((x, y)).or_default()).insert(lo, id, hi - lo);
+                        self.tiled += 1;
+                    }
+                }
+            }
+            None => {
+                let all = Arc::make_mut(everywhere);
+                let at = all.partition_point(|i| *i < id);
+                all.insert(at, id);
+            }
+        }
+        tiles
+    }
+
+    /// Element `id` taken out of where it was put.
+    fn take(&mut self, id: Id) {
+        let Some(chunk) = self.placed.get_mut(&(id >> SHIFT)) else { return };
+        let Some(placed) = Arc::make_mut(chunk).remove(&id) else { return };
+        if chunk.is_empty() {
+            self.placed.remove(&(id >> SHIFT));
+        }
+        if self.attached.contains(&id) {
+            Arc::make_mut(&mut self.attached).remove(&id);
+        }
+        let (tiles, runs) = match placed {
+            Placed::Wall { tiles, .. } => (tiles, false),
+            Placed::Run { tiles, .. } => (tiles, true),
+            Placed::Opening(host) => {
+                if let Some(ids) = self.hosts.get_mut(&host) {
+                    Arc::make_mut(ids).retain(|i| *i != id);
+                    if ids.is_empty() {
+                        self.hosts.remove(&host);
+                    }
+                }
+                return;
+            }
+        };
+        let (map, everywhere) =
+            if runs { (&mut self.run_tiles, &mut self.run_everywhere) } else { (&mut self.tiles, &mut self.everywhere) };
+        match tiles {
+            Some([a, b, c, d]) => {
+                for x in a..=c {
+                    for y in b..=d {
+                        if let Some(t) = map.get_mut(&(x, y)) {
+                            Arc::make_mut(t).remove(id);
+                            self.tiled -= 1;
+                            if t.items.is_empty() {
+                                map.remove(&(x, y));
+                            }
+                        }
+                    }
+                }
+            }
+            None => Arc::make_mut(everywhere).retain(|i| *i != id),
+        }
     }
 
     /// The walls that may meet wall `id` at `node`, one of its ends: those that overlap it in height and whose bodies reach
     /// the node's tile, by id. Every wall that ends there or that the node lies in is among them.
     pub(crate) fn neighbours_at(&self, id: Id, node: P2) -> Vec<Id> {
-        let Some(&(lo, hi)) = self.spans.get(&id) else { return Vec::new() };
-        let mut ids = self.everywhere.clone();
+        let Some((lo, hi)) = self.span(id) else { return Vec::new() };
+        let mut ids = (*self.everywhere).clone();
         if node.0.is_finite() && node.1.is_finite() {
             if let Some(tile) = self.tiles.get(&(tile(node.0), tile(node.1))) {
                 ids.extend(tile.may_overlap(lo, hi));
             }
         } else {
-            ids = self.spans.keys().copied().collect();
+            ids = self.all(false);
         }
         ids.sort_unstable();
         ids.dedup();
-        ids.retain(|id| self.spans.get(id).is_some_and(|&(bottom, top)| lo < top && bottom < hi));
+        ids.retain(|id| self.span(*id).is_some_and(|(bottom, top)| lo < top && bottom < hi));
         ids
     }
 
     pub(crate) fn openings(&self, host: Guid) -> &[Id] {
-        self.hosts.get(&host).map_or(&[], Vec::as_slice)
+        self.hosts.get(&host).map_or(&[], |ids| ids.as_slice())
     }
 
     /// The runs that may meet at `node` (a point in plan) at heights `lo` to `hi`: those whose bodies reach the node's
     /// tile and whose heights overlap `lo` to `hi` the way two runs' must ([`crate::walls::stacked`]), by id. Every run
     /// ending there or with the node in its body is among them.
     pub(crate) fn runs_near(&self, node: P2, lo: f64, hi: f64) -> Vec<Id> {
-        let mut ids = self.run_everywhere.clone();
+        let mut ids = (*self.run_everywhere).clone();
         if node.0.is_finite() && node.1.is_finite() {
             if let Some(tile) = self.run_tiles.get(&(tile(node.0), tile(node.1))) {
                 ids.extend(tile.may_overlap(lo, hi));
             }
         } else {
-            ids = self.run_spans.keys().copied().collect();
+            ids = self.all(true);
         }
         ids.sort_unstable();
         ids.dedup();
-        ids.retain(|id| self.run_spans.get(id).is_some_and(|&(bottom, top)| lo < top && bottom < hi));
+        ids.retain(|id| self.run_span(*id).is_some_and(|(bottom, top)| lo < top && bottom < hi));
         ids
     }
 
@@ -177,11 +356,11 @@ impl Index {
                     }
                 }
             }
-            _ => ids.extend(self.run_spans.keys().copied()),
+            _ => ids.extend(self.all(true)),
         }
         ids.sort_unstable();
         ids.dedup();
-        ids.retain(|id| self.run_spans.get(id).is_some_and(|&(bottom, top)| lo < top && bottom < hi));
+        ids.retain(|id| self.run_span(*id).is_some_and(|(bottom, top)| lo < top && bottom < hi));
         ids
     }
 }
@@ -300,7 +479,7 @@ mod tests {
         let spans = [(0.0, 4000.0), (0.0, 400_000.0), (4000.0, 8000.0), (-3000.0, -1.0), (8000.0, 8000.0), (396_000.0, 400_000.0)];
         let mut tile = Tile::default();
         for (id, (lo, hi)) in spans.iter().enumerate() {
-            tile.items.push((*lo, id as Id));
+            tile.items.push((*lo, id as Id, hi - lo));
             tile.tallest = tile.tallest.max(hi - lo);
         }
         tile.items.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
@@ -315,7 +494,7 @@ mod tests {
             }
         }
         // With no tall wall, only the storeys near: what makes a tower's tile cheap.
-        let storeys = Tile { items: (0..100).map(|i| (f64::from(i) * 4000.0, Id::from(i as u32))).collect(), tallest: 4000.0 };
+        let storeys = Tile { items: (0..100).map(|i| (f64::from(i) * 4000.0, Id::from(i as u32), 4000.0)).collect(), tallest: 4000.0 };
         assert!(storeys.may_overlap(200_000.0, 204_000.0).count() <= 4);
     }
 
@@ -369,6 +548,48 @@ mod tests {
             assert_eq!(near.runs_near(P2(6000.0, 0.0), lo, hi), index.runs_near(P2(6000.0, 0.0), lo, hi));
             assert_eq!(near.runs_near(P2(f64::NAN, 0.0), lo, hi), index.runs_near(P2(f64::NAN, 0.0), lo, hi));
             assert_eq!(near.runs_near_box([0.0, 0.0, 1e13, 1.0], 0.0, lo, hi), index.runs_near_box([0.0, 0.0, 1e13, 1.0], 0.0, lo, hi));
+        }
+    }
+
+    #[test]
+    fn an_index_brought_up_to_date_by_random_edits_is_the_one_made_of_every_element() {
+        // Each command's model asks its index, brought up to date from the one before (`Model::wall_index` holds it to the
+        // index made of every element in tests): walls moved, copied and deleted with their doors, runs, a level's
+        // walls attached to a roof, undo and redo.
+        let model = crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 1).unwrap_or_else(|e| panic!("{e}"));
+        let mut s = Session::new();
+        s.reset(model, None);
+        crate::oracle_tests::frame_some(&mut s);
+        let level = s.model.levels()[0].0;
+        let roof = s
+            .execute("roof", &json!({"boundary": [[-1000, -1000], [13000, -1000], [13000, 7000], [-1000, 7000]], "slope": 20, "level": level, "offset": 3500}))
+            .unwrap_or_else(|e| panic!("{e}"))["id"]
+            .clone();
+        let under =
+            |w: &crate::model::Wall| [w.start, w.end].iter().all(|q| (0.0..=12000.0).contains(&q.0) && (0.0..=6000.0).contains(&q.1));
+        let walls: Vec<Id> =
+            s.model.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(w) if under(w))).map(|(id, _)| *id).collect();
+        let attached = walls.iter().filter(|w| s.execute("modify", &json!({"id": w, "attach_top": roof})).is_ok()).count();
+        assert!(attached > 0, "no wall under the roof attached to it: {walls:?}");
+        s.model.wall_index();
+        let mut dice = crate::oracle_tests::Dice(0x1d3c_5e7f_9a0b_2c4d);
+        let mut updated = 0;
+        for n in 0..60 {
+            let (cmd, p) = if n % 7 == 6 {
+                (if n % 2 == 0 { "undo" } else { "redo" }.to_string(), json!({}))
+            } else {
+                crate::oracle_tests::edit(&mut s, &mut dice)
+            };
+            if s.execute(&cmd, &p).is_ok() {
+                updated += 1;
+            }
+            s.model.wall_index();
+        }
+        assert!(updated > 20, "{updated}");
+        // The roof raised and pitched: the walls attached to it change their heights, though not themselves.
+        for p in [json!({"id": roof, "offset": 4200}), json!({"id": roof, "slope": 35})] {
+            s.execute("modify", &p).unwrap_or_else(|e| panic!("{p}: {e}"));
+            s.model.wall_index();
         }
     }
 

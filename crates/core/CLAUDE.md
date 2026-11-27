@@ -101,6 +101,8 @@ The core caches what it works out from the model and keeps the whole computation
   kinds a project has few of, components by level and plan tile, and each level's room plan, each schedule's table, each
   dimension's snap anchors and each level's tags of no view kept for the elements' state (a command's copy makes them
   again). The lookup is brought up to date by what changed (`Model::lookup`).
+- `walls/index.rs`: the walls and runs by plan tile and height, kept with the model (`Model::wall_index`) and brought up to
+  date from the one before by what a command changed (`Index::updated`); in tests held to the index made of every element.
 - `rooms.rs`: rooms' boundaries, each level's found once for the model, its plan kept with `derived`. `shared.rs`: copy-on-write
   geometry definitions and allocation identities.
 - `ids/revisions.rs`: runtime revision columns. `bounds.rs`: byte-budgeted conservative primitive bounds. `family/bounds.rs`:

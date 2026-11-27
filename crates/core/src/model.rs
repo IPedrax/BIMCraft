@@ -11520,7 +11520,11 @@ impl Model {
 
     /// The tile index of its walls and runs, kept with it until its elements or its types change.
     pub(crate) fn wall_index(&self) -> Arc<walls::Index> {
-        self.derived.index(&self.elements, &self.types, || walls::Index::new(self))
+        let index = self.derived.index(&self.elements, &self.types, || walls::Index::new(self), |parent, ids| parent.updated(self, ids));
+        // Its twin, which tests hold it to: the index made of every element.
+        #[cfg(test)]
+        assert!(index.same(&walls::Index::new(self)), "the walls' index brought up to date isn't the one made of every element");
+        index
     }
 
     /// What changed from `before` to this model: the elements a command added, changed or removed, when it changed nothing
