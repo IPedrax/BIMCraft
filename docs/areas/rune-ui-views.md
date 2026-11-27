@@ -246,7 +246,41 @@ Dependent (`duplicate_view`, the copy opens); Delete over a plan view, a callout
 detail (`delete`); Create Print Set over a view (`print_set`, named `Print Set n`, of the views picked together when the click was over one of them, else of the one
 clicked; a ceiling plan, which is no element, cannot be in one yet, and the item says so); over a type: Edit Type and Delete (`delete_type`, which the
 project refuses while an element uses the type); over a linked model: Reload and Remove (`reload`, `delete`); and Expand All and Collapse All over anything.
-Not here, from egui's menu: Show as Underlay (the underlay's own tool state), Publisher (a dialog), Select All Instances over a type, the Delete over a
+Show as Underlay is in it since section 8. Not here, from egui's menu: Publisher (a dialog), Select All Instances over a type, the Delete over a
 family's whole group, and the Create Print Set dialog that names the set (the name is made).
 
 **Not done in this slice:** the minimap and the 3D card path, which the brief left out.
+
+## 8. Clipboard, underlay, groups and the work plane (`clip.rs`, `app/clip.rs`, `ui/choose.rs`, `app/underlay.rs`, `app/groups.rs`, `app/workplane.rs`, `ui/workplane.rs`)
+
+The editing and reference pieces around the canvas, each from egui's version (`clipboard.rs`, `underlay.rs`, `groups.rs`, `workplane.rs`), the core doing what it
+does for egui (`clipboard`, `underlay`, `groups` and `workplane` modules, the commands). All are items of the plan's right-click menu (`context::items`), through `App::act`.
+
+**Clipboard.** Ctrl+C and Ctrl+X (`copy_to_clipboard`, `cut_to_clipboard` over the selection, in the view shown) and Ctrl+V are read by `ui::on_key`: they are
+not in the shortcuts' table, because egui has them as the system's copy, cut and paste events, and a field that has the focus takes them itself. The text a copy
+makes is kept by the window (`clip_text`) and queued for the system clipboard (`clip_out`); a paste asks for the system's (`paste_asked`), and both go through `ui::clipboard_io`,
+which has the `Tx` (called after a key and from every `poll`, so a menu item reaches it too). The system's text is used when it is BIMCraft's clipboard text,
+else the window's own copy, as egui's `pasted_text` does. Paste (the menu's, Ctrl+V): by hand in a plan (the text waits in `pasting`; the next click in the plan puts the middle of the
+copy at that point, `paste` mode `manual`; Esc, or opening another kind of view, gives it up), in a section, an elevation or a sheet where the elements were in their view
+(`current_view`), elsewhere where they were (`same_place`). The menu also has Paste Aligned to Same Place, to Current View, and to Selected Levels or Selected Views, which open a list
+of the levels, or of the views like the ones the elements were copied from (`clip::views_like`), to tick (`ui/choose.rs`, `clip::Choose`). What was pasted is selected and what the
+core left out is said. Not here: the copy following the pointer as a preview (egui draws it), by hand in a section, a sheet or a 3D view (a 3D view asks "same place or by hand on
+the work plane" in egui), Aligned to Picked Level, the Clipboard panel in the ribbon and the palette, and a family tab's clipboard.
+
+**Underlay.** Show as Underlay and Remove Underlay in the browser's menu over a plan or a section, put under the plan shown (`underlay` `{view, source}` or `source: null`; the engine
+keeps it with the view). The plan is drawn with it: `App::redraw` also draws the underlay through the camera (`bimcraft_core::underlay::draw`, one more drawing of the source while
+it is on, where egui uses a worker) and the plan canvas lays it under the plan's lines, or over them with `front`, as a layer of its own (`plan-underlay`). Plans only: the
+underlay of a section or an elevation is the core's and not drawn here. Not here: Properties' Underlay group and the Underlay Settings (colour, fills, annotation, front, Move and
+Rotate by picks; the `underlay` command's form takes them all), and snapping to the underlay's lines.
+
+**Groups.** Create Group (GP), Ungroup (UG), Edit Group (GE) and, while one is edited, Add, Remove, Finish and Cancel, and Exclude (EM) and Restore All Excluded (RA), in the plan's menu where
+the selection allows them (`App::group_items`) and typed as the shortcuts, which act on the selection instead of opening a form of ids. A selection of both kinds asks to be of one;
+a selection with some of one kind only makes a group of that kind. Add and Remove act on the selection (select what is to join or leave, then the item), where egui picks them with clicks
+on the canvas. Not here: Place Model Group and Place Detail Group, Repeating Detail, the canvas's greyed look and the selection kept to the group in Edit Group, and the question a change
+that would break a group asks (the engine's refusal is the status bar's).
+
+**Work plane and reference planes.** The top bar names the 3D view's work plane (`Level : Level 1`, with the offset) while a 3D view is shown, and a press opens the Work Plane dialog:
+Current Work Plane, Dissociate (a work plane on a reference plane left where it is), and a name (a level or a named reference plane, `workplane::choices`) with an offset in the project's
+units, set by `work_plane`. The Reference Plane tool (RP) is in the Architecture palette: two clicks, `reference_plane {start, end, level}`. Not here: Show (the plane's grid in the 3D
+picture), the three picks (a face, a line, three points, which need the 3D view's depth under the pointer), the components' Edit Work Plane, and egui's Snap References (`guide_refs.rs`, the
+`Q` marks that lend a guide).
