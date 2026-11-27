@@ -7,7 +7,7 @@ use bimcraft_core::geom::P2;
 use bimcraft_core::ids::Id;
 use bimcraft_core::model::MAX_POINTS;
 use bimcraft_core::render::{self, Drawing};
-use rune::{Live, Pixels};
+use rune::{Live, Pixels, TextEdit};
 use serde_json::{Value, json};
 
 use crate::camera::Camera;
