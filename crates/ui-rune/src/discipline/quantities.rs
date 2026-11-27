@@ -448,6 +448,7 @@ impl Discipline for Quantities {
                 Cell::Pick { pick: 0, width: 180.0 },
                 Cell::Check {
                     action: "selected",
+                    arg: 0,
                     label: t("Only the selected elements").to_string(),
                     on: self.selected,
                     enabled: !self.selection.is_empty(),

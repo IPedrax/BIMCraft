@@ -61,12 +61,12 @@ fn cell(c: &Cell, o: &Open, k: &Kit, layer: &mut Vec<El>) -> El {
                 .build(k)
                 .key(format!("discipline-{action}-{arg}"))
         }
-        Cell::Check { action, label, on, enabled } => {
-            let action = *action;
+        Cell::Check { action, arg, label, on, enabled } => {
+            let (action, arg) = (*action, *arg);
             let check = Checkbox::new(*on).label(label.clone()).disabled(!*enabled).on_toggle(move |s: &mut App| {
-                s.discipline_press(action, 0);
+                s.discipline_press(action, arg);
             });
-            check.build(k).key(format!("discipline-{action}"))
+            check.build(k).key(format!("discipline-{action}-{arg}"))
         }
     }
 }

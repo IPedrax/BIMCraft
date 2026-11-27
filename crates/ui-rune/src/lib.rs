@@ -25,6 +25,7 @@ pub mod profile;
 pub mod project;
 pub mod props;
 pub mod reading;
+pub mod renames;
 pub mod sched;
 pub mod section;
 pub mod select;

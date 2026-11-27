@@ -13,8 +13,10 @@ use bimcraft_core::model::Model;
 use rune::TextEdit;
 use serde_json::Value;
 
+pub mod electrical;
 pub mod quantities;
 pub mod reinforce;
+pub mod stairtype;
 
 /// A cell of a row.
 pub enum Cell {
@@ -26,8 +28,9 @@ pub enum Cell {
     Pick { pick: usize, width: f32 },
     /// A button: what it asks of `Discipline::press` (an action and which row it is of), its words and whether it can be pressed now.
     Button { action: &'static str, arg: usize, label: String, on: bool },
-    /// A check box: pressing it asks `Discipline::press` for `action` (which turns it), its words and whether it can be changed now.
-    Check { action: &'static str, label: String, on: bool, enabled: bool },
+    /// A check box: pressing it asks `Discipline::press` for `action` (which turns it, `arg` saying which), its words and whether it can be
+    /// changed now.
+    Check { action: &'static str, arg: usize, label: String, on: bool, enabled: bool },
 }
 
 impl Cell {
@@ -153,10 +156,12 @@ pub enum Kind {
     Materials,
     SteelList,
     CutPlan,
+    Electrical,
+    StairType,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 4] = [Kind::Reinforce, Kind::Materials, Kind::SteelList, Kind::CutPlan];
+    pub const ALL: [Kind; 6] = [Kind::Reinforce, Kind::Materials, Kind::SteelList, Kind::CutPlan, Kind::Electrical, Kind::StairType];
 
     /// Its name in Find, and Revit's shortcut where egui has one.
     pub fn label(self) -> &'static str {
@@ -165,6 +170,8 @@ impl Kind {
             Kind::Materials => "Materials",
             Kind::SteelList => "Steel List",
             Kind::CutPlan => "Cut Plan",
+            Kind::Electrical => "Electrical Settings",
+            Kind::StairType => "Stair Type",
         }
     }
 
@@ -174,6 +181,7 @@ impl Kind {
             Kind::Materials => "QT",
             Kind::SteelList => "BL",
             Kind::CutPlan => "CU",
+            Kind::Electrical | Kind::StairType => "",
         }
     }
 
@@ -184,16 +192,16 @@ impl Kind {
             Kind::Materials => Ok(Box::new(quantities::Quantities::open(quantities::Page::Materials, m, selection))),
             Kind::SteelList => Ok(Box::new(quantities::Quantities::open(quantities::Page::List, m, selection))),
             Kind::CutPlan => Ok(Box::new(quantities::Quantities::open(quantities::Page::Plan, m, selection))),
+            Kind::Electrical => Ok(Box::new(electrical::Electrical::open(m))),
+            Kind::StairType => stairtype::StairType::open(m, selection).map(|s| Box::new(s) as Box<dyn Discipline>),
         }
     }
 }
 
-/// The most characters a field takes: what is typed is hostile like any text.
-pub const MAX_CHARS: usize = 200;
-
-/// The text of a field of a discipline dialog, kept to [`MAX_CHARS`].
+/// The text of a field of a discipline dialog, whole: a note longer than a box is still the note. What is typed is hostile like any text, so
+/// each dialog reads it as a name or a number and the core's own limits (`MAX_TEXT`) are the ones that refuse.
 pub fn typed(edit: &TextEdit) -> String {
-    edit.text.chars().take(MAX_CHARS).collect()
+    edit.text.clone()
 }
 
 /// The edits of a discipline dialog from the texts they start with.

@@ -249,4 +249,14 @@ keeps in its window crate is copied into each dialog's module (`ui-egui` is unto
 - **Quantities** (`discipline/quantities.rs`, QT, BL and CU): Materials, Steel List and Cut Plan as three tabs over `quantities`, `steel_list` and `cut_plan`, each result as tables (300 rows
   at most, the rest are in the file), Calculate, Export (CSV or Excel through the command's own `path`), and Create Schedules as one undo step. A cut plan waits for the stock length typed.
   Not here: the schedule made is not opened as a view.
+- **Electrical Settings** (`discipline/electrical.rs`, `renames.rs`): the voltages, distribution systems and wire types as three tabs, each a table with rows to add and delete, edited as a
+  draft and applied as one undo step by `voltage`, `distribution_system` and `wire_type` (OK closes, Apply reloads the draft from the project). The numbers are typed in boxes, a number that is
+  none is refused naming its row and what was typed, a name blank or used twice is refused, and a voltage a system supplies cannot be deleted. A band left as the 10 per cent around its
+  nominal follows the nominal typed (the core's `Voltage::around`). The commands go in an order the core can do them in, by `renames::plan` (copied from egui's `renames.rs`: a rename
+  chain from its end, a swap through a spare name, a name freed by a delete taken, an entry deleted and made again changed in place).
+- **Stair Type** (`discipline/stairtype.rs`): the selected stair's type as egui's stair page has it: what carries the treads (a list of four), the sizes that apply to that (a slab, treads and risers,
+  stringers, a centre stringer, finishes), the steps (begin and end with a riser), the finish edge and the materials, the eight dimension rules each a least and a most with a tick (off, the building
+  code's number shows), how plans show it on the level below, its own and the level above (ten ways), the lines, fill, walk line symbols and cut mark. The sizes that do not apply to the construction
+  are not sent, so switching back finds them again. OK sends all of it as one `type` command (the type changes everywhere it is used) and Apply keeps the dialog open. egui's little pictures of
+  the constructions and of the ways a stair shows in plan are not here, and a ramp type's page is not built. Opened from Find on a selected stair.
 

@@ -272,7 +272,7 @@ fn a_discipline_dialog_is_drawn_from_what_it_says_a_list_is_chosen_from_and_clos
         "discipline-footer",
         "discipline-foot-calculate",
         "discipline-foot-close",
-        "discipline-selected",
+        "discipline-selected-0",
     ] {
         assert!(rt.find(key).is_some(), "{key} is in the dialog");
     }
