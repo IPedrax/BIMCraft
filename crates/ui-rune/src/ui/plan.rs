@@ -68,7 +68,8 @@ pub fn plan(s: &App) -> El {
     let shape = s.shape_preview();
     let ghost = (!shape.is_empty()).then(|| layer("plan-ghost", paint::ghost(&shape, &s.camera.view(size.0, size.1), &pal).shape));
     // What a door, a window or a column would be where the pointer is, as the plan draws it.
-    let stands = s.stands().map(|(d, id)| layer("plan-stands", paint::lit(&d, size, &HashSet::from([id]), pal.accent, pal.accent_fill).shape));
+    let stands =
+        s.stands().map(|(d, id)| layer("plan-stands", paint::lit(&d, size, &HashSet::from([id]), pal.accent, pal.accent_fill).shape));
     // The grips of the element selected alone, and the reading of the end being dragged: there only while there is something to show.
     let grips = s.grips_shown().map(|g| {
         let live = g.held.map(|h| usize::from(!h.start));

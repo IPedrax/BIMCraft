@@ -32,7 +32,9 @@ impl App {
     fn takes_typing(&self) -> bool {
         let Some(spec) = self.tool.and_then(tooling::spec_of) else { return false };
         match spec.kind {
-            Kind::Run { shapes, .. } => !self.picked.is_empty() && (!shapes || self.tooling.shape == Shape::Line || !self.numbers().is_empty()),
+            Kind::Run { shapes, .. } => {
+                !self.picked.is_empty() && (!shapes || self.tooling.shape == Shape::Line || !self.numbers().is_empty())
+            }
             Kind::Span { .. } | Kind::Path { .. } | Kind::Shift | Kind::Reflect => !self.picked.is_empty(),
             Kind::Turn => self.picked.len() == 1,
             _ => false,
@@ -41,8 +43,10 @@ impl App {
 
     /// The radius typed for Fillet Arc, when what is typed is one.
     pub(super) fn typed_radius(&self) -> Option<f64> {
-        let fillet = self.tooling.shape == Shape::Fillet && !self.numbers().is_empty();
-        fillet.then(|| reading::number_of("Radius", &self.typed.length, self.session.model.units).ok()).flatten()
+        if self.tooling.shape != Shape::Fillet || self.numbers().is_empty() {
+            return None;
+        }
+        reading::number_of("Radius", &self.typed.length, self.session.model.units).ok()
     }
 
     /// Whether the tool in hand is Rotate, whose typed number is an angle.
@@ -89,7 +93,8 @@ impl App {
     /// What the status line says of what is typed, while something is.
     pub(super) fn reading_line(&self) -> Option<String> {
         let names = self.numbers();
-        (!self.typed.is_empty()).then(|| if names.is_empty() { reading::reading(&self.typed) } else { reading::shape_reading(names, &self.typed) })
+        (!self.typed.is_empty())
+            .then(|| if names.is_empty() { reading::reading(&self.typed) } else { reading::shape_reading(names, &self.typed) })
     }
 
     /// Enter with something typed: the point it makes (a Rotate's angle, two rays) is picked as a click there would be. False when

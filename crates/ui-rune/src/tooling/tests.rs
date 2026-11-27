@@ -401,7 +401,11 @@ fn fillet_arc_holds_two_straight_walls_and_a_third_click_or_the_radius_option_si
     assert_eq!(advance(wall, &on(Some(a), Held::Nothing), &pts(&[A])), Step::Hold(Held::Element(a)));
     assert!(matches!(advance(wall, &on(None, Held::Nothing), &pts(&[A])), Step::Refuse(_)), "no wall under the pointer");
     assert_eq!(advance(wall, &on(Some(b), Held::Element(a)), &pts(&[A, B])), Step::Hold(Held::Pair(a, b)));
-    assert_eq!(advance(wall, &on(Some(b), Held::Pair(a, b)), &pts(&[A, B])), Step::Hold(Held::Pair(a, b)), "a second pick again, after Backspace");
+    assert_eq!(
+        advance(wall, &on(Some(b), Held::Pair(a, b)), &pts(&[A, B])),
+        Step::Hold(Held::Pair(a, b)),
+        "a second pick again, after Backspace"
+    );
     assert_eq!(advance(wall, &on(Some(a), Held::Element(a)), &pts(&[A, B])), Step::Ignore, "the same wall twice is no corner");
     assert!(matches!(advance(wall, &on(None, Held::Element(a)), &pts(&[A, B])), Step::Refuse(_)));
     let sized = Ctx { options: Options { radius: Some(500.0), ..Options::default() }, ..on(Some(b), Held::Element(a)) };

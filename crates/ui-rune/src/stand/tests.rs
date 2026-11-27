@@ -33,7 +33,11 @@ fn a_wall_is_outlined_by_the_thickness_of_its_type_on_the_side_the_location_line
     let r = ring(m, &s);
     assert!((r[0].1 - t).abs() < 1e-6 && r[2].1.abs() < 1e-6, "the interior face on the line: {r:?}");
     // Another type's thickness.
-    let other = m.type_names("wall").into_iter().find(|n| m.types.wall.get(*n).is_some_and(|ty| (ty.thickness - t).abs() > 1.0)).expect("another type");
+    let other = m
+        .type_names("wall")
+        .into_iter()
+        .find(|n| m.types.wall.get(*n).is_some_and(|ty| (ty.thickness - t).abs() > 1.0))
+        .expect("another type");
     let thick = m.types.wall.get(other).expect("the type").thickness;
     s.location = Location::Centre;
     s.picks.insert("wall", TypePick { name: other.to_string(), family: None });

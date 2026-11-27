@@ -129,7 +129,8 @@ fn a_rectangles_width_and_height_and_a_circles_radius_are_typed_and_enter_makes_
     assert!(app.status().contains("Width 3000") && app.status().contains("Height 2000"), "{}", app.status());
     assert!(app.finish_tool() && app.message.is_none(), "{:?}", app.message);
     assert!(walls(&app) > before && app.picked.is_empty() && app.typed.is_empty(), "{:?}", app.picked);
-    let corner = app.session.model.elements.iter().any(|(_, e)| matches!(e, Element::Wall(w) if near(Some(&w.end), A.0 + 3000.0, A.1 + 2000.0)));
+    let corner =
+        app.session.model.elements.iter().any(|(_, e)| matches!(e, Element::Wall(w) if near(Some(&w.end), A.0 + 3000.0, A.1 + 2000.0)));
     assert!(corner, "the far corner is the width and the height from the first, on the pointer's side");
 
     let mut app = App::sample();
@@ -139,7 +140,12 @@ fn a_rectangles_width_and_height_and_a_circles_radius_are_typed_and_enter_makes_
     let before = walls(&app);
     assert!(app.type_text("1500") && !app.typed_tab(), "a circle has one number: Tab is nobody's");
     assert!(app.finish_tool() && app.message.is_none(), "{:?}", app.message);
-    let round = app.session.model.elements.iter().any(|(_, e)| matches!(e, Element::Wall(w) if w.arc != 0.0 && (w.start.dist(A) - 1500.0).abs() < 2.0));
+    let round = app
+        .session
+        .model
+        .elements
+        .iter()
+        .any(|(_, e)| matches!(e, Element::Wall(w) if w.arc != 0.0 && (w.start.dist(A) - 1500.0).abs() < 2.0));
     assert!(walls(&app) > before && round, "half circles of the radius typed");
 }
 

@@ -343,7 +343,11 @@ fn tangent_end_arc_starts_at_the_end_of_a_wall_leaves_the_way_it_ran_and_goes_on
     assert!(app.message.is_some() && app.picked.is_empty(), "no wall ends there: {:?}", app.message);
     click(&mut app, B);
     assert_eq!(app.picked.len(), 1, "{:?}", app.message);
-    assert!(app.tooling.tangent.is_some_and(|t| (t.0 - 1.0).abs() < 1e-3 && t.1.abs() < 1e-3), "east, the way the wall ran: {:?}", app.tooling.tangent);
+    assert!(
+        app.tooling.tangent.is_some_and(|t| (t.0 - 1.0).abs() < 1e-3 && t.1.abs() < 1e-3),
+        "east, the way the wall ran: {:?}",
+        app.tooling.tangent
+    );
     hover(&mut app, P2(-23000.0, -27000.0));
     assert!(!app.shape_preview().is_empty(), "the ghost of the arc");
     click(&mut app, P2(-23000.0, -27000.0));
