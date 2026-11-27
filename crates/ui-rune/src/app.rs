@@ -25,6 +25,7 @@ use crate::views::{self, ViewKind, Views};
 
 pub mod dialogs;
 mod export;
+pub mod library;
 mod open;
 mod orbit;
 mod paper;

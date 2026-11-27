@@ -25,6 +25,7 @@ pub fn layers(s: &App, k: &Kit, layer: &mut Vec<El>) {
     find::dialog(s, k, layer);
     super::settings::dialog(s, k, layer);
     super::types::dialog(s, k, layer);
+    super::library::dialog(s, k, layer);
 }
 
 /// The text of a field's choice that means none.
@@ -54,6 +55,10 @@ fn control(f: &FormState, i: usize, field: &Field, k: &Kit, layer: &mut Vec<El>)
     let Some(entry) = f.entries.get(i) else { return el() };
     match &field.kind {
         Kind::Choice(options) => choice(f, i, field, options.iter().map(|o| (o.clone(), o.clone())).collect(), k, layer),
+        Kind::Pick(_) => {
+            let names = f.options.get(i).map(|o| o.iter().map(|n| (n.clone(), n.clone())).collect()).unwrap_or_default();
+            choice(f, i, field, names, k, layer)
+        }
         Kind::Bool => {
             choice(f, i, field, vec![(t("yes").to_string(), "true".to_string()), (t("no").to_string(), "false".to_string())], k, layer)
         }

@@ -6,10 +6,11 @@ use bimcraft_core::engine;
 use bimcraft_core::ids::Id;
 
 use crate::lang::t;
+use crate::library::{self, Source};
 use crate::tools;
 
 /// The most rows Find lists.
-pub const MOST: usize = 12;
+pub const MOST: usize = 16;
 
 /// What a row of Find does.
 #[derive(Clone, Debug, PartialEq)]
@@ -24,6 +25,8 @@ pub enum Found {
     Settings,
     /// Opens Type Properties on the selected element's type.
     TypeProperties,
+    /// Opens the manager of a kind of library entry (Materials, Line Styles, Phases…).
+    Manage(Source),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -68,6 +71,16 @@ fn ranked(query: &str, levels: &[(Id, String)]) -> Vec<Hit> {
     let first = query.split_whitespace().next().map(str::to_lowercase).unwrap_or_default();
     // (rank, group, row)
     let mut rows: Vec<(u8, u8, Hit)> = Vec::new();
+    for info in &library::ALL {
+        let label = t(info.title);
+        if matches(&format!("{label} manage {}", info.command), query) {
+            rows.push((
+                rank(label, &first),
+                0,
+                Hit { label: label.to_string(), note: t("Manage").to_string(), found: Found::Manage(info.source) },
+            ));
+        }
+    }
     let every = tools::TOOLS.iter().flat_map(|(_, list)| list.iter()).chain(tools::MODIFY.iter());
     for &(id, english) in every {
         let label = t(english);
@@ -137,6 +150,17 @@ mod tests {
         let wall = hits.iter().find(|h| h.found == Found::Command("wall")).expect("WA is Wall's shortcut");
         assert!(wall.note.contains("WA"), "the shortcut is said beside it: {}", wall.note);
         assert!(ranked("adaptive_move", &[]).iter().any(|h| h.found == Found::Command("adaptive_move")), "by id");
+    }
+
+    #[test]
+    fn the_managers_are_found_by_name_and_by_the_word_manage_and_come_before_the_command_of_the_same_name() {
+        let hits = ranked("materials", &[]);
+        assert_eq!(hits.first().map(|h| &h.found), Some(&Found::Manage(Source::Materials)), "{hits:?}");
+        assert!(hits.iter().any(|h| h.found == Found::Command("material")), "the command is there too");
+        let manage = ranked("manage", &[]);
+        for info in &library::ALL {
+            assert!(manage.iter().any(|h| h.found == Found::Manage(info.source)), "{} is listed under Manage", info.title);
+        }
     }
 
     #[test]

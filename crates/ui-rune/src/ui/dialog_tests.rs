@@ -254,3 +254,38 @@ fn edit_type_with_nothing_selected_says_so_in_the_status_bar() {
     assert!(rt.state.dialogs.types.is_none());
     assert!(rt.state.message.is_some());
 }
+
+#[test]
+fn the_manage_button_lists_the_managers_and_a_press_opens_one() {
+    let mut rt = window();
+    tap(&mut rt, "manage");
+    assert_eq!(rt.state.dialogs.find.as_ref().map(|f| f.edit.text.as_str()), Some("manage"), "Find opens on the word");
+    assert!(rt.find("hit-10").is_some(), "the eleven managers are listed");
+    tap(&mut rt, "hit-0");
+    assert_eq!(rt.state.dialogs.library.as_ref().map(|d| d.info.source), Some(crate::library::Source::Materials));
+    assert!(rt.state.dialogs.find.is_none() && rt.find("lib-apply").is_some());
+    tap(&mut rt, "lib-close");
+    assert!(rt.state.dialogs.library.is_none());
+}
+
+#[test]
+fn an_entry_of_a_manager_is_edited_and_applied_through_the_engine() {
+    let mut rt = window();
+    rt.update(|s, _| {
+        let made = s.session.execute("text_type", &serde_json::json!({"name": "Rune Text", "size": 3}));
+        assert!(made.is_ok(), "{made:?}");
+        s.open_library(crate::library::Source::TextTypes);
+        s.library_select("Rune Text");
+    });
+    rt.frame(0.0);
+    rt.frame(0.0);
+    let i = rt.state.dialogs.library.as_ref().and_then(|d| d.fields.iter().position(|f| f.name == "size")).expect("size");
+    tap(&mut rt, &format!("lib-field-{i}"));
+    press(&mut rt, Key::Command('a'), ctrl());
+    rt.paste("7");
+    rt.frame(0.0);
+    tap(&mut rt, "lib-apply");
+    assert_eq!(rt.state.session.model.text_types["Rune Text"].size, 7.0, "the entry changed through the engine");
+    assert!(rt.find("lib-done").is_some() && rt.find("lib-error").is_none());
+    assert!(rt.find("lib-delete").is_some() && rt.find("lib-rename").is_some(), "a text type is renamed and deleted");
+}

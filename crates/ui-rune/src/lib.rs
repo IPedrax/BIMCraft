@@ -16,6 +16,7 @@ pub mod finder;
 pub mod forms;
 pub mod grips;
 pub mod lang;
+pub mod library;
 pub mod orbit;
 pub mod paint;
 pub mod paper;

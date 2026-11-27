@@ -27,6 +27,18 @@ const MAX_DIGITS: usize = 15;
 /// The most of a command's prose the dialog shows, characters.
 const MAX_PROSE: usize = 1_200;
 
+/// What a picked name is of: the list a picker offers comes from the project (`options`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Class {
+    Level,
+    Material,
+    /// A type of the command's own category (`wall` offers the wall types).
+    Type,
+    Family,
+    Phase,
+    LineStyle,
+}
+
 /// What a field holds, and so how it is typed and read back.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Kind {
@@ -50,6 +62,9 @@ pub enum Kind {
     Bool,
     /// Anything else: JSON when it parses as JSON, else the text.
     Any,
+    /// A name chosen from the project's own (a level, a material, a type), as the text of the name. A field with nothing to offer
+    /// (the project has no such name) is `Any` again when its form opens (`App::open_command`).
+    Pick(Class),
 }
 
 impl Kind {
@@ -67,12 +82,13 @@ impl Kind {
             Kind::Strings => "name, name, …",
             Kind::Choice(_) | Kind::Bool => "",
             Kind::Any => "text or JSON",
+            Kind::Pick(_) => "",
         }
     }
 
     /// Whether the field is chosen from a list (a select) rather than typed.
     pub fn chosen(&self) -> bool {
-        matches!(self, Kind::Choice(_) | Kind::Bool)
+        matches!(self, Kind::Choice(_) | Kind::Bool | Kind::Pick(_))
     }
 }
 
@@ -113,6 +129,18 @@ impl Form {
         // use is one box for the whole object.
         let nothing = lead(cmd.params).is_some_and(|(inner, _)| inner.trim().is_empty());
         let rest = spread || (fields.is_empty() && !nothing);
+        // A field the doc leaves untyped that names a thing the project holds is picked from them.
+        let fields = fields
+            .into_iter()
+            .map(|mut f| {
+                if f.kind == Kind::Any
+                    && let Some(class) = class_of(&f.name)
+                {
+                    f.kind = Kind::Pick(class);
+                }
+                f
+            })
+            .collect();
         Form { id: cmd.id, label: cmd.label, fields, rest, prose: cut(after.trim(), MAX_PROSE) }
     }
 
@@ -148,6 +176,34 @@ impl Form {
         }
         Ok(Value::Object(map))
     }
+}
+
+/// What a field of this name picks from, when the doc says no more.
+fn class_of(name: &str) -> Option<Class> {
+    match name {
+        "level" | "top_level" | "base_level" => Some(Class::Level),
+        "material" => Some(Class::Material),
+        "type" => Some(Class::Type),
+        "family" => Some(Class::Family),
+        "phase" => Some(Class::Phase),
+        "line_style" => Some(Class::LineStyle),
+        _ if name.ends_with("_material") => Some(Class::Material),
+        _ => None,
+    }
+}
+
+/// The names a picker of this class offers in the project, for the command `command` (a type is of its category): in order, none when
+/// the project has none or the command's category has no types.
+pub fn options(model: &bimcraft_core::model::Model, class: Class, command: &str) -> Vec<String> {
+    let names: Vec<String> = match class {
+        Class::Level => model.levels().into_iter().map(|(_, l)| l.name.clone()).collect(),
+        Class::Material => model.materials.keys().cloned().collect(),
+        Class::Type => crate::typeprops::names(model, command),
+        Class::Family => model.families.keys().cloned().collect(),
+        Class::Phase => model.phases.clone(),
+        Class::LineStyle => model.line_styles.keys().cloned().collect(),
+    };
+    names.into_iter().take(MAX_ITEMS).collect()
 }
 
 /// `text` held to `max` characters, ending in `…` when cut.
@@ -423,7 +479,7 @@ pub fn value(kind: &Kind, typed: &str) -> Result<Option<Value>, String> {
     }
     let v = match kind {
         Kind::Number => json_number(num(t, MAX_NUMBER)?)?,
-        Kind::Text => {
+        Kind::Text | Kind::Pick(_) => {
             if t.chars().count() > MAX_TEXT {
                 return Err(format!("longer than {MAX_TEXT} characters"));
             }
@@ -658,6 +714,47 @@ mod tests {
             Kind::Choice(o) => o.first().cloned().unwrap_or_default(),
             Kind::Bool => "true".into(),
             Kind::Any => "1".into(),
+            Kind::Pick(_) => "Level 1".into(),
+        }
+    }
+
+    #[test]
+    fn a_field_that_names_a_thing_the_project_holds_is_picked_and_the_options_are_the_projects() {
+        let f = form("{level?, top_level?, material?, cut_material?, type?, family?, phase?, line_style?, name?: string, view?}");
+        let k = kinds(&f);
+        let class = |i: usize| match k[i].2 {
+            Kind::Pick(c) => Some(*c),
+            _ => None,
+        };
+        let got: Vec<Option<Class>> = (0..10).map(class).collect();
+        assert_eq!(
+            got,
+            [
+                Some(Class::Level),
+                Some(Class::Level),
+                Some(Class::Material),
+                Some(Class::Material),
+                Some(Class::Type),
+                Some(Class::Family),
+                Some(Class::Phase),
+                Some(Class::LineStyle),
+                None,
+                None
+            ]
+        );
+        assert!(f.fields[0].kind.chosen(), "a picker is chosen from a list");
+        assert_eq!(value(&Kind::Pick(Class::Level), "Level 2"), Ok(Some(json!("Level 2"))));
+        assert_eq!(value(&Kind::Pick(Class::Level), "  "), Ok(None));
+        assert!(value(&Kind::Pick(Class::Level), &"x".repeat(MAX_TEXT + 1)).is_err());
+
+        let app = crate::app::App::sample();
+        let model = &*app.session.model;
+        let levels = options(model, Class::Level, "wall");
+        assert!(levels.len() >= 2 && levels.iter().all(|n| !n.is_empty()), "the sample house has its levels: {levels:?}");
+        assert!(!options(model, Class::Type, "wall").is_empty(), "a wall has wall types");
+        assert!(options(model, Class::Type, "level").is_empty(), "a command that is no category has no types to offer");
+        for class in [Class::Material, Class::Family, Class::Phase, Class::LineStyle] {
+            assert!(options(model, class, "wall").len() <= MAX_ITEMS);
         }
     }
 

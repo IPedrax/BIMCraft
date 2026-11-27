@@ -1,6 +1,8 @@
 //! The dialogs' state and handlers with no window: Find and the generic command form, driven by their methods as the elements drive
 //! them, and the model read back through the session.
 
+use serde_json::json;
+
 use super::*;
 
 /// Types `text` in the field of the open form called `field`.
@@ -163,4 +165,36 @@ fn a_dialog_that_opens_takes_the_right_click_menu_away() {
         assert!(app.tooling.menu.is_none(), "dialog {open} opened over an open menu");
         app.close_dialogs();
     }
+}
+
+#[test]
+fn a_field_that_names_a_level_offers_the_projects_levels_and_a_name_chosen_goes_to_the_command() {
+    let mut app = App::sample();
+    assert!(app.open_command("wall"));
+    let f = app.dialogs.form.as_ref().expect("open");
+    let level = f.form.fields.iter().position(|x| x.name == "level").expect("a level field");
+    assert!(matches!(f.form.fields[level].kind, Kind::Pick(forms::Class::Level)));
+    let names = f.options[level].clone();
+    assert!(names.len() >= 2, "the levels of the sample house: {names:?}");
+    app.choose(level, names[1].clone());
+    let f = app.dialogs.form.as_ref().expect("open");
+    let texts: Vec<String> =
+        f.form.fields.iter().zip(&f.entries).map(|(x, e)| if x.kind.chosen() { e.choice.clone() } else { e.edit.text.clone() }).collect();
+    let points = f.form.fields.iter().position(|x| x.name == "points").expect("points");
+    let mut texts = texts;
+    texts[points] = "50000, 60000; 53000, 60000".to_string();
+    let params = f.form.params(&texts, "").expect("readable");
+    assert_eq!(params["level"], json!(names[1]), "the chosen name is the level's");
+    assert!(app.session.execute("wall", &params).is_ok(), "and the core takes it");
+}
+
+#[test]
+fn a_picker_with_nothing_to_offer_is_typed_as_it_was() {
+    let mut app = App::sample();
+    // `type_parameter` names a type but is no category, so the project has no list to give.
+    assert!(app.open_command("type_parameter"));
+    let f = app.dialogs.form.as_ref().expect("open");
+    let ty = f.form.fields.iter().position(|x| x.name == "type").expect("a type field");
+    assert_eq!(f.form.fields[ty].kind, Kind::Any);
+    assert!(f.options[ty].is_empty());
 }

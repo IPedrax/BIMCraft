@@ -138,3 +138,42 @@ carries no such risk is `TabStrip` for the right-hand column (Properties and Lev
 **Run the Rune UI checks for this branch** with `gh workflow run rune-ui.yml --ref IPedrax-Test/Rune-GUI-dialogs`: the workflow's push
 trigger names only `main` and `IPedrax-Test/Rune-GUI`, so a push starts the main CI alone. A second dispatch on the same ref cancels
 the first (the concurrency group is per ref).
+
+## Round 2: pickers, and the library managers
+
+Fast-forwarded onto `IPedrax-Test/Rune-GUI` (be7bfa66f, with tools, views and properties merged), then the document-settings dialogs. egui
+writes each of Materials, Visibility/Graphics, Parameters, Phasing and the styles as a dialog of its own; here one pattern carries them,
+because each is a table of the project and a command of the core, and the generic form already runs the commands.
+
+| Module | What it owns | Tests |
+|---|---|---|
+| `forms.rs` (`Kind::Pick`, `Class`, `options`) | a field the doc leaves untyped that is named `level`, `top_level`, `base_level`, `material`, `*_material`, `type`, `family`, `phase` or `line_style` is picked from the project's own names (a type is of the command's own category: `wall` offers the wall types) | 1, and the sweep |
+| `app/dialogs.rs` (`FormState::options`) | the lists, read when the form opens; a picker with nothing to offer is `Kind::Any` again, so it is typed | 2, no window |
+| `library.rs` | the managers, pure: `Source` (Materials, Line Styles, Line Patterns, Fill Patterns, Phases, Phase Filters, View Filters, View Templates, Text Types, Project Parameters, Object Styles), each a table of `Model` as JSON and one command; `changes`, `deletion` | 3 |
+| `app/library.rs`, `ui/library.rs` | the dialog: an entry chosen from a list, its fields that can be typed, a new name, Apply, Delete, New | 5, no window; 2 in `ui/dialog_tests.rs` |
+
+**A manager.** The entries are `serde_json::to_value` of the model's own table (the JSON a file holds). The fields that can be typed are the
+entry's scalars that the command's params doc names (`library::editable`: the intersection, so a field the command would refuse is shown
+and never offered), and Apply sends the command `{name, field…}` with just the fields that differ (`typeprops::differing`, numbers compared
+by value), plus `rename` when a new name is typed and the command has one. Delete is `{name, delete: true}`, offered only where the command
+has `delete`; New opens the command's own generic form. Object Styles is the one that is not `{name, …}`: its command takes
+`{categories: {name: {projection, cut}}}`, so it has its own `Shape`, and an object style is not renamed or deleted (Reset is the command's
+`reset`). The whole dialog is the Type Properties pattern, so a refusal or a field that is no number is said under the rows.
+
+**Where each of the five is.** Materials: the manager (its colour, cut and surface patterns that are plain fields; textures and the
+patterns' own settings stay rows). Visibility/Graphics: View Filters and View Templates are managers; the `graphics` command (hide and
+show by category, element overrides, a view's own) is the generic form, found as Visibility/Graphics, as is `section_box` and
+`graphic_display_options`. Parameters: Project Parameters is a manager; shared parameters, dictionaries, import, export and the batch
+commands are generic forms. Phasing: Phases and Phase Filters are managers; design options, renovation and the overrides are generic
+forms. Styles: Object Styles, Line Styles, Line Patterns and Fill Patterns are managers; Line Weights is the generic form (`line_weights`
+takes lists of widths), as are Halftone and the others.
+
+**Entry points.** The Manage button on the top bar opens Find on the word, which lists the eleven managers first (they are also found by
+name: Materials, Phases…) and then the commands the menu puts under Manage; every command stays reachable through Find as a form.
+
+**Not done.** The tables egui draws (a Visibility/Graphics grid of categories by projection, cut, halftone and detail; a materials browser
+with a swatch and an asset library; a pattern's drawn preview); colour and pen pickers (a colour is typed as a list of numbers or JSON);
+pickers inside a manager's fields (a line style's `pattern` is a text box, not a list of the project's line patterns); nested entries (a
+filter's rules, a pattern's lines, a material's textures) are rows, edited through the command's form; the shortcuts. New messages first
+written here: Manage, Entry, Nothing here yet: use New, New name, A new name for it, New, There is no entry to change: use New, This kind
+of entry is not deleted here.

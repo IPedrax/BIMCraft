@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use super::App;
 use crate::finder::{self, Found, Hit};
-use crate::forms::{self, Form};
+use crate::forms::{self, Form, Kind};
 
 /// The most characters of a command's reply the dialog shows.
 const MAX_REPLY: usize = 4_000;
@@ -27,6 +27,8 @@ pub struct FormState {
     pub form: Form,
     /// One for each of `form.fields`.
     pub entries: Vec<Entry>,
+    /// What a field that is picked offers, one list for each of `form.fields` (empty for the others).
+    pub options: Vec<Vec<String>>,
     /// The box for more parameters, as JSON (shown when `form.rest`).
     pub rest: TextEdit,
     /// The field whose choices are listed.
@@ -51,6 +53,8 @@ pub struct Dialogs {
     pub settings: Option<super::settings::SettingsDialog>,
     /// Type Properties (`app/types.rs`).
     pub types: Option<super::types::TypeDialog>,
+    /// A library manager: Materials, Line Styles, Phases and the rest (`app/library.rs`).
+    pub library: Option<super::library::LibDialog>,
     /// Where an edit goes when its field is gone (a stale handler): never read.
     pub scratch: TextEdit,
 }
@@ -58,18 +62,34 @@ pub struct Dialogs {
 impl Dialogs {
     /// A dialog is open: the keys and pointer are its, not the plan's.
     pub fn any(&self) -> bool {
-        self.form.is_some() || self.find.is_some() || self.settings.is_some() || self.types.is_some()
+        self.form.is_some() || self.find.is_some() || self.settings.is_some() || self.types.is_some() || self.library.is_some()
     }
 
     /// Closes every dialog: they are open one at a time.
     pub fn clear(&mut self) {
-        (self.form, self.find, self.settings, self.types) = (None, None, None, None);
+        (self.form, self.find, self.settings, self.types, self.library) = (None, None, None, None, None);
     }
 
     /// The box of field `i` of the open Type Properties.
     pub fn type_edit(&mut self, i: usize) -> &mut TextEdit {
         match self.types.as_mut().and_then(|d| d.fields.get_mut(i)) {
             Some(f) => &mut f.edit,
+            None => &mut self.scratch,
+        }
+    }
+
+    /// The box of field `i` of the open library manager.
+    pub fn library_edit(&mut self, i: usize) -> &mut TextEdit {
+        match self.library.as_mut().and_then(|d| d.fields.get_mut(i)) {
+            Some(f) => &mut f.edit,
+            None => &mut self.scratch,
+        }
+    }
+
+    /// The box of the new name of the entry the open library manager shows.
+    pub fn library_rename(&mut self) -> &mut TextEdit {
+        match self.library.as_mut() {
+            Some(d) => &mut d.rename,
             None => &mut self.scratch,
         }
     }
@@ -106,6 +126,15 @@ impl App {
         self.dialogs.find = Some(FindState { edit, at: 0 });
     }
 
+    /// Manage: Find opened on the word, which lists the managers first (and the commands under Manage in the menu).
+    pub fn open_manage(&mut self) {
+        self.dialogs.clear();
+        let mut edit = TextEdit::new("manage");
+        edit.set_caret(edit.text.len());
+        edit.focused = true;
+        self.dialogs.find = Some(FindState { edit, at: 0 });
+    }
+
     /// What Find lists now.
     pub fn found(&self) -> Vec<Hit> {
         self.dialogs.find.as_ref().map(|f| finder::find(&f.edit.text, &self.levels)).unwrap_or_default()
@@ -134,6 +163,7 @@ impl App {
             }
             Found::Level(id) => self.set_level(id),
             Found::Settings => self.toggle_settings(),
+            Found::Manage(source) => self.open_library(source),
             Found::TypeProperties => {
                 self.open_type_of_selection();
             }
@@ -155,7 +185,22 @@ impl App {
 
     /// Opens the form of the command with this id or shortcut; false for one the core does not have.
     pub fn open_command(&mut self, name: &str) -> bool {
-        let Some(form) = Form::named(name) else { return false };
+        let Some(mut form) = Form::named(name) else { return false };
+        // A field picked from the project's own names offers them; with none to offer it is typed, as it was before it was picked.
+        let options: Vec<Vec<String>> = form
+            .fields
+            .iter_mut()
+            .map(|f| match f.kind {
+                Kind::Pick(class) => {
+                    let names = forms::options(&self.session.model, class, form.id);
+                    if names.is_empty() {
+                        f.kind = Kind::Any;
+                    }
+                    names
+                }
+                _ => Vec::new(),
+            })
+            .collect();
         let mut entries: Vec<Entry> =
             form.fields.iter().map(|f| Entry { edit: TextEdit::new(f.default.clone()), choice: String::new() }).collect();
         // The first field that is typed takes the keys.
@@ -164,7 +209,7 @@ impl App {
         }
         self.close_menu();
         self.dialogs.clear();
-        self.dialogs.form = Some(FormState { form, entries, rest: TextEdit::new(""), open: None, error: None, reply: None });
+        self.dialogs.form = Some(FormState { form, entries, options, rest: TextEdit::new(""), open: None, error: None, reply: None });
         true
     }
 

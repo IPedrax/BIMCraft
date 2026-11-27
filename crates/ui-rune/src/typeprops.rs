@@ -75,9 +75,8 @@ fn same(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// The `type` command's parameters for the fields typed: the category and the name, and each field whose text is not what the type
-/// has already. An error says which field could not be read. None when nothing is different.
-pub fn changes(key: &TypeKey, original: &Value, typed: &[(String, Kind, String)]) -> Result<Option<Value>, String> {
+/// The fields typed whose text is not what `original` already has, as JSON values. An error says which field could not be read.
+pub fn differing(original: &Value, typed: &[(String, Kind, String)]) -> Result<Map<String, Value>, String> {
     let mut params = Map::new();
     for (name, kind, text) in typed {
         let value = props::parse(*kind, text).map_err(|why| format!("{name}: {why}"))?;
@@ -85,6 +84,13 @@ pub fn changes(key: &TypeKey, original: &Value, typed: &[(String, Kind, String)]
             params.insert(name.clone(), value);
         }
     }
+    Ok(params)
+}
+
+/// The `type` command's parameters for the fields typed: the category and the name, and each field whose text is not what the type
+/// has already. An error says which field could not be read. None when nothing is different.
+pub fn changes(key: &TypeKey, original: &Value, typed: &[(String, Kind, String)]) -> Result<Option<Value>, String> {
+    let mut params = differing(original, typed)?;
     if params.is_empty() {
         return Ok(None);
     }

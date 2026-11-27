@@ -1,0 +1,103 @@
+//! The library managers' state and handlers with no window: an entry made by its command, chosen, a field typed, Apply, Rename and
+//! Delete, and the project read back.
+
+use serde_json::json;
+
+use super::*;
+
+fn with_text_type() -> App {
+    let mut app = App::sample();
+    app.execute("text_type", &json!({"name": "Rune Text", "size": 3})).expect("a text type");
+    app.execute("text_type", &json!({"name": "Rune Other", "size": 4})).expect("another");
+    app
+}
+
+fn typed(app: &mut App, field: &str, text: &str) {
+    let d = app.dialogs.library.as_mut().expect("a manager is open");
+    let f = d.fields.iter_mut().find(|f| f.name == field).expect("a field of that name");
+    f.edit.replace_text(text);
+}
+
+fn size(app: &App, name: &str) -> f64 {
+    app.session.model.text_types[name].size
+}
+
+#[test]
+fn an_entry_is_chosen_a_field_typed_and_apply_sends_the_command_only_what_differs() {
+    let mut app = with_text_type();
+    app.open_library(Source::TextTypes);
+    app.library_select("Rune Text");
+    let d = app.dialogs.library.as_ref().expect("open");
+    assert_eq!(d.selected.as_deref(), Some("Rune Text"));
+    assert!(d.names.iter().any(|n| n == "Rune Other"), "the other entries are listed");
+    assert!(d.fields.iter().any(|f| f.name == "size" && f.edit.text == "3.0"), "the field starts from the entry's value");
+
+    assert!(app.library_apply(), "nothing is different, and that is no error");
+    assert!(app.dialogs.library.as_ref().is_some_and(|d| d.done && d.error.is_none()));
+
+    typed(&mut app, "size", "5");
+    assert!(app.library_apply(), "{:?}", app.dialogs.library.as_ref().map(|d| &d.error));
+    assert_eq!(size(&app, "Rune Text"), 5.0);
+    assert_eq!(size(&app, "Rune Other"), 4.0, "the other entry is untouched");
+    let d = app.dialogs.library.as_ref().expect("still open");
+    assert!(d.done && d.selected.as_deref() == Some("Rune Text") && d.fields.iter().any(|f| f.name == "size" && f.edit.text == "5.0"));
+}
+
+#[test]
+fn a_field_that_is_no_number_is_said_in_the_dialog_and_changes_nothing() {
+    let mut app = with_text_type();
+    app.open_library(Source::TextTypes);
+    app.library_select("Rune Text");
+    typed(&mut app, "size", "abc");
+    assert!(!app.library_apply());
+    assert!(app.dialogs.library.as_ref().and_then(|d| d.error.as_deref()).is_some_and(|e| e.starts_with("size: ")));
+    assert_eq!(size(&app, "Rune Text"), 3.0);
+    assert!(app.message.is_none(), "the status bar is left alone");
+}
+
+#[test]
+fn an_entry_is_renamed_and_deleted_through_its_command() {
+    let mut app = with_text_type();
+    app.open_library(Source::TextTypes);
+    app.library_select("Rune Text");
+    app.dialogs.library.as_mut().expect("open").rename.replace_text("Rune Renamed");
+    assert!(app.library_apply(), "{:?}", app.dialogs.library.as_ref().map(|d| &d.error));
+    assert!(app.session.model.text_types.contains_key("Rune Renamed") && !app.session.model.text_types.contains_key("Rune Text"));
+    assert_eq!(
+        app.dialogs.library.as_ref().and_then(|d| d.selected.clone()).as_deref(),
+        Some("Rune Renamed"),
+        "the dialog follows the entry"
+    );
+
+    assert!(app.library_delete(), "{:?}", app.dialogs.library.as_ref().map(|d| &d.error));
+    assert!(!app.session.model.text_types.contains_key("Rune Renamed"));
+    assert!(app.dialogs.library.as_ref().is_some_and(|d| d.done && d.selected.as_deref() != Some("Rune Renamed")));
+}
+
+#[test]
+fn a_source_with_nothing_in_it_says_so_and_new_opens_the_commands_form() {
+    let mut app = App::sample();
+    app.open_library(Source::ViewFilters);
+    let d = app.dialogs.library.as_ref().expect("open");
+    if d.selected.is_none() {
+        assert!(!app.library_apply());
+        assert!(app.dialogs.library.as_ref().is_some_and(|d| d.error.is_some()), "there is nothing to apply to");
+    }
+    app.library_new();
+    assert_eq!(app.dialogs.form.as_ref().map(|f| f.form.id), Some("filter"), "New is the command's own form");
+    assert!(app.dialogs.library.is_none(), "the manager gives way to it");
+    assert!(!app.library_delete() && !app.library_apply(), "nothing is open to act on");
+}
+
+#[test]
+fn every_manager_opens_on_the_sample_house_and_an_object_style_is_not_deleted() {
+    let mut app = App::sample();
+    for info in &library::ALL {
+        app.open_library(info.source);
+        assert!(app.dialogs.library.is_some(), "{}", info.title);
+        assert_eq!(app.dialogs.library.as_ref().map(|d| d.info.source), Some(info.source));
+    }
+    app.open_library(Source::ObjectStyles);
+    assert!(!app.library_delete(), "an object style is reset, not deleted");
+    assert!(app.dialogs.library.as_ref().is_some_and(|d| d.error.is_some()));
+}
