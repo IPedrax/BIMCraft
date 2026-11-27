@@ -3,7 +3,7 @@
 //! keys; this is the matcher, with no toolkit, tested without a window.
 //!
 //! A plain letter or digit that begins a shortcut waits for the next for [`WAIT`] seconds. The second completes one, and it runs; or
-//! it does not, and then the first is dropped and the second waits in its place (so `QWA` is `WA`). A letter that begins none does
+//! it does not, and then the first is dropped and the second waits in its place (so `YWA` is `WA`). A letter that begins none does
 //! nothing. Escape, or time, drops what waits.
 
 use bimcraft_core::shortcuts::{self, Target};

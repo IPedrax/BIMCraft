@@ -25,7 +25,7 @@ fn two_letters_make_a_shortcut_and_the_first_waits_for_the_second() {
 #[test]
 fn a_second_letter_that_makes_nothing_drops_the_first_and_waits_in_its_place() {
     let mut t = Typed::default();
-    assert_eq!(run(&mut t, "QWA", 0.0), [Step::Nothing, Step::Waiting, Step::Run(Target::Command("wall"))], "Q begins none, then WA");
+    assert_eq!(run(&mut t, "YWA", 0.0), [Step::Nothing, Step::Waiting, Step::Run(Target::Command("wall"))], "Y begins none, then WA");
     assert_eq!(
         run(&mut t, "WZF", 1.0),
         [Step::Waiting, Step::Waiting, Step::Run(Target::Desktop("Zoom to Fit"))],

@@ -45,7 +45,7 @@ fn a_shortcut_of_the_desktop_acts_through_the_buttons_methods() {
 #[test]
 fn a_letter_that_waited_too_long_or_begins_nothing_is_the_windows_and_escape_drops_what_waits() {
     let mut app = App::sample();
-    assert_eq!(type_at(&mut app, "Q", 0.0), [false], "Q begins no shortcut: the window's");
+    assert_eq!(type_at(&mut app, "Y", 0.0), [false], "Y begins no shortcut: the window's");
     assert_eq!(type_at(&mut app, "W", 1.0), [true]);
     assert_eq!(app.typed.text(), "W");
     assert_eq!(app.typed_in(), Some(2.0), "it waits two seconds from the letter");
