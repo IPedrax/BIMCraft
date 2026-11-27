@@ -170,8 +170,20 @@ fn a_right_click_on_the_plan_opens_the_menu_at_the_pointer_and_an_item_does_its_
     assert!(rt.state.tooling.menu.is_some(), "the right click opened it");
     let menu = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("plan-menu-menu")).expect("the menu is drawn");
     assert!(menu.rect[0] >= x - 1.0 && menu.rect[1] >= y - 1.0, "it opens at the pointer: {:?} for ({x}, {y})", menu.rect);
-    // Nothing selected, no tool: Cancel, a separator, then Zoom to Fit, Zoom In and Zoom Out.
-    let zoom_in = rt.find("plan-menu-item3").expect("Zoom In");
+    // Nothing selected, no tool: Cancel, the clipboard's pastes and the zooms, a separator between each group: Zoom In is found
+    // by what the menu offers, which grows with the features.
+    let mut index = 0;
+    let mut at = None;
+    for (n, group) in rt.state.menu_items().iter().enumerate() {
+        index += usize::from(n > 0);
+        for item in group {
+            if item.action == crate::context::Action::ZoomIn {
+                at = Some(index);
+            }
+            index += 1;
+        }
+    }
+    let zoom_in = rt.find(&format!("plan-menu-item{}", at.expect("the menu offers Zoom In"))).expect("Zoom In");
     let before = rt.state.camera.scale;
     tap(&mut rt, zoom_in);
     settle(&mut rt);
