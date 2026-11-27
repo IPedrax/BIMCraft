@@ -44,7 +44,7 @@ fn run() -> Result<(), String> {
             "--report" => report_path = Some(value),
             "--storeys" => storeys = Some(value.parse::<u32>().map_err(|e| format!("storeys: {e}"))?),
             "--fixture" => fixture = value.clone(),
-            // Steps to leave out, by name (inspect, rooms, plan, scene, sections, ifc, reopen): what doesn't finish at a size.
+            // Steps to leave out, by name (inspect, rooms, after_edit, plan, scene, sections, ifc, reopen): what doesn't finish at a size.
             "--skip" => skip = value.split(',').map(str::to_string).collect(),
             "--rooms" => room_sample = value.parse().map_err(|e| format!("rooms: {e}"))?,
             // The tower with its plans detailed: about 2,000 2D elements a storey.
@@ -171,6 +171,11 @@ fn run() -> Result<(), String> {
             undos.sort_by(f64::total_cmp);
             report["ms"]["dimension_median"] = json!(made[made.len() / 2]);
             report["ms"]["dimension_undo_median"] = json!(undos[undos.len() / 2]);
+        }
+        // What the window waits for after an edit: the edited model's first plan, door schedule and rooms, each asked of a
+        // model that has worked nothing out yet, as the frame after a command finds it.
+        if !skipped("after_edit") {
+            measure_after_edit(&mut report, &mut s, editable, repeats, skipped("plan"), skipped("inspect"))?;
         }
         if sheets {
             measure_sheets(&mut report, &mut s, repeats, skipped("scene"))?;
@@ -309,6 +314,50 @@ fn measure_section(report: &mut Value, s: &Session, name: &str, id: u64) -> Resu
     // What the picture is, to the pixel, and what is drawn over it: the same before and after a change that only speeds it.
     report[format!("{name}_picture_hash")] = json!(hash(&mut picture.rgba.iter().copied()));
     report[format!("{name}_drawing_hash")] = json!(hash(&mut render::png(&d)?.into_iter()));
+    Ok(())
+}
+
+/// A local edit (a column or a wall moved 10 mm) and what is asked of the model it makes before anything else: Level 1's
+/// plan drawn again in the same view, the door schedule's table, every room's boundary (`inspect`), each undone after. These
+/// are the costs an edit leaves the window, beside the edit's own; the median of `repeats`.
+fn measure_after_edit(
+    report: &mut Value,
+    s: &mut Session,
+    id: Option<u64>,
+    repeats: usize,
+    plan_skipped: bool,
+    inspect_skipped: bool,
+) -> Result<(), String> {
+    let Some(id) = id else { return Ok(()) };
+    let level = s.model.levels().first().map(|(id, _)| *id).ok_or("no levels")?;
+    let view = (!plan_skipped).then(|| render::plan(&s.model, level, 1280, 720).view);
+    let since = |start: Instant| start.elapsed().as_secs_f64() * 1000.0;
+    let (mut plans, mut tables, mut inspects) = (Vec::new(), Vec::new(), Vec::new());
+    for _ in 0..repeats {
+        s.execute("move", &json!({"ids": [id], "by": [10, 10]}))?;
+        if let Some(view) = view {
+            let start = Instant::now();
+            black_box(render::draw(&s.model, level, view));
+            plans.push(since(start));
+        }
+        let start = Instant::now();
+        let (view_id, sc) = bimcraft_core::schedule::standard(&s.model, "door");
+        black_box(bimcraft_core::schedule::table_kept(&s.model, view_id, &sc)?);
+        tables.push(since(start));
+        if !inspect_skipped {
+            let start = Instant::now();
+            black_box(s.execute("inspect", &json!({}))?);
+            inspects.push(since(start));
+        }
+        s.execute("undo", &json!({}))?;
+    }
+    for (name, mut samples) in [("plan_redraw_after_edit", plans), ("door_table_after_edit", tables), ("inspect_after_edit", inspects)] {
+        if samples.is_empty() {
+            continue;
+        }
+        samples.sort_by(f64::total_cmp);
+        report["ms"][format!("{name}_median")] = json!(samples[samples.len() / 2]);
+    }
     Ok(())
 }
 
