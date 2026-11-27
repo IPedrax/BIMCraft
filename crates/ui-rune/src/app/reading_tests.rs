@@ -115,3 +115,59 @@ fn a_wall_drawn_as_a_rectangle_takes_no_typed_line_and_rotate_turns_by_the_angle
     assert!(app.undo());
     assert_eq!(start(&app), was);
 }
+
+#[test]
+fn a_rectangles_width_and_height_and_a_circles_radius_are_typed_and_enter_makes_the_walls() {
+    let mut app = App::sample();
+    app.set_tool("wall");
+    app.set_shape(Shape::Rectangle);
+    assert!(!app.type_text("3"), "no corner yet: nothing to measure from");
+    click(&mut app, A);
+    let before = walls(&app);
+    hover(&mut app, P2(A.0 + 100.0, A.1 + 100.0));
+    assert!(app.type_text("3000") && app.typed_tab() && app.type_text("2000"));
+    assert!(app.status().contains("Width 3000") && app.status().contains("Height 2000"), "{}", app.status());
+    assert!(app.finish_tool() && app.message.is_none(), "{:?}", app.message);
+    assert!(walls(&app) > before && app.picked.is_empty() && app.typed.is_empty(), "{:?}", app.picked);
+    let corner = app.session.model.elements.iter().any(|(_, e)| matches!(e, Element::Wall(w) if near(Some(&w.end), A.0 + 3000.0, A.1 + 2000.0)));
+    assert!(corner, "the far corner is the width and the height from the first, on the pointer's side");
+
+    let mut app = App::sample();
+    app.set_tool("wall");
+    app.set_shape(Shape::Circle);
+    click(&mut app, A);
+    let before = walls(&app);
+    assert!(app.type_text("1500") && !app.typed_tab(), "a circle has one number: Tab is nobody's");
+    assert!(app.finish_tool() && app.message.is_none(), "{:?}", app.message);
+    let round = app.session.model.elements.iter().any(|(_, e)| matches!(e, Element::Wall(w) if w.arc != 0.0 && (w.start.dist(A) - 1500.0).abs() < 2.0));
+    assert!(walls(&app) > before && round, "half circles of the radius typed");
+}
+
+#[test]
+fn an_arcs_angle_is_typed_in_degrees_and_what_cannot_be_drawn_is_said_and_keeps_the_points() {
+    let mut app = App::sample();
+    app.set_tool("wall");
+    app.set_shape(Shape::CentreArc);
+    click(&mut app, A);
+    click(&mut app, P2(A.0 + 1000.0, A.1));
+    hover(&mut app, P2(A.0, A.1 + 1000.0));
+    let before = walls(&app);
+    assert!(app.type_text("90°") && app.status().contains("Angle"), "{}", app.status());
+    assert!(app.finish_tool() && app.message.is_none(), "{:?}", app.message);
+    let arc = app.session.model.elements.iter().find_map(|(_, e)| match e {
+        Element::Wall(w) if w.arc != 0.0 => Some(w.arc),
+        _ => None,
+    });
+    assert!(walls(&app) == before + 1 && arc.is_some_and(|a| (a.abs() - 90.0).abs() < 1.0), "a quarter turn: {arc:?}");
+
+    let mut app = App::sample();
+    app.set_tool("wall");
+    app.set_shape(Shape::Arc);
+    click(&mut app, A);
+    click(&mut app, B);
+    // The chord is 4000 mm: no arc of radius 1000 spans it.
+    assert!(app.type_text("1000") && app.finish_tool());
+    assert!(app.message.as_deref().is_some_and(|m| m.contains("can't be drawn")), "{:?}", app.message);
+    assert_eq!(app.picked.len(), 2, "the points stay");
+    assert!(app.typed.is_empty() && !app.type_text("x"), "what was typed is spent, and a letter is nobody's");
+}

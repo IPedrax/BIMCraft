@@ -30,6 +30,7 @@ pub mod select;
 pub mod settings;
 pub mod snapping;
 pub mod software;
+pub mod stand;
 pub mod status;
 pub mod tempdim;
 pub mod tooling;

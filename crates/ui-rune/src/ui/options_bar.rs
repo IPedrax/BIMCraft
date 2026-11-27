@@ -104,8 +104,8 @@ pub fn bar(s: &App) -> Option<El> {
     let th = tok::theme(s.dark());
     let kit = Kit::neutral(s.dark());
     let cells: Vec<El> = items.iter().map(|item| cell(s, item, &th, &kit)).collect();
-    // Under the shape bar, which the Wall tool has.
-    let top = if draw_bar::takes_shape(s) { 44.0 } else { 8.0 };
+    // Under the shape bar, which the Wall tool has: two rows of buttons, 8 + 4 + 24 + 4 + 24 + 4 points tall.
+    let top = if draw_bar::takes_shape(s) { 72.0 } else { 8.0 };
     let mut c = col().key("options-bar").gap(4.0).pin(Some(8.0), Some(top), None, None);
     c = c.child(row().gap(10.0).padding(4.0).radius(8.0).fill(th.card).center_y().children(cells));
     let open = s.bar.open.and_then(|key| items.iter().find(|i| i.key == key));

@@ -97,6 +97,10 @@ impl App {
         if let Some(level) = self.level {
             for (name, params) in commands.iter_mut() {
                 // A command of the tool's own takes the settings; another it makes (Pick Faces' `wall_by_face`) takes the type only.
+                // Fillet Arc's `fillet` rounds walls that are there: it has no type to give.
+                if *name == "fillet" {
+                    continue;
+                }
                 if *name != spec.command {
                     self.bar.settings.feed_type(spec.id, &self.session.model, params);
                     continue;

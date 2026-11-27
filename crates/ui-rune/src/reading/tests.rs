@@ -64,3 +64,28 @@ fn what_is_no_length_or_no_angle_or_reaches_too_far_is_refused_with_what_was_typ
     let r = reading(&Typed { length: "350".into(), angle: String::new(), field: Field::Angle });
     assert!(r.contains("350") && r.contains('_'), "{r}");
 }
+
+#[test]
+fn a_shapes_numbers_are_read_in_the_order_of_its_names_a_length_or_an_angle_and_a_blank_one_keeps_the_pointers() {
+    let names = ["Width", "Height"];
+    assert_eq!(numbers(&names, &typed("3000", "2000"), MM), Ok(vec![Some(3000.0), Some(2000.0)]));
+    assert_eq!(numbers(&names, &typed("3000", ""), MM), Ok(vec![Some(3000.0), None]));
+    assert_eq!(numbers(&["Angle"], &typed("90°", ""), MM), Ok(vec![Some(90.0)]));
+    assert_eq!(numbers(&["Radius"], &typed("2", ""), Units::Metres), Ok(vec![Some(2000.0)]), "a bare number is in the project's unit");
+    for bad in ["x", "0", "-5", "1e999", "99999999999"] {
+        assert!(numbers(&["Radius"], &typed(bad, ""), MM).is_err(), "{bad} is no length");
+    }
+    for bad in ["x", "0", "400", "1e999"] {
+        assert!(numbers(&["Angle"], &typed(bad, ""), MM).is_err(), "{bad} is no angle");
+    }
+}
+
+#[test]
+fn the_reading_names_each_number_and_marks_the_field_tab_is_on() {
+    let r = shape_reading(&["Width", "Height"], &typed("30", ""));
+    assert!(r.contains("Width 30") && r.contains("Height …") && r.contains("Tab"), "{r}");
+    let on_height = shape_reading(&["Width", "Height"], &Typed { field: Field::Angle, ..typed("30", "") });
+    assert!(on_height.contains("Height _"), "{on_height}");
+    let one = shape_reading(&["Radius"], &typed("", ""));
+    assert!(one.contains("Radius _") && !one.contains("Tab"), "a shape with one number has no field to go to: {one}");
+}

@@ -144,6 +144,8 @@ pub enum Held {
     Nothing,
     Element(Id),
     Line(Line),
+    /// Fillet Arc's two walls, picked, which wait for the click or the number that sizes the arc.
+    Pair(Id, Id),
 }
 
 /// What the Draw panel has set, which the tools that take a shape read, what a Modify tool holds from its first pick, and where the
@@ -157,6 +159,8 @@ pub struct Tooling {
     pub menu: Option<(f32, f32)>,
     /// The end of the selected element being dragged by its grip (`grips.rs`).
     pub grip: Option<crate::grips::Grip>,
+    /// The way the line before ran where a Tangent End Arc starts (`tangent_at`), as of the last click; the arc's ghost leaves along it.
+    pub tangent: Option<P2>,
 }
 
 /// What the machine reads of the window and the model besides the points.
@@ -174,6 +178,8 @@ pub struct Ctx<'a> {
     pub held: Held,
     /// How near an element's line the pointer must be to pick it, millimetres.
     pub reach: f64,
+    /// The way the line before ran where it ended at the first point picked (`tangent_at`), which a Tangent End Arc leaves along.
+    pub tangent: Option<P2>,
 }
 
 /// A command and its params.
@@ -250,7 +256,7 @@ fn path(spec: &Spec, ctx: &Ctx, points: &[P2], key: &'static str, min: usize) ->
 
 /// The walls along `curves` (lines, arcs and circles; the rest make none): a run of segments joined end to end that turn alike is one
 /// `wall` command, as Revit's Wall does for a rectangle or a polygon; a circle is two half circles, which join into one closed command.
-fn walls_along(spec: &Spec, ctx: &Ctx, curves: &[bimcraft_core::curves::Curve]) -> Step {
+fn walls_along(spec: &Spec, ctx: &Ctx, curves: &[bimcraft_core::curves::Curve], keep: Chain) -> Step {
     let mut runs: Vec<(Vec<P2>, f64)> = Vec::new();
     for (a, b, arc) in draw::wall_segments(curves) {
         match runs.last_mut() {
@@ -272,7 +278,7 @@ fn walls_along(spec: &Spec, ctx: &Ctx, curves: &[bimcraft_core::curves::Curve]) 
     if commands.is_empty() {
         return Step::Refuse(t("That shape makes no wall.").to_string());
     }
-    Step::Run { commands, keep: Chain::No }
+    Step::Run { commands, keep }
 }
 
 /// Pick Lines: the line of the element clicked (a wall's location line, a detail line's curve, a grid, a beam), beside it by the Options Bar's
@@ -281,7 +287,7 @@ fn walls_along(spec: &Spec, ctx: &Ctx, curves: &[bimcraft_core::curves::Curve]) 
 fn pick_lines(spec: &Spec, ctx: &Ctx, at: P2) -> Step {
     let line = ctx.hovered.and_then(|id| draw::element_curve(ctx.model, id)).and_then(|c| draw::pick(&c, at, ctx.options.offset));
     match line {
-        Some(curve) => walls_along(spec, ctx, &[curve]),
+        Some(curve) => walls_along(spec, ctx, &[curve], Chain::No),
         None => Step::Refuse(tf("{}: click a wall or a line.", &[label(spec)])),
     }
 }
@@ -300,6 +306,10 @@ fn shaped(spec: &Spec, ctx: &Ctx, points: &[P2]) -> Step {
     if n == 0 || !ctx.shape.for_walls() {
         return Step::Refuse(tf("{}: {} is not drawn with clicks here.", &[label(spec), t(ctx.shape.label())]));
     }
+    // A Tangent End Arc leaves the wall before it: its first point is that wall's end.
+    if ctx.shape == Shape::TangentArc && ctx.tangent.is_none() {
+        return Step::Refuse(t("Tangent End Arc starts at the end of a wall: click one.").to_string());
+    }
     if points.len() < n {
         return Step::More;
     }
@@ -307,9 +317,77 @@ fn shaped(spec: &Spec, ctx: &Ctx, points: &[P2]) -> Step {
     if pts.len() < n {
         return Step::Ignore;
     }
-    match draw::make(ctx.shape, &pts, &ctx.options, None) {
-        Some(curves) => walls_along(spec, ctx, &curves),
+    // The end of a tangent arc is the point clicked last, which the next one starts from.
+    let keep = if ctx.shape == Shape::TangentArc { Chain::Last } else { Chain::No };
+    match draw::make(ctx.shape, &pts, &ctx.options, ctx.tangent) {
+        Some(curves) => walls_along(spec, ctx, &curves, keep),
         None => Step::Refuse(t("Those points make no shape.").to_string()),
+    }
+}
+
+/// The way a wall of the level or a detail line ran where it ended at `p` (a line that starts there, turned round): what a Tangent End
+/// Arc leaves along. None when no line meets `p`.
+pub fn tangent_at(m: &Model, level: Id, p: P2) -> Option<P2> {
+    let guid = m.guid(level);
+    m.elements.iter().find_map(|(id, e)| {
+        if !matches!(e, Element::DetailLine(_)) && !matches!(e, Element::Wall(w) if w.level == guid) {
+            return None;
+        }
+        let c = draw::element_curve(m, *id)?;
+        let (t0, t1) = c.domain();
+        if c.end().dist(p) <= TOL {
+            Some(c.tangent(t1))
+        } else if c.start().dist(p) <= TOL {
+            Some(c.tangent(t0) * -1.0)
+        } else {
+            None
+        }
+    })
+}
+
+/// The ends of a straight wall, which Fillet Arc rounds.
+fn straight(m: &Model, id: Id) -> Option<(P2, P2)> {
+    m.wall(id).filter(|w| w.arc == 0.0).map(|w| (w.start, w.end))
+}
+
+/// The radius of the arc that rounds walls `a` and `b` and passes nearest `at`: where their lines meet is the corner, and each wall is
+/// taken to its end farther from it. None when they are parallel or no wall.
+pub fn fillet_radius_at(m: &Model, a: Id, b: Id, at: P2) -> Option<f64> {
+    let ((a0, a1), (b0, b1)) = (straight(m, a)?, straight(m, b)?);
+    let corner = bimcraft_core::geom::line_intersection(a0, a1, b0, b1)?;
+    let far = |p: P2, q: P2| if p.dist(corner) > q.dist(corner) { p } else { q };
+    bimcraft_core::curves::fillet_radius(far(a0, a1), corner, far(b0, b1), at).filter(|r| *r <= bimcraft_core::model::MAX_COORD)
+}
+
+/// The step that rounds walls `a` and `b` with an arc of `radius`: the core's `fillet`, which cuts each back to it.
+pub fn round(a: Id, b: Id, radius: f64) -> Step {
+    Step::Run { commands: vec![("fillet", json!({"ids": [a, b], "radius": radius}))], keep: Chain::No }
+}
+
+/// Fillet Arc: a straight wall picked, a second, then the click that sizes the arc (or the radius the shape options set, which makes it at
+/// the second pick; a number typed makes it too, `App::place_typed`). The picks are the walls under the pointer.
+fn fillet(ctx: &Ctx, points: &[P2]) -> Step {
+    let Some(&last) = points.last() else { return Step::More };
+    let wall = ctx.hovered.filter(|id| straight(ctx.model, *id).is_some());
+    let what = || t(Shape::Fillet.label());
+    match (points.len(), ctx.held) {
+        (1, _) => match wall {
+            Some(id) => Step::Hold(Held::Element(id)),
+            None => Step::Refuse(tf("{}: click a straight wall.", &[what()])),
+        },
+        (2, Held::Element(a) | Held::Pair(a, _)) => match wall {
+            Some(b) if b != a => match ctx.options.radius.filter(|r| r.is_finite() && *r > TOL) {
+                Some(r) => round(a, b, r),
+                None => Step::Hold(Held::Pair(a, b)),
+            },
+            Some(_) => Step::Ignore,
+            None => Step::Refuse(tf("{}: click a second straight wall.", &[what()])),
+        },
+        (3, Held::Pair(a, b)) => match fillet_radius_at(ctx.model, a, b, last) {
+            Some(r) => round(a, b, r),
+            None => Step::Refuse(tf("{}: those walls are parallel, so they make no corner.", &[what()])),
+        },
+        _ => Step::Ignore,
     }
 }
 
@@ -344,6 +422,9 @@ pub fn advance(spec: &Spec, ctx: &Ctx, points: &[P2]) -> Step {
             }
             if shapes && ctx.shape == Shape::PickFaces {
                 return pick_faces(spec, ctx, last);
+            }
+            if shapes && ctx.shape == Shape::Fillet {
+                return fillet(ctx, points);
             }
             if shapes && ctx.shape != Shape::Line {
                 return shaped(spec, ctx, points);

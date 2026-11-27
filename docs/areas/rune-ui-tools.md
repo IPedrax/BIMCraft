@@ -123,15 +123,15 @@ of the view there), and a dimension's locks and equality.
   a door that swings and the face of a door or window (the pointer's side of the wall, turned by Space for the next one), and the roof or floor a
   click made selected with the tool put down (`options.rs`, `Settings::feed`; `app/tooling.rs`). Still egui's alone: a wall's fixed-grid ends, a stair's
   or ramp's path with landings and winders (a stair is its two ends), the rafters of a roof by extrusion, dormers, shafts, slope arrows,
-  mass, detail lines, grids, reference planes, sections and cameras, the Revit shortcuts (they wait for the shared registry), and a shape's own
-  typed numbers (a rectangle's width and height, a circle's radius: `draw::typed`). The typed length and angle of a line is built
+  mass, detail lines, grids, reference planes, sections and cameras, and the Revit shortcuts (they wait for the shared registry). The typed length
+  and angle of a line, and a shape's own numbers (a rectangle's width and height, a radius, an angle), are built
   ([the palette doc](rune-ui-properties.md#round-2-the-typed-length-and-angle)).
-- **Shapes that pick elements**: Pick Lines (the line of the element clicked, beside it by the shape options' offset) and Pick Faces (a mass's face,
-  `wall_by_face`) are on the shape bar. Pick Lines takes a wall by its location line, where egui takes the face under the pointer. Left out: Fillet
-  Arc (two lines and a radius, which egui builds by trimming what is there) and Tangent End Arc (which needs the wall before it); the machine
-  refuses them if a test sets them. Open-ended shapes (spline, polyline) are not walls in the core.
-- **Previews of what stands:** a ghost of the wall's thickness, of a door in its wall, of a column are not built. The pointer's glyph, the chain
-  and a shape's ghost are all a tool shows.
+- **Shapes that pick elements**: Pick Lines (the line of the element clicked, beside it by the shape options' offset), Pick Faces (a mass's face,
+  `wall_by_face`) and Fillet Arc (two straight walls, then the click or the typed radius that sizes the arc) are on the shape bar, and Tangent End Arc
+  leaves the wall that ends at its first point ([the palette doc](rune-ui-properties.md#round-3-the-tools-leftovers)). Pick Lines takes a wall by its location
+  line, where egui takes the face under the pointer. Open-ended shapes (spline, polyline) are not walls in the core.
+- **Previews of what stands** are built for a wall (its thickness, by the type and location line), a door or a window (in the wall under the pointer) and a column;
+  not for a structural column, a footing, a beam or a component, and with no dimensions beside them.
 - **A drag with a tool in hand** still pans on the primary button (the placeholder of stage 3, slice 4); a Modify tool takes the two
   clicks of a base point and a destination, not the press, drag and release of one.
 

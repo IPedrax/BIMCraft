@@ -112,6 +112,35 @@ pub fn point(base: P2, cursor: Option<P2>, typed: &Typed, units: Units) -> Resul
     }
 }
 
+/// A number typed for a shape, named as the core names them (`draw::numbers`): an angle (degrees, above nothing and at most a turn), else a
+/// length in `units`, above nothing and no farther than the model reaches.
+pub fn number_of(name: &str, text: &str, units: Units) -> Result<f64, String> {
+    if name != "Angle" {
+        return length_of(text, units);
+    }
+    match text.trim().trim_end_matches('°').trim().parse::<f64>() {
+        Ok(a) if a.is_finite() && a > 0.0 && a <= 360.0 => Ok(a),
+        _ => Err(tf("`{}` is not an angle", &[text.trim()])),
+    }
+}
+
+/// What is typed for a shape's numbers, one value for each of `names` (the first in the length field, the second in the angle field): None
+/// where nothing is typed, so the pointer's stays; a number that is none is the error.
+pub fn numbers(names: &[&str], typed: &Typed, units: Units) -> Result<Vec<Option<f64>>, String> {
+    let texts = [&typed.length, &typed.angle];
+    let value = |(name, text): (&&str, &String)| if text.trim().is_empty() { Ok(None) } else { number_of(name, text, units).map(Some) };
+    names.iter().zip(texts).map(value).collect()
+}
+
+/// What the status line says while a shape's numbers are typed: each named, the field Tab is on marked.
+pub fn shape_reading(names: &[&'static str], typed: &Typed) -> String {
+    let said = |s: &str, on: bool| if s.is_empty() { if on { "_".to_string() } else { "…".to_string() } } else { s.to_string() };
+    let fields = [(&typed.length, Field::Length), (&typed.angle, Field::Angle)];
+    let parts: Vec<String> = names.iter().zip(fields).map(|(name, (s, f))| format!("{} {}", t(name), said(s, typed.field == f))).collect();
+    let more = if names.len() > 1 { "{} | Tab switches the field, Enter places the point" } else { "{} | Enter places the point" };
+    tf(more, &[&parts.join(" | ")])
+}
+
 /// What the status line says while something is typed.
 pub fn reading(typed: &Typed) -> String {
     let said = |s: &str, on: bool| if s.is_empty() { if on { "_".to_string() } else { "…".to_string() } } else { s.to_string() };

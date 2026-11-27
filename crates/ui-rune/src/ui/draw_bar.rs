@@ -4,15 +4,15 @@
 
 use bimcraft_core::draw::Shape;
 use rune::tok::{self, Theme, type_};
-use rune::{El, el, row, text};
+use rune::{El, col, el, row, text};
 
 use crate::app::App;
 use crate::lang::t;
 use crate::tooling;
 
-/// The shapes a wall is drawn with by clicks, and the two that pick what is there (Pick Lines, Pick Faces). Fillet Arc needs two lines and a
-/// radius, and Tangent End Arc the wall before it: neither is here yet.
-pub const SHAPES: [Shape; 9] = [
+/// The shapes a wall is drawn with by clicks, and the three that pick what is there (Fillet Arc rounds two walls, Pick Lines, Pick Faces).
+/// Tangent End Arc leaves the wall that ends at its first point.
+pub const SHAPES: [Shape; 11] = [
     Shape::Line,
     Shape::Rectangle,
     Shape::Inscribed,
@@ -20,6 +20,8 @@ pub const SHAPES: [Shape; 9] = [
     Shape::Circle,
     Shape::Arc,
     Shape::CentreArc,
+    Shape::TangentArc,
+    Shape::Fillet,
     Shape::PickLines,
     Shape::PickFaces,
 ];
@@ -52,6 +54,10 @@ pub fn bar(s: &App) -> Option<El> {
     }
     let th = tok::theme(s.dark());
     let now = s.tooling.shape;
-    let buttons: Vec<El> = SHAPES.iter().map(|&shape| button(shape, shape == now, &th)).collect();
-    Some(row().key("draw-bar").gap(4.0).padding(4.0).radius(8.0).fill(th.card).pin(Some(8.0), Some(8.0), None, None).children(buttons))
+    // Two rows: eleven buttons side by side are wider than the plan.
+    let rows = SHAPES.chunks(SHAPES.len().div_ceil(2)).map(|shapes| {
+        let buttons: Vec<El> = shapes.iter().map(|&shape| button(shape, shape == now, &th)).collect();
+        row().gap(4.0).children(buttons)
+    });
+    Some(col().key("draw-bar").gap(4.0).padding(4.0).radius(8.0).fill(th.card).pin(Some(8.0), Some(8.0), None, None).children(rows))
 }

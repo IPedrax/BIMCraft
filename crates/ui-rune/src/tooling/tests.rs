@@ -30,6 +30,7 @@ impl World {
             selection: &[],
             held: Held::Nothing,
             reach: 100.0,
+            tangent: None,
         }
     }
 }
@@ -191,6 +192,7 @@ fn a_click_on_a_stair_makes_a_railing_for_it_and_one_on_a_wall_does_not() {
         selection: &[],
         held: Held::Nothing,
         reach: 100.0,
+        tangent: None,
     };
     let (cmds, _) = run_of(advance(of("railing"), &ctx(Some(stair)), &pts(&[A])));
     assert_eq!((cmds[0].0, &cmds[0].1["host"]), ("railing", &json!(stair)));
@@ -373,4 +375,63 @@ fn pick_lines_makes_the_walls_along_the_element_clicked_beside_it_by_the_offset_
     assert!(matches!(advance(of("wall"), &nothing, &pts(&[A])), Step::Refuse(_)), "nothing to pick");
     let faces = Ctx { shape: Shape::PickFaces, ..w.ctx() };
     assert!(matches!(advance(of("wall"), &faces, &pts(&[A])), Step::Refuse(_)), "the house has no mass");
+}
+
+/// Two straight walls meeting at a corner far from the house: the first runs east to it, the second north from it.
+fn corner() -> (World, Id, Id) {
+    let mut app = App::sample();
+    let level = app.level.expect("a level");
+    let mut wall = |a: [f64; 2], b: [f64; 2]| {
+        assert!(app.run("wall", &json!({"points": [a, b], "level": level})), "{:?}", app.message);
+        let walls = app.session.model.elements.iter().filter(|(_, e)| matches!(e, bimcraft_core::model::Element::Wall(_)));
+        walls.map(|(id, _)| *id).max().expect("a wall")
+    };
+    let a = wall([-30000.0, -30000.0], [-26000.0, -30000.0]);
+    let b = wall([-26000.0, -30000.0], [-26000.0, -27000.0]);
+    (World { level, model: (*app.session.model).clone() }, a, b)
+}
+
+const INSIDE: (f64, f64) = (-26700.0, -29300.0);
+
+#[test]
+fn fillet_arc_holds_two_straight_walls_and_a_third_click_or_the_radius_option_sizes_the_arc() {
+    let (w, a, b) = corner();
+    let wall = of("wall");
+    let on = |hovered, held| Ctx { hovered, held, shape: Shape::Fillet, ..w.ctx() };
+    assert_eq!(advance(wall, &on(Some(a), Held::Nothing), &pts(&[A])), Step::Hold(Held::Element(a)));
+    assert!(matches!(advance(wall, &on(None, Held::Nothing), &pts(&[A])), Step::Refuse(_)), "no wall under the pointer");
+    assert_eq!(advance(wall, &on(Some(b), Held::Element(a)), &pts(&[A, B])), Step::Hold(Held::Pair(a, b)));
+    assert_eq!(advance(wall, &on(Some(b), Held::Pair(a, b)), &pts(&[A, B])), Step::Hold(Held::Pair(a, b)), "a second pick again, after Backspace");
+    assert_eq!(advance(wall, &on(Some(a), Held::Element(a)), &pts(&[A, B])), Step::Ignore, "the same wall twice is no corner");
+    assert!(matches!(advance(wall, &on(None, Held::Element(a)), &pts(&[A, B])), Step::Refuse(_)));
+    let sized = Ctx { options: Options { radius: Some(500.0), ..Options::default() }, ..on(Some(b), Held::Element(a)) };
+    let (cmds, keep) = run_of(advance(wall, &sized, &pts(&[A, B])));
+    assert_eq!((cmds[0].0, keep), ("fillet", Chain::No), "the radius option makes it at the second pick");
+    assert_eq!((&cmds[0].1["ids"], cmds[0].1["radius"].as_f64()), (&json!([a, b]), Some(500.0)));
+    // The pointer 700 mm in from the corner each way: the arc that passes through it has a radius of about 2390.
+    let (cmds, _) = run_of(advance(wall, &on(None, Held::Pair(a, b)), &pts(&[A, B, INSIDE])));
+    let r = cmds[0].1["radius"].as_f64().unwrap_or(0.0);
+    assert!((r - 2390.0).abs() < 5.0, "{r}");
+    assert!(fillet_radius_at(&w.model, a, a, P2(INSIDE.0, INSIDE.1)).is_none(), "a wall and itself are parallel");
+    assert!(matches!(advance(wall, &on(None, Held::Nothing), &pts(&[A, B, INSIDE])), Step::Ignore), "a third click with no pair held");
+}
+
+#[test]
+fn tangent_end_arc_leaves_the_wall_that_ends_at_its_first_point_and_the_next_arc_starts_at_its_end() {
+    let (w, ..) = corner();
+    let wall = of("wall");
+    let with = |tangent| Ctx { shape: Shape::TangentArc, tangent, ..w.ctx() };
+    assert!(matches!(advance(wall, &with(None), &pts(&[A])), Step::Refuse(_)), "no wall ends at the first point");
+    let east = Some(P2(1.0, 0.0));
+    assert_eq!(advance(wall, &with(east), &pts(&[A])), Step::More);
+    let (cmds, keep) = run_of(advance(wall, &with(east), &pts(&[A, (3000.0, 3000.0)])));
+    assert_eq!((cmds[0].0, keep), ("wall", Chain::Last), "the end clicked starts the next arc");
+    assert!(cmds[0].1["arc"].as_f64().is_some_and(|a| a.abs() > 45.0), "an arc, not a straight wall: {}", cmds[0].1);
+    // The way a wall of the level ran where it ends, or away from where it starts.
+    let at = |x: f64, y: f64| tangent_at(&w.model, w.level, P2(x, y));
+    let north = at(-26000.0, -27000.0).expect("the second wall ends there");
+    assert!(north.0.abs() < 1e-3 && (north.1 - 1.0).abs() < 1e-3, "{north:?}");
+    let west = at(-30000.0, -30000.0).expect("the first wall starts there");
+    assert!((west.0 + 1.0).abs() < 1e-3 && west.1.abs() < 1e-3, "away from where it starts: {west:?}");
+    assert!(at(-12345.0, -12345.0).is_none(), "no line ends there");
 }

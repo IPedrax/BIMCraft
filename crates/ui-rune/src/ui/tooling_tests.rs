@@ -99,7 +99,7 @@ fn the_wall_tool_has_a_shape_bar_that_picks_a_shape_and_shows_what_the_next_clic
     settle(&mut rt);
     assert!(rt.find("draw-bar").is_some(), "the Wall tool takes a shape");
     let buttons: Vec<_> = rt.elements().into_iter().filter(|e| e.role == "button").filter_map(|e| e.key).collect();
-    for key in ["shape-line", "shape-rectangle", "shape-circle", "shape-centrearc"] {
+    for key in ["shape-line", "shape-rectangle", "shape-circle", "shape-centrearc", "shape-tangentarc", "shape-fillet"] {
         assert!(buttons.iter().any(|k| k == key), "{key} is a button to a screen reader: {buttons:?}");
     }
     let rectangle = rt.find("shape-rectangle").expect("the Rectangle button");

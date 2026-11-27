@@ -283,3 +283,100 @@ fn align_moves_the_second_wall_onto_the_first_ones_line_and_offset_copies_across
     click(&mut app, P2(-28000.0, -29000.0));
     assert_eq!(walls(&app), before + 1, "{:?}", app.message);
 }
+
+/// Two walls meeting at B, picked with Fillet Arc in hand: the first runs east to it, the second north from it.
+fn two_walls_picked_for_a_fillet(app: &mut App) -> (u64, u64) {
+    let (first, second) = (make_wall(app, A, B), make_wall(app, B, C));
+    look_at(app, P2(-28000.0, -28000.0));
+    app.set_tool("wall");
+    app.set_shape(Shape::Fillet);
+    click(app, P2(-29000.0, -30000.0));
+    assert_eq!(app.tooling.held, crate::tooling::Held::Element(first), "{:?}", app.message);
+    click(app, P2(-26000.0, -28000.0));
+    assert_eq!((app.picked.len(), app.tooling.held), (2, crate::tooling::Held::Pair(first, second)), "{:?}", app.message);
+    (first, second)
+}
+
+#[test]
+fn fillet_arc_picks_two_walls_and_a_click_sizes_the_arc_with_the_walls_cut_back_to_it() {
+    let mut app = App::sample();
+    let before = walls(&app) + 2;
+    let (first, _) = two_walls_picked_for_a_fillet(&mut app);
+    hover(&mut app, P2(-26700.0, -29300.0));
+    assert_eq!(app.shape_preview().len(), 3, "the ghost is the arc and the two walls cut back to it");
+    click(&mut app, P2(-26700.0, -29300.0));
+    assert!(app.message.is_none(), "{:?}", app.message);
+    assert_eq!(walls(&app), before + 1, "the arc is a wall of its own");
+    let (start, end) = ends(&app, first);
+    assert!(start.dist(B).min(end.dist(B)) > 500.0, "the first wall is cut back from the corner: {start:?} {end:?}");
+    assert!(app.picked.is_empty() && app.tooling.held == crate::tooling::Held::Nothing && app.tool == Some("wall"));
+    assert!(app.undo() && walls(&app) == before, "one undo step");
+}
+
+#[test]
+fn fillet_arc_takes_the_radius_typed_after_its_two_walls_and_says_when_it_does_not_fit() {
+    let mut app = App::sample();
+    let before = walls(&app) + 2;
+    two_walls_picked_for_a_fillet(&mut app);
+    hover(&mut app, P2(-26700.0, -29300.0));
+    assert!(app.type_text("900"));
+    assert!(app.status().contains("Radius") && app.status().contains("900"), "{}", app.status());
+    assert_eq!(app.shape_preview().len(), 3, "the ghost has the radius typed");
+    assert!(app.finish_tool() && app.message.is_none(), "{:?}", app.message);
+    assert_eq!((walls(&app), app.picked.len()), (before + 1, 0));
+    // Two walls again, a radius too big for them: refused, and the walls stay picked to be sized again.
+    let mut app = App::sample();
+    two_walls_picked_for_a_fillet(&mut app);
+    assert!(app.type_text("90000") && app.finish_tool());
+    assert!(app.message.is_some() && app.picked.len() == 2, "{:?} {:?}", app.message, app.picked);
+}
+
+#[test]
+fn tangent_end_arc_starts_at_the_end_of_a_wall_leaves_the_way_it_ran_and_goes_on_from_its_end() {
+    let mut app = App::sample();
+    make_wall(&mut app, A, B);
+    let before = walls(&app);
+    look_at(&mut app, P2(-24000.0, -28000.0));
+    app.set_tool("wall");
+    app.set_shape(Shape::TangentArc);
+    click(&mut app, P2(-20000.0, -20000.0));
+    assert!(app.message.is_some() && app.picked.is_empty(), "no wall ends there: {:?}", app.message);
+    click(&mut app, B);
+    assert_eq!(app.picked.len(), 1, "{:?}", app.message);
+    assert!(app.tooling.tangent.is_some_and(|t| (t.0 - 1.0).abs() < 1e-3 && t.1.abs() < 1e-3), "east, the way the wall ran: {:?}", app.tooling.tangent);
+    hover(&mut app, P2(-23000.0, -27000.0));
+    assert!(!app.shape_preview().is_empty(), "the ghost of the arc");
+    click(&mut app, P2(-23000.0, -27000.0));
+    assert_eq!(walls(&app), before + 1, "{:?}", app.message);
+    assert!(app.picked.len() == 1 && near(app.picked[0], -23000.0, -27000.0), "the next arc starts where this one ended: {:?}", app.picked);
+    let arc = app.session.model.elements.iter().find_map(|(_, e)| match e {
+        Element::Wall(w) if w.arc != 0.0 => Some(w.arc),
+        _ => None,
+    });
+    assert!(arc.is_some_and(|a| a.abs() > 45.0), "an arc wall was made: {arc:?}");
+}
+
+#[test]
+fn a_wall_ghost_is_as_thick_as_its_type_and_a_door_or_a_column_stands_where_the_pointer_is() {
+    let mut app = App::sample();
+    look_at(&mut app, P2(-28000.0, -28000.0));
+    app.set_tool("wall");
+    hover(&mut app, A);
+    assert!(app.shape_preview().is_empty() && app.stands().is_none(), "nothing yet, before the first point");
+    click(&mut app, A);
+    hover(&mut app, B);
+    let ghost = app.shape_preview();
+    assert!(matches!(ghost.as_slice(), [bimcraft_core::curves::Curve::Poly { closed: true, .. }]), "the wall's outline: {ghost:?}");
+    app.set_tool("wall");
+    app.set_tool("column");
+    hover(&mut app, A);
+    let column = app.stands();
+    assert!(column.is_some_and(|(d, id)| d.owners.iter().any(|o| *o == Some(id))), "the column drawn as the plan draws it");
+    app.set_tool("column");
+    app.set_tool("door");
+    hover(&mut app, A);
+    assert!(app.stands().is_none(), "over no wall a door stands nowhere");
+    look_at(&mut app, P2(1000.0, 0.0));
+    hover(&mut app, P2(1000.0, 0.0));
+    assert!(app.stands().is_some(), "over the house's south wall it stands in it");
+}
