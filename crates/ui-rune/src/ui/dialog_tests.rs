@@ -260,7 +260,7 @@ fn the_manage_button_lists_the_managers_and_a_press_opens_one() {
     let mut rt = window();
     tap(&mut rt, "manage");
     assert_eq!(rt.state.dialogs.find.as_ref().map(|f| f.edit.text.as_str()), Some("manage"), "Find opens on the word");
-    assert!(rt.find("hit-10").is_some(), "the eleven managers are listed");
+    assert!(rt.find("hit-11").is_some(), "the twelve managers are listed");
     tap(&mut rt, "hit-0");
     assert_eq!(rt.state.dialogs.library.as_ref().map(|d| d.info.source), Some(crate::library::Source::Materials));
     assert!(rt.state.dialogs.find.is_none() && rt.find("lib-apply").is_some());
@@ -288,4 +288,17 @@ fn an_entry_of_a_manager_is_edited_and_applied_through_the_engine() {
     assert_eq!(rt.state.session.model.text_types["Rune Text"].size, 7.0, "the entry changed through the engine");
     assert!(rt.find("lib-done").is_some() && rt.find("lib-error").is_none());
     assert!(rt.find("lib-delete").is_some() && rt.find("lib-rename").is_some(), "a text type is renamed and deleted");
+}
+
+#[test]
+fn the_locations_manager_offers_the_forms_of_the_commands_that_go_with_it() {
+    let mut rt = window();
+    rt.update(|s, _| s.open_library(crate::library::Source::Locations));
+    rt.frame(0.0);
+    rt.frame(0.0);
+    let n = crate::library::Source::Locations.also().len();
+    assert!(rt.find(&format!("lib-also-{}", n - 1)).is_some() && rt.find("lib-also-0").is_some(), "one button for each command");
+    tap(&mut rt, "lib-also-1");
+    assert_eq!(rt.state.dialogs.form.as_ref().map(|f| f.form.id), Some("specify_coordinates"), "Specify Coordinates at a Point");
+    assert!(rt.state.dialogs.library.is_none(), "dialogs are open one at a time");
 }

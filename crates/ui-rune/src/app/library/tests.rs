@@ -101,3 +101,26 @@ fn every_manager_opens_on_the_sample_house_and_an_object_style_is_not_deleted() 
     assert!(!app.library_delete(), "an object style is reset, not deleted");
     assert!(app.dialogs.library.as_ref().is_some_and(|d| d.error.is_some()));
 }
+
+#[test]
+fn a_location_is_changed_and_made_active_through_the_location_command() {
+    let mut app = App::sample();
+    app.execute("location", &json!({"name": "Rune Site", "east": 1000.0, "north": 2000.0})).expect("a site");
+    app.open_library(Source::Locations);
+    assert!(app.dialogs.library.as_ref().is_some_and(|d| d.names.iter().any(|n| n == "Rune Site")));
+    app.library_select("Rune Site");
+    let east = |app: &App| {
+        let m = &app.session.model;
+        m.site_named("Rune Site").map(|site| site.location(m.coordinates.survey).east)
+    };
+    assert!(east(&app).is_some_and(|e| (e - 1000.0).abs() < 1e-6), "{:?}", east(&app));
+    typed(&mut app, "east", "5000");
+    assert!(app.library_apply(), "{:?}", app.dialogs.library.as_ref().map(|d| &d.error));
+    assert!(east(&app).is_some_and(|e| (e - 5000.0).abs() < 1e-6), "{:?}", east(&app));
+    // It is not the active one yet, so the dialog offers to make it so.
+    assert_ne!(app.session.model.coordinates.active, "Rune Site");
+    assert!(app.dialogs.library.as_ref().is_some_and(|d| d.json.get("active") == Some(&json!(false))));
+    assert!(app.library_activate(), "{:?}", app.dialogs.library.as_ref().map(|d| &d.error));
+    assert_eq!(app.session.model.coordinates.active, "Rune Site");
+    assert!(app.dialogs.library.as_ref().is_some_and(|d| d.json.get("active") == Some(&json!(true))));
+}

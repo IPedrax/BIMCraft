@@ -3,7 +3,7 @@
 //! boxes, Apply, Rename and Delete, each one command of the core through `Session::execute`. A refusal is said in the dialog.
 
 use rune::TextEdit;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::App;
 use crate::forms;
@@ -133,6 +133,20 @@ impl App {
         match self.execute(command, &params) {
             Ok(_) => {
                 self.show_library(source, None, true);
+                true
+            }
+            Err(why) => self.library_refused(why),
+        }
+    }
+
+    /// Make active: the entry shown becomes the project's active one, when its command can make one so (a location).
+    pub fn library_activate(&mut self) -> bool {
+        let Some(d) = self.dialogs.library.as_ref() else { return false };
+        let Some(name) = d.selected.clone().filter(|_| library::takes(d.info, "activate")) else { return false };
+        let (command, source) = (d.info.command, d.info.source);
+        match self.execute(command, &json!({"name": name, "activate": true})) {
+            Ok(_) => {
+                self.show_library(source, Some(name), true);
                 true
             }
             Err(why) => self.library_refused(why),

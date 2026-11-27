@@ -4,6 +4,7 @@
 
 use rune::{El, ScrollSpec, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant, Dialog, Kit, Select, SelectAppearance, TextInput};
+use serde_json::Value;
 
 use crate::app::App;
 use crate::lang::t;
@@ -65,6 +66,17 @@ pub fn dialog(s: &App, k: &Kit, layer: &mut Vec<El>) {
     for r in d.rows.iter().filter(|r| !d.fields.iter().any(|f| f.name == r.name)) {
         rows = rows.child(line(k, &r.name, text(r.value.clone()).font(k.ty.ui).color(k.c.text_muted).wrap().w_full().mt(4.0)));
     }
+    // The forms of the other commands this kind of entry goes with.
+    for (i, &id) in d.info.source.also().iter().enumerate() {
+        let label = bimcraft_core::engine::find(id).map_or_else(|| id.to_string(), |c| t(c.label).to_string());
+        let open = Button::new(label)
+            .on_press(move |s: &mut App| {
+                s.open_command(id);
+            })
+            .build(k)
+            .key(format!("lib-also-{i}"));
+        rows = rows.child(line(k, if i == 0 { t("Related") } else { "" }, open));
+    }
     let mut status = col().key("lib-status").w_full().px(16.0).gap(8.0);
     if let Some(why) = &d.error {
         status = status.child(text(why.clone()).key("lib-error").font(k.ty.ui).color(k.c.danger.fg).wrap().w_full());
@@ -72,6 +84,16 @@ pub fn dialog(s: &App, k: &Kit, layer: &mut Vec<El>) {
         status = status.child(text(t("Applied").to_string()).key("lib-done").font(k.ty.ui).color(k.c.text_muted));
     }
     let mut footer = row().key("lib-footer").w_full().padding(16.0).gap(8.0).justify_end();
+    if d.json.get("active").and_then(Value::as_bool) == Some(false) && takes(d.info, "activate") {
+        footer = footer.child(
+            Button::new(t("Make active").to_string())
+                .on_press(|s: &mut App| {
+                    s.library_activate();
+                })
+                .build(k)
+                .key("lib-activate"),
+        );
+    }
     footer = footer.child(Button::new(t("New").to_string()).on_press(|s: &mut App| s.library_new()).build(k).key("lib-new"));
     if d.selected.is_some() && takes(d.info, "delete") {
         footer = footer.child(

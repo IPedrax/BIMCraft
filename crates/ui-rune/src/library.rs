@@ -25,6 +25,8 @@ pub enum Source {
     TextTypes,
     Parameters,
     ObjectStyles,
+    /// The project's named sites (Revit's Location, `LO`): the Survey Point's shared coordinates, true north, map system.
+    Locations,
 }
 
 /// How the command takes an entry.
@@ -45,7 +47,7 @@ pub struct Info {
     pub shape: Shape,
 }
 
-pub static ALL: [Info; 11] = [
+pub static ALL: [Info; 12] = [
     Info { source: Source::Materials, title: "Materials", command: "material", shape: Shape::Named },
     Info { source: Source::LineStyles, title: "Line Styles", command: "line_style", shape: Shape::Named },
     Info { source: Source::LinePatterns, title: "Line Patterns", command: "line_pattern", shape: Shape::Named },
@@ -57,11 +59,21 @@ pub static ALL: [Info; 11] = [
     Info { source: Source::TextTypes, title: "Text Types", command: "text_type", shape: Shape::Named },
     Info { source: Source::Parameters, title: "Project Parameters", command: "parameter", shape: Shape::Named },
     Info { source: Source::ObjectStyles, title: "Object Styles", command: "object_styles", shape: Shape::Categories },
+    Info { source: Source::Locations, title: "Locations", command: "location", shape: Shape::Named },
 ];
 
 impl Source {
     pub fn info(self) -> &'static Info {
         ALL.iter().find(|i| i.source == self).unwrap_or(&ALL[0])
+    }
+
+    /// Other commands of the core the manager's dialog opens the forms of: the project's points, a point's coordinates, true north and
+    /// the map system, which the `location` command alone does not set.
+    pub fn also(self) -> &'static [&'static str] {
+        match self {
+            Source::Locations => &["coordinates", "specify_coordinates", "rotate_project_north", "georeference", "convert_coordinates"],
+            _ => &[],
+        }
     }
 }
 
@@ -93,6 +105,22 @@ pub fn entries(model: &Model, source: Source) -> Vec<(String, Value)> {
         Source::TextTypes => table!(model.text_types),
         Source::Parameters => table!(model.parameters),
         Source::ObjectStyles => table!(model.object_styles),
+        Source::Locations => {
+            let co = &model.coordinates;
+            co.names()
+                .into_iter()
+                .filter_map(|name| {
+                    let site = model.site_named(name)?;
+                    let at = site.location(co.survey);
+                    let fields =
+                        json!({"east": at.east, "north": at.north, "elevation": at.elevation, "angle": at.angle, "scale": at.scale});
+                    let Value::Object(mut fields) = fields else { return None };
+                    fields.insert("crs".into(), json!(site.crs));
+                    fields.insert("active".into(), json!(name == co.active));
+                    Some((name.to_string(), Value::Object(fields)))
+                })
+                .collect()
+        }
     }
 }
 
@@ -184,6 +212,20 @@ mod tests {
             }
             assert!(Form::named(info.command).is_some(), "{}: the command is in the core's table", info.title);
         }
+    }
+
+    #[test]
+    fn the_commands_a_manager_offers_beside_its_own_are_in_the_core_and_the_locations_are_the_sites_of_the_project() {
+        for info in &ALL {
+            for id in info.source.also() {
+                assert!(Form::named(id).is_some(), "{}: {id} is a command of the core", info.title);
+            }
+        }
+        let s = session();
+        let sites = entries(&s.model, Source::Locations);
+        assert!(sites.iter().any(|(name, json)| *name == s.model.coordinates.active && json["active"] == json!(true)), "{sites:?}");
+        assert!(sites.iter().all(|(_, json)| ["east", "north", "elevation", "angle", "scale"].iter().all(|k| json[k].is_number())));
+        assert!(takes(Source::Locations.info(), "activate") && takes(Source::Locations.info(), "delete"));
     }
 
     #[test]
