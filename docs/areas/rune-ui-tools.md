@@ -114,10 +114,11 @@ of the view there), and a dimension's locks and equality.
 
 ## Not here yet
 
-- **The Options Bar.** Types, heights, the wall's location line, a beam's justification and offset, a ceiling's height, a roof's
-  slope, a stair's width, Chain on and off: every tool runs with the command's own defaults (and a chain is always on for walls and
-  runs). The curtain wall tool picks the first curtain type there is; a family tool the first family and type of its kind. The Type
-  Selector, the thing that would choose, belongs with the forms.
+- **The Options Bar** is built (`options.rs`, [the palette doc](rune-ui-properties.md#round-2-the-options-bar)) for the Wall (height, location
+  line, Chain), the runs (justification, offset, Chain), the columns (height), a strip footing (top offset), the ceiling (height offset), the
+  roof (slope, overhang, gable) and the stair (height, location line, offset, width), with the type the Type Selector picks for the tool.
+  Not on it yet: a ramp's, a footing's and a dormer's options, a stair's riser, tread and winders, the curtain wall's type, and a family tool
+  still places the first type of the first family unless one is picked.
 - **What egui adds to a click:** a door's or window's centring on its stretch of wall and its hand and facing (the click sends the
   point only; the core finds the wall), a wall's fixed-grid ends, a stair's or ramp's path with landings and winders (a stair is its
   two ends), the rafters of a roof by extrusion, dormers, shafts, slope arrows, mass, detail lines, grids, reference planes, sections

@@ -165,3 +165,26 @@ the electrical group of a board and a circuit, the project's parameters, a sheet
 schedule fields, a site point's panel), the greyed rows of a group's member, several views picked in the browser, a field committing when it loses
 the keyboard (the kit's `TextInput` gives Enter only), the Framing drop-down's Type Properties button, `Apply` (a field commits on Enter, as in egui),
 and the layer sample beside a wall type. The Revit shortcuts wait for the shared registry.
+
+## Round 2: the Options Bar
+
+What a tool in hand lets a person set before the click, so a tool no longer runs on the command's defaults or the first type there is
+(egui: `lib.rs` `options`, `canvas.rs` `wall_params` and `run_params`).
+
+- **The data** (`options.rs`, tested without a window): `controls(tool)` is the bar of each tool as a table (`Height`, `Field`, `List`, `Check`);
+  `Settings` holds what was set (the top a height goes up to, the typed fields by key, the location line, the justification, the stair line, Chain,
+  Gable, and the type picked for each category); `Settings::feed(tool, model, level, params)` joins it to the params the machine made (`tooling.rs`
+  is not touched): the type (not over one the machine named, and a family tool takes a family only of its kinds), `top_level` or an unconnected
+  `height`, `location`, `justify` and `offset`, `slope`, `overhang`, `gable`, `width`, `line`. A field that is no length, or a slope outside
+  0 to 90 degrees, is refused with its text in the message and the click is given back. `items(tool, ...)` is what the bar shows, in the project's
+  units; a height list ends with Unconnected, and its field shows only then. Fields default as egui's do (3000, 2600, 500, 30 degrees, the stair's
+  1000), written in the project's units.
+- **The App slice** (`app/options.rs`): `Bar` holds the settings, a `TextEdit` for each typed field of the tool in hand (made when the tool changes,
+  what was typed kept in the settings between tools), and which list is open. `drive` calls `feed_options` on what a click makes, which also turns
+  a chain the bar switched off into one wall per pair of clicks.
+- **The Type Selector for a tool**: with nothing selected and a tool in hand the palette is about what it places (`Subject::New(category)`, title
+  "New Wall"): the selector lists the category's types and a door's or window's family types too, with the pick (or the project's usual type) as the
+  current one. Picking one stores it in the settings (`App::pick_type`), not as a change to an element. Selecting something brings the palette
+  back to the selection; putting the tool down, to the plan.
+- **The widget** (`ui/options_bar.rs`): a row pinned over the plan's top left (under the shape bar), with lists that open under it, fields,
+  and Chain or Gable.

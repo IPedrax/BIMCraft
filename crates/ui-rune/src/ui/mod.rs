@@ -16,6 +16,7 @@ mod draw_bar;
 mod export;
 mod find;
 mod menu;
+mod options_bar;
 mod plan;
 mod properties;
 mod ribbon;
