@@ -12789,6 +12789,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 slant,
                 profile: Vec::new(),
                 framing: None,
+                imported: None,
             }))),
             _ => None,
         })
@@ -13154,6 +13155,7 @@ fn floor(s: &mut Session, p: &Value) -> R {
     // Its openings lie inside it and apart, or the model refuses it.
     let area = m2(geom::area(&boundary) - openings.iter().map(|o| geom::area(o).abs()).sum::<f64>());
     let id = s.model_mut().insert(Element::Floor(Floor {
+        imported: None,
         params: Default::default(),
         type_name,
         level,
@@ -13206,6 +13208,7 @@ fn ceiling(s: &mut Session, p: &Value) -> R {
     // Its openings lie inside it and apart, or the model refuses it.
     let area = m2(geom::area(&boundary) - openings.iter().map(|o| geom::area(o).abs()).sum::<f64>());
     let id = s.model_mut().insert(Element::Ceiling(Ceiling {
+        imported: None,
         params: Default::default(),
         type_name,
         level,
@@ -15045,6 +15048,7 @@ pub fn stood_of(m: &Model, p: &Value, category: &str) -> Result<Element, String>
         }
         let top = num(c, p, "offset")?.unwrap_or(0.0);
         let col = Column {
+            imported: None,
             params: Default::default(),
             type_name,
             level,
@@ -15062,6 +15066,7 @@ pub fn stood_of(m: &Model, p: &Value, category: &str) -> Result<Element, String>
     }
     let (top_level, height) = top_param(c, m, p, level)?;
     let col = Column {
+        imported: None,
         room_bounding: true,
         params: Default::default(),
         type_name,
@@ -15220,6 +15225,7 @@ pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, Str
             [a, b] => Element::of_run(
                 category,
                 crate::model::Run {
+                    imported: None,
                     type_name: type_name.clone(),
                     level,
                     start: *a,
@@ -15499,6 +15505,7 @@ fn roof(s: &mut Session, p: &Value) -> R {
         (None, false, None) => roof_footprint(m, level, overhang).map_err(|e| bad(c, e))?,
     };
     let mut r = Roof {
+        imported: None,
         params: Default::default(),
         type_name,
         level,
@@ -15616,6 +15623,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
     let boundary = [at - u * f + n * h, at - u * f - n * h, at + u * back - n * h, at + u * back + n * h].map(micron).to_vec();
     let model = s.model_mut();
     let roof = model.insert(Element::Roof(Roof {
+        imported: None,
         params: Default::default(),
         type_name: hr.type_name.clone(),
         level,
@@ -15657,6 +15665,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             slant: 0.0,
             profile: Vec::new(),
             framing: None,
+            imported: None,
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));

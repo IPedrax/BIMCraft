@@ -2490,6 +2490,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             slant: 0.0,
             profile: Vec::new(),
             framing: None,
+            imported: None,
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));
@@ -2600,6 +2601,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 lines: creases.into_iter().map(|(a, b)| crate::model::SplitLine { a: flat(a), b: flat(b), ..Default::default() }).collect(),
             };
             let floor = Floor {
+                imported: None,
                 params: Default::default(),
                 sketch: Vec::new(),
                 shape,
@@ -2663,6 +2665,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         let z = top.at(tail);
         let level = level_near(z).unwrap_or_else(|| level_for(id, z));
         let floor = Floor {
+            imported: None,
             params: Default::default(),
             sketch: Vec::new(),
             shape: Default::default(),
@@ -2716,6 +2719,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         let boundary = ring.into_iter().map(|p| micron(r.flat([p.0, p.1, 0.0]))).collect();
         let offset = ((z0 - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
         let cid = m.insert(Element::Ceiling(Ceiling {
+            imported: None,
             params: Default::default(),
             sketch: Vec::new(),
             type_name,
@@ -2795,6 +2799,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 let (openings, courtyards): (Vec<Vec<P2>>, Vec<Vec<P2>>) =
                     holes.into_iter().map(tidy_ring).partition(|h| cut.iter().any(|c| same(h, c)));
                 let roof = Roof {
+                    imported: None,
                     params: Default::default(),
                     sketch: Vec::new(),
                     type_name,
@@ -2857,6 +2862,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 let overhang = if pitched && below > 0.0 { below / rd.slope.to_radians().tan() } else { 0.0 };
                 let offset = if pitched && below > 0.0 { 0.0 } else { -below };
                 let roof = Roof {
+                    imported: None,
                     params: Default::default(),
                     sketch: Vec::new(),
                     type_name,
@@ -3101,6 +3107,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         let (top_level, height) = if footing { (None, z1 - z0) } else { topped(level, z0, z1) };
         let angle = if round && profile.is_none() { 0.0 } else { (u.1.atan2(u.0).to_degrees() * 1e6).round() / 1e6 };
         let column = Column {
+            imported: None,
             room_bounding: true,
             params: Default::default(),
             type_name,
@@ -3217,6 +3224,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             .map(clip)
             .unwrap_or_default();
         let run = Run {
+            imported: None,
             type_name,
             level,
             start: micron(r.flat(found.start)),

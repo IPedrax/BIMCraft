@@ -529,7 +529,7 @@ fn a_meshs_points_are_four_byte_floats_and_its_facets_two_byte_indices() {
     let facets = V::Counted(vec![V::Seq(vec![V::U16(0), V::U16(1), V::U16(65535)])]);
     let mut objects = Objects::new();
     objects.insert(2, root(600, vec![V::Own(3, "GInstance")], [0.0; 6], [0.0; 6]));
-    objects.insert(3, ("GInstance", vec![crate::project_fixture::ginfo(0), V::Inline("FloatMesh", vec![points, facets])]));
+    objects.insert(3, ("GInstance", vec![crate::project_fixture::ginfo(0), V::Inline("FloatMesh", vec![points, facets]), V::Null]));
     let bytes = tree_bytes(&objects);
     let tree = graphics::read(&bytes, 0, &l).unwrap();
     let mesh = &tree.get(3).unwrap().inline[0];

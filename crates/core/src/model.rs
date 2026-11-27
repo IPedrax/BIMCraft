@@ -465,7 +465,39 @@ pub struct Wall {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// The shape another program drew it in (a Revit wall's own geometry: its corners, its lean, the outline it was edited to, the
+    /// holes its doors and windows cut), drawn in 3D in place of its layers while it is the wall it was drawn for
+    /// ([`crate::imported`]); once it is edited, or a door in it is, it is drawn from its layers again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported: Option<ImportedShape>,
 }
+
+/// An element's shape as another program drew it: its triangles in the model's axes, mm, by the material each is in, and the key
+/// ([`crate::imported::key`]) of the element it was drawn for. A wall, a floor, a roof, a ceiling and a column may carry one.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImportedShape {
+    pub key: u64,
+    pub parts: Vec<ImportedPart>,
+}
+
+/// The triangles of an imported shape in one material (none: the element's own colour).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImportedPart {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub material: String,
+    pub tris: Arc<Vec<[[f64; 3]; 3]>>,
+}
+
+/// The materials an element's imported shape ([`Element::imported`]) is drawn in.
+fn shape_materials(e: &Element) -> impl Iterator<Item = &str> {
+    e.imported().into_iter().flat_map(|s| s.parts.iter()).map(|p| p.material.as_str()).filter(|m| !m.is_empty())
+}
+
+/// The most parts an imported shape has, and the most triangles in all.
+pub const MAX_IMPORTED_PARTS: usize = 64;
+pub const MAX_IMPORTED_TRIANGLES: usize = 200_000;
 
 /// A room's Limit Offset unless it says: its top 2500 mm over its own level.
 pub const ROOM_LIMIT_OFFSET: f64 = 2500.0;
@@ -821,6 +853,10 @@ pub struct Floor {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// The shape another program drew it in ([`ImportedShape`]: a Revit element's own geometry), drawn in 3D in place of its own
+    /// while it is the element it was drawn for; once it is edited, it is drawn from its own geometry again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported: Option<ImportedShape>,
 }
 
 /// A floor's top folded into planes: points raised or lowered on it, and split lines it folds along. Between them it's
@@ -987,6 +1023,10 @@ pub struct Ceiling {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// The shape another program drew it in ([`ImportedShape`]: a Revit element's own geometry), drawn in 3D in place of its own
+    /// while it is the element it was drawn for; once it is edited, it is drawn from its own geometry again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported: Option<ImportedShape>,
 }
 
 /// A shaft opening: a hole along `boundary` through the floors, ceilings and roofs it passes
@@ -2126,6 +2166,10 @@ pub struct Column {
     /// run through it.
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub room_bounding: bool,
+    /// The shape another program drew it in ([`ImportedShape`]: a Revit element's own geometry), drawn in 3D in place of its own
+    /// while it is the element it was drawn for; once it is edited, it is drawn from its own geometry again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported: Option<ImportedShape>,
 }
 
 /// Which line of a run's section its heights are: the top of it, its middle, or its bottom.
@@ -2189,6 +2233,11 @@ pub struct Run {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// The shape another program drew it in ([`ImportedShape`]: a Revit beam's own geometry, its section and the ends its joins
+    /// cut), drawn in 3D in place of its own while it is the run it was drawn for; once it is edited, it is drawn from its own
+    /// geometry again. Only a beam carries one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported: Option<ImportedShape>,
 }
 
 /// A family's type placed: at `at` on `level`, `offset` mm up from it, turned `angle` degrees
@@ -2582,6 +2631,10 @@ pub struct Roof {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// The shape another program drew it in ([`ImportedShape`]: a Revit element's own geometry), drawn in 3D in place of its own
+    /// while it is the element it was drawn for; once it is edited, it is drawn from its own geometry again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported: Option<ImportedShape>,
 }
 
 impl Element {
@@ -3179,6 +3232,33 @@ impl Element {
                     (k, v)
                 })
                 .collect();
+        }
+    }
+
+    /// The shape another program drew it in, where it is of a kind that may carry one and does ([`ImportedShape`]).
+    pub fn imported(&self) -> Option<&ImportedShape> {
+        match self {
+            Element::Wall(w) => w.imported.as_ref(),
+            Element::Floor(f) => f.imported.as_ref(),
+            Element::Roof(r) => r.imported.as_ref(),
+            Element::Ceiling(c) => c.imported.as_ref(),
+            Element::Column(c) | Element::StructuralColumn(c) => c.imported.as_ref(),
+            Element::Beam(r) => r.imported.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// Where its imported shape is held, for a kind that may carry one: a wall, a floor, a roof, a ceiling, a column, a
+    /// structural column or a beam. None for any other kind.
+    pub fn imported_mut(&mut self) -> Option<&mut Option<ImportedShape>> {
+        match self {
+            Element::Wall(w) => Some(&mut w.imported),
+            Element::Floor(f) => Some(&mut f.imported),
+            Element::Roof(r) => Some(&mut r.imported),
+            Element::Ceiling(c) => Some(&mut c.imported),
+            Element::Column(c) | Element::StructuralColumn(c) => Some(&mut c.imported),
+            Element::Beam(r) => Some(&mut r.imported),
+            _ => None,
         }
     }
 
@@ -5109,6 +5189,7 @@ impl Model {
         named.extend(self.families.values().flat_map(|f| f.materials()).map(String::from));
         named.extend(self.types.runs.values().flat_map(|t| t.values().map(|t| t.material.clone())));
         named.extend(self.elements.values().flat_map(|e| self.component_materials(e)).map(String::from));
+        named.extend(self.elements.values().flat_map(shape_materials).map(String::from));
         for n in named.into_iter().filter(|n| !n.is_empty()) {
             self.materials.entry(n).or_default();
         }
@@ -5131,6 +5212,9 @@ impl Model {
         };
         if let Some((id, e)) = self.elements.iter().find(|(_, e)| painted(e)) {
             return Some(format!("the paint of {} {id}", e.category()));
+        }
+        if let Some((id, e)) = self.elements.iter().find(|(_, e)| shape_materials(e).any(|m| m == name)) {
+            return Some(format!("the imported shape of {} {id}", e.category()));
         }
         self.elements.iter().find(|(_, e)| self.component_materials(e).contains(&name)).map(|(id, _)| format!("component {id}"))
     }
@@ -5207,6 +5291,10 @@ impl Model {
                 for v in paint.values_mut().filter(|v| v.as_str() == Some(from)) {
                     *v = serde_json::Value::String(to.into());
                 }
+            }
+            // The parts of its imported shape drawn in it.
+            for p in e.imported_mut().into_iter().flatten().flat_map(|s| s.parts.iter_mut()).filter(|p| p.material == from) {
+                p.material = to.to_string();
             }
             if let Some(f) = e.family().and_then(|(f, _)| families.get(f))
                 && let Some(params) = e.params_mut()
@@ -7170,6 +7258,7 @@ impl Model {
     /// a floor's; `roof_faces` lays its underside the thickness below.
     pub fn roof_as_floor(&self, r: &Roof) -> Floor {
         Floor {
+            imported: None,
             type_name: String::new(),
             level: r.level,
             boundary: ccw(&r.boundary),
@@ -7193,6 +7282,7 @@ impl Model {
     /// thickness under.
     pub fn toposolid_as_floor(&self, t: &Toposolid) -> Floor {
         Floor {
+            imported: None,
             type_name: String::new(),
             level: t.level,
             boundary: ccw(&t.boundary),
@@ -10045,6 +10135,26 @@ impl Model {
     }
 
     /// What [`Model::check`] asks of element `id`, `e`, keeping in `t` what it must hold in common with the others.
+    /// An imported shape ([`ImportedShape`]) within its caps, its corners numbers within [`MAX_COORD`] of the origin, its materials
+    /// the library's.
+    fn check_imported(&self, who: &str, s: &ImportedShape) -> Result<(), String> {
+        let triangles: usize = s.parts.iter().map(|p| p.tris.len()).sum();
+        if s.parts.len() > MAX_IMPORTED_PARTS || triangles > MAX_IMPORTED_TRIANGLES {
+            return Err(format!(
+                "{who}: its imported shape has {} parts of {triangles} triangles; one has at most {MAX_IMPORTED_PARTS} of \
+                 {MAX_IMPORTED_TRIANGLES}",
+                s.parts.len()
+            ));
+        }
+        if s.parts.iter().flat_map(|p| p.tris.iter()).flatten().flatten().any(|v| !v.is_finite() || v.abs() > MAX_COORD) {
+            return Err(format!("{who}: a corner of its imported shape is not a number within 1000 km of the origin"));
+        }
+        if let Some(p) = s.parts.iter().find(|p| !p.material.is_empty() && !self.materials.contains_key(&p.material)) {
+            return Err(format!("{who}: its imported shape's material `{}` isn't in the library; add it with `material`", p.material));
+        }
+        Ok(())
+    }
+
     fn check_element<'a>(&'a self, id: Id, e: &'a Element, t: &mut Tally<'a>) -> Result<(), String> {
         let Tally {
             level_names,
@@ -10062,6 +10172,11 @@ impl Model {
             panel_cells,
         } = t;
         let who = format!("{} {id}", e.category());
+        if let Some(s) = e.imported() {
+            self.check_imported(&who, s)?;
+        } else if e.run().is_some_and(|r| r.imported.is_some()) {
+            return Err(format!("{who} carries an imported shape, which only a beam among the runs may"));
+        }
         crate::curtain::check_element(self, id, e, panel_cells)?;
         if let Some(u) = crate::underlay::of_element(e) {
             crate::underlay::check(self, id, u)?;
@@ -12257,6 +12372,7 @@ mod tests {
             slant: 0.0,
             profile: Vec::new(),
             framing: None,
+            imported: None,
         })
     }
 

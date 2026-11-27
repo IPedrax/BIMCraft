@@ -17,7 +17,7 @@ use bimcraft_core::model::{Element, Id, Level, MAX_TEXT, Model, culprit};
 use crate::inventory::{Inventory, OST_LEVELS, Survey, Wants, category_name};
 use crate::records::{Record, TypeRecord};
 use crate::{Limits, Revit};
-use crate::{columns, ducts, floors, framing, generic, openings, pipes, roofs, rooms, walls};
+use crate::{columns, ducts, floors, framing, generic, imported, openings, pipes, roofs, rooms, walls};
 
 /// `OST_Materials`.
 pub(crate) const OST_MATERIALS: i64 = -2_000_700;
@@ -204,10 +204,11 @@ fn has_volume(r: &Record) -> bool {
 }
 
 /// The categories whose records the first pass keeps.
-const CATEGORIES: [i64; 15] = [
+const CATEGORIES: [i64; 16] = [
     walls::OST_WALLS,
     floors::OST_FLOORS,
     floors::OST_CEILINGS,
+    floors::OST_SHAFT_OPENINGS,
     floors::OST_SKETCH_LINES,
     openings::OST_DOORS,
     openings::OST_WINDOWS,
@@ -268,6 +269,8 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     unread(&mut cx, &inv);
     let mut wants = Wants { materials: facts.materials.clone(), ..Wants::default() };
     walls::wanted(&facts, &mut wants.data);
+    wants.drawings.extend(imported::wanted(&facts));
+    wants.drawings.extend(floors::shafts_wanted(&facts));
     floors::wanted(&facts, &mut wants.data);
     roofs::wanted(&facts, &mut wants.data);
     openings::wanted(&facts, &mut wants);
@@ -280,6 +283,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     cx.looks = gathered.looks.iter().filter_map(|(id, l)| Some((gathered.materials.get(id)?.clone(), *l))).collect();
     walls::import(&mut cx, &facts, &gathered);
     floors::import(&mut cx, &facts, &gathered);
+    floors::shafts(&mut cx, &facts, &gathered);
     roofs::import(&mut cx, &facts, &gathered);
     attached(&mut cx, &facts);
     openings::import(&mut cx, &facts, &gathered);
@@ -287,7 +291,8 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     rooms::import(&mut cx, &facts, &gathered);
     pipes::import(&mut cx, &facts, &gathered);
     ducts::import(&mut cx, &facts, &gathered);
-    framing::import(&mut cx, &facts);
+    framing::import(&mut cx, &facts, &gathered);
+    imported::shaped(&mut cx, &facts, &gathered);
     generic::import(&mut cx, &facts, &gathered, &inv);
     let from = cx.from.clone();
     finish(cx, format!("Revit {release}")).map(|i| (i, from))
@@ -431,6 +436,16 @@ fn finish(mut cx: Import, schema: String) -> Result<Imported, String> {
     }
     if !checked {
         m.check()?;
+    }
+    // Each imported shape is held to its element as the model now has it, a wall's doors and windows those that came in.
+    let shaped: Vec<Id> = m.elements.iter().filter(|(_, e)| e.imported().is_some()).map(|(id, _)| *id).collect();
+    for id in shaped {
+        let key = bimcraft_core::imported::key(m, id);
+        if let Some(key) = key
+            && let Some(Some(s)) = m.elements.get_mut(id).and_then(|e| e.imported_mut())
+        {
+            s.key = key;
+        }
     }
     for (id, why) in dropped {
         cx.dropped(id, &why);
