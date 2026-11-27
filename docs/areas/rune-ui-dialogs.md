@@ -168,7 +168,7 @@ commands are generic forms. Phasing: Phases and Phase Filters are managers; desi
 forms. Styles: Object Styles, Line Styles, Line Patterns and Fill Patterns are managers; Line Weights is the generic form (`line_weights`
 takes lists of widths), as are Halftone and the others.
 
-**Entry points.** The Manage button on the top bar opens Find on the word, which lists the eleven managers first (they are also found by
+**Entry points.** The Manage button on the top bar opens Find on the word, which lists the managers first (they are also found by
 name: Materials, Phases…) and then the commands the menu puts under Manage; every command stays reachable through Find as a form.
 
 **Not done.** The tables egui draws (a Visibility/Graphics grid of categories by projection, cut, halftone and detail; a materials browser
@@ -177,3 +177,35 @@ pickers inside a manager's fields (a line style's `pattern` is a text box, not a
 filter's rules, a pattern's lines, a material's textures) are rows, edited through the command's form; the shortcuts. New messages first
 written here: Manage, Entry, Nothing here yet: use New, New name, A new name for it, New, There is no entry to change: use New, This kind
 of entry is not deleted here.
+
+## Round 3: the project-level dialogs
+
+Coordinates, Classification, Title Blocks, the Publisher and the Start dialog. Four of the five are more managers (`library.rs`, now fifteen),
+because each is a table of the project and one command of the core; egui writes each as a window of its own, with a canvas, tabs or a map.
+Find lists them under the word Manage, and by name.
+
+| Dialog | In egui | Here |
+|---|---|---|
+| Coordinates (Location, LO) | `coordinates.rs`: five tabs, a dial, a world map, a map-system search | `Source::Locations`: the project's sites, each with its shared east, north, elevation, angle, scale and map system (`crs`), changed through `location`; **Make active** (`activate`); the forms of `coordinates` (the Project Base Point and Survey Point, reset, acquire), `specify_coordinates` (CP), `rotate_project_north` (TN), `georeference` (its `search` finds a map system) and `convert_coordinates` as buttons (`Source::also`). PC is `spot_coordinate`, a tool command, found by Find. |
+| Classification | `classification.rs`: setup, by hand and agent tabs | `Source::Classification`: the loaded tables (system, key, edition, source file, rows), taken out with `remove`; **New** is Load Classification Table (the file's path typed); the forms of `classification_systems`, `classification_parameters`, `classify` (`assign` as JSON), `classification_check`, `classification_brief` and `classification_answer` as buttons. |
+| Title Blocks | `titleblocks.rs`: a preview and tabs of fields, texts, lines, size, logos | `Source::TitleBlocks`: the blocks, with `width`, `height` and `font` typed, rename, delete; New is `title_block`'s form (`starter`, `like`, `path` for a DXF, and `fields`, `texts`, `lines` as JSON); `title_values` (the project's values) as a button. |
+| Publisher | `publisher.rs`: sets, folders, print sets, Publish with a bar | `Source::PublishSets`: the sets, with `folder` and `overwrite` typed, rename, delete; the folders are rows; the forms of `publish`, `print_set` and `export_formats` as buttons. |
+| Start (and templates) | `start.rs`, `project_templates.rs` | `app/start.rs`, `ui/start.rs`, `recent.rs`: New (`new`), Open (the system's dialog), the sample house, the recent files and the templates; the dialog is opened by Find (Start). View Templates, egui's `templates.rs`, is the View Templates manager of round 2. |
+
+**`library.rs` additions.** `Source::also` names the other commands a manager's dialog opens the forms of, as buttons under the rows (`lib-also-{i}`).
+`library::deletes` and `deletion` take `remove` where a command has it instead of `delete` (a classification table). A table whose entries a
+file writes as a list is `{"value": [..]}`, so every entry is an object. The Classification entries are never typed field by field (a table
+is loaded again from its file), and **Make active** shows where the command has `activate` and the entry is not the active one.
+
+**Start's lists.** `recent.json` (the projects opened or saved last, newest first, ten kept) and `templates.json` (the first ten are listed)
+are the files egui keeps beside `settings.json`, `{"files": [path, …]}`, so the two apps share them. A file that is missing, over 256 KiB or
+damaged is an empty list; an entry that is no path is left out; a write is whole or not at all. `App::open_path` and `save_as` put a file first
+(a `.bimt` opened as a template has no file, so it is not noted). Templates are read here and managed in egui's Settings.
+
+**Not done.** The Coordinates window's dial, world map and map-system picker (a system is typed as an EPSG code, searched with `georeference`'s
+`search`), the by-hand code search and the AI agent of Classification (it needs the assistant crate, the network rule), the Title Blocks
+preview and its fields, texts and lines tabs (JSON in the form), the Publisher's folders tree and its progress bar with Cancel (`publish`
+runs in one command), the Start page's tiles with a picture of each project, the update line and the source link, and managing the templates'
+list. The Start dialog is not shown at startup: the program still opens on its project. New messages first written here: Related, Make
+active, Start, Start a project or open one, Recent, Templates, Sample house.
+
