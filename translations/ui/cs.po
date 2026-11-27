@@ -5182,8 +5182,8 @@ msgstr "Řeže"
 msgid "Cylinder"
 msgstr "Válec"
 
-#: crates/core/src/render.rs:5826
-#: crates/core/src/render.rs:6272
+#: crates/core/src/render.rs:5857
+#: crates/core/src/render.rs:6303
 msgid "DN"
 msgstr "DOLŮ"
 
@@ -11462,7 +11462,7 @@ msgstr "NBR 17068: přesah 2 až 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: terč v půdorysu (±0,00), rovnostranný trojúhelník v řezu"
 
-#: crates/core/src/render.rs:4272
+#: crates/core/src/render.rs:4303
 msgid "NOT ENCLOSED"
 msgstr "NEUZAVŘENÝ OBVOD"
 
@@ -14610,7 +14610,7 @@ msgstr ""
 msgid "Query"
 msgstr ""
 
-#: crates/core/src/render.rs:4272
+#: crates/core/src/render.rs:4303
 msgid "REDUNDANT"
 msgstr "NADBYTEČNÁ"
 
@@ -20109,8 +20109,8 @@ msgstr ""
 msgid "Type:"
 msgstr "Typ:"
 
-#: crates/core/src/render.rs:5826
-#: crates/core/src/render.rs:6272
+#: crates/core/src/render.rs:5857
+#: crates/core/src/render.rs:6303
 msgid "UP"
 msgstr "NAHORU"
 

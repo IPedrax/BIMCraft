@@ -5183,8 +5183,8 @@ msgstr "Corta"
 msgid "Cylinder"
 msgstr "Cilindro"
 
-#: crates/core/src/render.rs:5826
-#: crates/core/src/render.rs:6272
+#: crates/core/src/render.rs:5857
+#: crates/core/src/render.rs:6303
 msgid "DN"
 msgstr "DESCE"
 
@@ -11463,7 +11463,7 @@ msgstr "NBR 17068: prolongamento de 2 a 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: Alvo em planta (±0,00), triângulo equilátero em corte"
 
-#: crates/core/src/render.rs:4272
+#: crates/core/src/render.rs:4303
 msgid "NOT ENCLOSED"
 msgstr "NÃO DELIMITADO"
 
@@ -14611,7 +14611,7 @@ msgstr "Quantitativos"
 msgid "Query"
 msgstr ""
 
-#: crates/core/src/render.rs:4272
+#: crates/core/src/render.rs:4303
 msgid "REDUNDANT"
 msgstr "REDUNDANTE"
 
@@ -20110,8 +20110,8 @@ msgstr "Digite onde fica o projeto, ou o nome ou código do sistema."
 msgid "Type:"
 msgstr "Tipo:"
 
-#: crates/core/src/render.rs:5826
-#: crates/core/src/render.rs:6272
+#: crates/core/src/render.rs:5857
+#: crates/core/src/render.rs:6303
 msgid "UP"
 msgstr "SOBE"
 
