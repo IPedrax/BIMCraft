@@ -37,15 +37,29 @@ impl Scene {
 
     /// [`Scene::update`], none when `cancelled`.
     pub fn update_cancellable(&self, before: &Model, after: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Scene> {
-        match self.made_again(before, after, cancelled) {
-            Made::Some(made) => self.spliced(after, made, cancelled),
-            Made::Whole => Scene::new_cancellable(after, cancelled),
+        self.update_among_cancellable(before, after, None, cancelled)
+    }
+
+    /// The scene of the elements `among` of `after` (all of them: none), this being the scene of part of `before`
+    /// ([`super::Streamed`]), made by what changed between them: what [`Scene::new_among_cancellable`] makes of them. An
+    /// element that joins the part is made, one that leaves it taken out. None when `cancelled`.
+    pub fn update_among_cancellable(
+        &self,
+        before: &Model,
+        after: &Model,
+        among: Option<&BTreeSet<Id>>,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Scene> {
+        match self.made_again(before, after, among, cancelled) {
+            Made::Some(made) => self.spliced(after, among, made, cancelled),
+            Made::Whole => Scene::new_among_cancellable(after, among, cancelled),
             Made::Cancelled => None,
         }
     }
 
-    /// The elements of `after` whose triangles an edit from `before` changed, each made again.
-    fn made_again(&self, before: &Model, after: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Made {
+    /// The elements of `after` (of those `among` it, when given) whose triangles an edit from `before` changed, each made
+    /// again; one not among them is made as nothing.
+    fn made_again(&self, before: &Model, after: &Model, among: Option<&BTreeSet<Id>>, cancelled: &(dyn Fn() -> bool + Sync)) -> Made {
         let Changed::Ids(changed) = after.changed_since(before) else { return Made::Whole };
         // Numbers past a card's planes and copies would need the whole scene numbered again.
         if self.table.next > u32::MAX as usize / 4 {
@@ -56,8 +70,13 @@ impl Scene {
         let index = after.wall_index();
         let thickest =
             [before, after].iter().flat_map(|m| m.types.wall.values().map(|t| t.thickness)).filter(|t| t.is_finite()).fold(0.0, f64::max);
+        let held = |id: &Id| among.is_none_or(|a| a.contains(id));
         // What the scene draws that has no triangles yet: what touches it may give it some.
-        let empty: Vec<Id> = after.elements.iter().filter(|(id, e)| draws(e) && self.span(**id).is_none()).map(|(id, _)| *id).collect();
+        let empty: Vec<Id> = match among {
+            None => after.elements.iter().filter(|(id, e)| draws(e) && self.span(**id).is_none()).map(|(id, _)| *id).collect(),
+            Some(a) => a.iter().filter(|id| after.elements.get(**id).is_some_and(draws) && self.span(**id).is_none()).copied().collect(),
+        };
+        let total = among.map_or(after.elements.len(), BTreeSet::len);
         let mut made: HashMap<Id, Vec<Tri>> = HashMap::new();
         // What is to be made next: what the edit touched, then what touches what came out otherwise.
         let mut pending: BTreeSet<Id> = changed.clone();
@@ -82,9 +101,12 @@ impl Scene {
                     wanted.extend(e.refs().iter().filter_map(|g| after.elements.id(*g)));
                 }
             }
-            let fresh: Vec<(Id, &Element)> =
-                wanted.iter().filter(|id| !made.contains_key(id)).filter_map(|id| Some((*id, after.elements.get(*id)?))).collect();
-            if (made.len() + fresh.len()) * MOST > after.elements.len().max(1) {
+            let fresh: Vec<(Id, &Element)> = wanted
+                .iter()
+                .filter(|id| !made.contains_key(id) && held(id))
+                .filter_map(|id| Some((*id, after.elements.get(*id)?)))
+                .collect();
+            if (made.len() + fresh.len()) * MOST > total.max(1) {
                 return Made::Whole;
             }
             let tris = element_tris(after, &fresh, &index);
@@ -129,7 +151,13 @@ impl Scene {
 
     /// This scene with `made`'s elements' triangles in place of theirs, and every element of `after` that isn't any more taken
     /// out.
-    fn spliced(&self, after: &Model, mut made: HashMap<Id, Vec<Tri>>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Scene> {
+    fn spliced(
+        &self,
+        after: &Model,
+        among: Option<&BTreeSet<Id>>,
+        mut made: HashMap<Id, Vec<Tri>>,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Scene> {
         let mut skins = self.skins.clone();
         for own in made.values() {
             skins_for(after, &mut skins, own);
@@ -147,7 +175,12 @@ impl Scene {
         };
         let mut keys = self.shape_keys.clone();
         let mut shapes = self.shapes.clone();
-        for (n, (id, e)) in after.elements.iter().enumerate() {
+        // In the order of their ids, as the whole scene has them.
+        let elements: Box<dyn Iterator<Item = (&Id, &Element)>> = match among {
+            None => Box::new(after.elements.iter()),
+            Some(a) => Box::new(a.iter().filter_map(|id| Some((id, after.elements.get(*id)?)))),
+        };
+        for (n, (id, e)) in elements.enumerate() {
             if n % 4096 == 0 && cancelled() {
                 return None;
             }
@@ -770,6 +803,60 @@ mod tests {
         }
     }
 
+    /// A model too big to hold whole, of which a view holds a part ([`crate::view3d::stream`]), edited at random: what it holds
+    /// after each edit is by the stream's rule over the same storeys (the fabric, and the detail of the band), and the scene
+    /// brought up to date is the one made afresh of that part.
+    #[test]
+    fn random_edits_bring_a_streamed_scene_up_to_date_as_made_afresh_of_its_part() {
+        use crate::view3d::{BYTES_PER_TRIANGLE, Streamed, detail, stream};
+        let mut s = Session::new();
+        s.execute("tower", &json!({"storeys": 4, "plate": "small"})).unwrap();
+        // Room for about two storeys' detail besides the fabric, looking at the second storey.
+        let fabric = s.model.elements.values().filter(|e| !detail(e)).count() as u64;
+        let budget = fabric * 200 * BYTES_PER_TRIANGLE;
+        let levels = s.model.levels();
+        let focus = levels[1].1.elevation + 100.0;
+        // The stream's rule from scratch: what a part over `band` holds of `m`, and how much detail it leaves out.
+        let banded = |m: &Model, part: &Streamed| -> (BTreeSet<Id>, usize) {
+            let mut out = (BTreeSet::new(), 0);
+            for (id, e) in &m.elements {
+                let z = m.level_of(e).map_or(0.0, |l| m.elevation(l)) + crate::model::TOL;
+                if !detail(e) || (part.band.0 <= z && z < part.band.1) {
+                    out.0.insert(*id);
+                } else {
+                    out.1 += 1;
+                }
+            }
+            out
+        };
+        let mut part = stream(&s.model, budget, focus).expect("too big for the budget");
+        assert_eq!((*part.among).clone(), banded(&s.model, &part).0, "stream holds by the rule");
+        let mut scene = Scene::new_among_cancellable(&s.model, Some(&part.among), &|| false).unwrap();
+        let mut dice = Dice(0x51ea_d5ce_e0e0_2026);
+        let mut kept = 0;
+        for _ in 0..30 {
+            let (cmd, p) = edit(&mut s, &mut dice);
+            let before = Arc::clone(&s.model);
+            if s.execute(&cmd, &p).is_err() {
+                continue;
+            }
+            let what = format!("{cmd} {p}");
+            part = match part.updated(&before, &s.model, budget) {
+                Some(next) => {
+                    kept += 1;
+                    assert_eq!(((*next.among).clone(), next.left_out), banded(&s.model, &next), "{what}: what is held");
+                    next
+                }
+                None => stream(&s.model, budget, focus).expect("still too big"),
+            };
+            let up = scene.update_among_cancellable(&before, &s.model, Some(&part.among), &|| false).unwrap();
+            same(&up, &Scene::new_among_cancellable(&s.model, Some(&part.among), &|| false).unwrap(), &what);
+            scene = up;
+        }
+        assert!(kept > 20, "{kept} edits kept the part");
+        assert!(part.left_out > 0 && !part.covers(f64::INFINITY), "a part, not the whole: {part:?}");
+    }
+
     #[test]
     fn an_edit_makes_again_what_it_touched_not_the_model() {
         let model = crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 2).unwrap();
@@ -778,7 +865,7 @@ mod tests {
         let scene = Scene::new(&s.model);
         let before = Arc::clone(&s.model);
         let wall = of(&s, "wall").into_iter().find(|w| s.execute("move", &json!({"ids": [w], "by": [0, 200]})).is_ok()).unwrap();
-        let Made::Some(made) = scene.made_again(&before, &s.model, &|| false) else { panic!("the whole scene made again") };
+        let Made::Some(made) = scene.made_again(&before, &s.model, None, &|| false) else { panic!("the whole scene made again") };
         let all = s.model.elements.len();
         assert!(made.contains_key(&wall));
         assert!(made.len() * 20 < all, "{} of {all} made again", made.len());
@@ -815,7 +902,7 @@ fn update_speed() {
         }
         s.model.lookup();
         let t = Instant::now();
-        let made = match scene.made_again(&before, &s.model, &|| false) {
+        let made = match scene.made_again(&before, &s.model, None, &|| false) {
             Made::Some(m) => m.len(),
             _ => usize::MAX,
         };

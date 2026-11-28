@@ -2490,12 +2490,63 @@ pub struct Streamed {
     pub levels: (String, String),
     /// How many elements of detail are left out.
     pub left_out: usize,
+    /// About how many bytes the part held takes ([`BYTES_PER_TRIANGLE`]).
+    pub bytes: u64,
 }
 
 impl Streamed {
     /// Whether a view looking at height `z` is still among the storeys it holds the detail of.
     pub fn covers(&self, z: f64) -> bool {
         self.band.0 <= z && z <= self.band.1
+    }
+
+    /// What a view holding this part of `before` holds of `after`, by the same rule over the same storeys: every element of the
+    /// fabric, and the detail on a storey of the band. Only the elements the edit changed are looked at. None when the storeys
+    /// themselves may have changed (a level edited, or every element), or when what it would hold is past `budget` bytes:
+    /// then [`stream`] is asked again.
+    pub fn updated(&self, before: &Model, after: &Model, budget: u64) -> Option<Streamed> {
+        let crate::ids::Changed::Ids(changed) = after.changed_since(before) else { return None };
+        let level = |m: &Model, id: Id| matches!(m.elements.get(id), Some(Element::Level(_)));
+        if changed.iter().any(|&id| level(before, id) || level(after, id)) {
+            return None;
+        }
+        // Whether `e` of `m` is held, and whether it is detail left out.
+        let held = |m: &Model, e: &Element| -> (bool, bool) {
+            if !detail(e) {
+                return (true, false);
+            }
+            let z = m.level_of(e).map_or(0.0, |l| m.elevation(l)) + TOL;
+            let inside = self.band.0 <= z && z < self.band.1;
+            (inside, !inside)
+        };
+        let mut among = (*self.among).clone();
+        let (mut bytes, mut left_out) = (self.bytes, self.left_out);
+        for &id in &changed {
+            if let Some(e) = before.elements.get(id) {
+                if self.among.contains(&id) {
+                    bytes = bytes.saturating_sub(triangles_of(e).saturating_mul(BYTES_PER_TRIANGLE));
+                } else if detail(e) {
+                    left_out = left_out.saturating_sub(1);
+                }
+            }
+            among.remove(&id);
+            if let Some(e) = after.elements.get(id) {
+                let (inside, out) = held(after, e);
+                if inside {
+                    among.insert(id);
+                    bytes = bytes.saturating_add(triangles_of(e).saturating_mul(BYTES_PER_TRIANGLE));
+                }
+                left_out += usize::from(out);
+            }
+        }
+        // A part already past the budget (its fabric alone) may keep what it holds, not grow.
+        (bytes <= budget.max(self.bytes)).then(|| Streamed {
+            among: Arc::new(among),
+            band: self.band,
+            levels: self.levels.clone(),
+            left_out,
+            bytes,
+        })
     }
 }
 
@@ -2517,7 +2568,7 @@ fn triangles_of(e: &Element) -> u64 {
 }
 
 /// Whether `e` is detail, which a streamed view holds only for the storeys near where it looks.
-fn detail(e: &Element) -> bool {
+pub(crate) fn detail(e: &Element) -> bool {
     matches!(e, Element::Component(_) | Element::Rebar(_)) || e.run().is_some()
 }
 
@@ -2579,7 +2630,9 @@ pub fn stream(m: &Model, budget: u64, focus: f64) -> Option<Streamed> {
     let band = (if lo == 0 { f64::NEG_INFINITY } else { z(lo) }, if hi + 1 >= n { f64::INFINITY } else { z(hi + 1) });
     let detail_count: usize = by_storey.values().map(Vec::len).sum();
     let held_detail = among.len().saturating_sub(m.elements.len() - detail_count);
-    Some(Streamed { among: Arc::new(among), band, levels: (name(lo), name(hi)), left_out: detail_count - held_detail })
+    let fabric = fabric.saturating_mul(BYTES_PER_TRIANGLE);
+    let bytes = fabric.saturating_add(budget.saturating_sub(fabric).saturating_sub(left));
+    Some(Streamed { among: Arc::new(among), band, levels: (name(lo), name(hi)), left_out: detail_count - held_detail, bytes })
 }
 
 pub struct Scene {

@@ -529,8 +529,15 @@ the storeys held, the view asks its worker for the part round where it looks now
 as an edit does. The view says in its corner from which storey to which the detail is shown and how many elements are left
 out. A model that fits is held whole, exactly as before; with no meter (the tests, the CLI) nothing is streamed.
 
-Next: a streamed scene is made afresh on an edit, not brought up to date (`Scene::update_cancellable` assumes the whole model);
-the copies of components could be held as placements on the processor's side too, which would let far more of a model fit.
+An edit keeps the part held and brings it up to date (`Streamed::updated`): only the elements the edit changed are looked at,
+by the same rule over the same storeys (fabric always; detail on a storey of the band), and the scene is brought up to date over
+that part (`Scene::update_among_cancellable`), as a whole scene is. An edit of a level, of every element, or one that would take
+the part past the budget asks for the part again. On the annotated 100-storey tower (1.2 million elements, 375,801 held at a
+4 GB budget) an edit's scene went from 1.23 s (the part asked for again, 0.18 s, and its scene made afresh, 1.05 s) to 0.15 s.
+`random_edits_bring_a_streamed_scene_up_to_date_as_made_afresh_of_its_part` holds what is held to the rule made from scratch,
+and the scene to the one made afresh of that part.
+
+Next: the copies of components could be held as placements on the processor's side too, which would let far more of a model fit.
 
 ## What isn't decided yet
 

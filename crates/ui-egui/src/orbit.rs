@@ -65,11 +65,13 @@ type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, Color32, bool, Option<(P3, P3)>
 pub(crate) type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
 
 /// Whether a scene job may hold only part of a big model ([`view3d::stream`]): the part the scene shown holds, kept as it is,
-/// or what fits `budget` bytes looking at height `focus`.
+/// what fits `budget` bytes looking at height `focus`, or, after an edit, the part the scene before held brought up to date
+/// ([`view3d::Streamed::updated`]), asked again where it can't be.
 #[derive(Clone)]
 enum Stream {
     Kept(Option<view3d::Streamed>),
     Ask { budget: u64, focus: f64 },
+    Edited { budget: u64, focus: f64, part: view3d::Streamed },
 }
 
 struct SceneJob {
@@ -101,13 +103,28 @@ struct SceneDone {
 }
 
 fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<SceneDone> {
+    // Whether the part held is the one the scene before held, brought up to date, so that scene can be too.
+    let mut updated = false;
     let streamed = match job.stream {
         Stream::Kept(kept) => kept,
         Stream::Ask { budget, focus } => view3d::stream(&job.model, budget, focus),
+        Stream::Edited { budget, focus, part } => {
+            match job.from.as_ref().and_then(|(before, _)| part.updated(before, &job.model, budget)) {
+                Some(part) => {
+                    updated = true;
+                    Some(part)
+                }
+                None => view3d::stream(&job.model, budget, focus),
+            }
+        }
     };
     let scene = match (job.scene, job.from, &streamed) {
         (Some(scene), _, _) => scene,
-        // Part of a model too big to hold whole: made afresh, of the part that fits, each element as the whole scene has it.
+        // Part of a model too big to hold whole, after an edit: the scene before brought up to date, of the part it held.
+        (None, Some((model, scene)), Some(part)) if updated => {
+            Arc::new(scene.update_among_cancellable(&model, &job.model, Some(&part.among), &|| cancel.cancelled())?)
+        }
+        // Otherwise made afresh, of the part that fits, each element as the whole scene has it.
         (None, _, Some(part)) => Arc::new(Scene::new_among_cancellable(&job.model, Some(&part.among), &|| cancel.cancelled())?),
         (None, Some((model, scene)), None) => Arc::new(scene.update_cancellable(&model, &job.model, &|| cancel.cancelled())?),
         (None, None, None) => Arc::new(Scene::new_cancellable(&job.model, &|| cancel.cancelled())?),
@@ -1115,6 +1132,9 @@ impl Orbit {
                 };
                 let stream = if current && !away {
                     Stream::Kept(self.streamed.clone())
+                } else if let (false, Some(part), Some(Stream::Ask { budget, focus })) = (current, self.streamed.clone(), target.map(ask)) {
+                    // An edit of a model a part of which is held: that part brought up to date, round where the view looks.
+                    Stream::Edited { budget, focus, part }
                 } else {
                     let lowest = model.levels().first().map_or(0.0, |(_, l)| l.elevation + 1.0);
                     let focus = target.unwrap_or(lowest);
@@ -2908,6 +2928,53 @@ mod edits {
         assert!(done.fitted.is_none(), "a view with a camera keeps it, so the worker fits none");
         let cam = whole.fit(AZIMUTH, ELEVATION, 320, 240);
         assert_eq!(done.scene.render(&cam, &[]).png().unwrap(), whole.render(&cam, &[]).png().unwrap());
+    }
+
+    #[test]
+    fn after_an_edit_of_a_model_too_big_to_hold_the_worker_brings_the_part_held_and_its_scene_up_to_date() {
+        let mut s = bimcraft_core::engine::Session::new();
+        s.execute("tower", &json!({"storeys": 4, "plate": "small"})).unwrap();
+        let detail = |e: &bimcraft_core::model::Element| {
+            matches!(e, bimcraft_core::model::Element::Component(_) | bimcraft_core::model::Element::Rebar(_)) || e.run().is_some()
+        };
+        let fabric = s.model.elements.values().filter(|e| !detail(e)).count() as u64;
+        let budget = fabric * 200 * view3d::BYTES_PER_TRIANGLE;
+        let focus = s.model.levels()[1].1.elevation + 100.0;
+        let before = Arc::clone(&s.model);
+        let part = view3d::stream(&before, budget, focus).expect("too big for the budget");
+        let scene = Arc::new(Scene::new_among_cancellable(&before, Some(&part.among), &|| false).unwrap());
+        let held = |e: &bimcraft_core::model::Element| detail(e) && s.model.level_of(e).is_some();
+        let component = s
+            .model
+            .elements
+            .iter()
+            .find(|(id, e)| held(e) && part.among.contains(id) && matches!(e, bimcraft_core::model::Element::Component(_)))
+            .map(|(id, _)| *id)
+            .unwrap();
+        s.execute("copy", &json!({"ids": [component], "by": [500, 0]})).unwrap();
+        let after = Arc::clone(&s.model);
+        let done = build_scene(
+            SceneJob {
+                stream: Stream::Edited { budget, focus, part: part.clone() },
+                model: Arc::clone(&after),
+                view: None,
+                scene: None,
+                from: Some((Arc::clone(&before), scene)),
+                width: 320,
+                height: 240,
+                lens: None,
+                card: false,
+                fit: false,
+            },
+            &crate::view_worker::Cancel::default(),
+        )
+        .unwrap();
+        let expected = part.updated(&before, &after, budget).expect("an edit of detail keeps the part");
+        assert_eq!(done.streamed.as_ref(), Some(&expected));
+        assert_eq!(expected.among.len(), part.among.len() + 1, "the copy, on a storey held, is held");
+        let afresh = Scene::new_among_cancellable(&after, Some(&expected.among), &|| false).unwrap();
+        let cam = afresh.fit(AZIMUTH, ELEVATION, 320, 240);
+        assert_eq!(done.scene.render(&cam, &[]).png().unwrap(), afresh.render(&cam, &[]).png().unwrap());
     }
 
     #[test]
