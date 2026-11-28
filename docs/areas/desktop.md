@@ -4,6 +4,18 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
 
 The Project Browser (`browser.rs`) builds its tree as `Node`s and draws it through its tab (`browser::Tab`) and its search
 (`browser::spans`, wildcards and all, a pure function with its tests): a new kind of entry is a `Node` in `browser_tree`.
+A row that names something — a level, a view, a schedule, a sheet, a family or a type — also carries a `browser::Ren`, which
+survives the tree being built again each frame; F2 (or the row's Rename, with `F2` shown) opens a `TextEdit` in the row over
+its name, Enter saves it as one undo step, Esc cancels, and losing the focus saves what the command takes and cancels what it
+refuses, saying why in the row or the status line. A single click picks the row, and a double click opens the view or sheet;
+opening on a single click would leave no place for F2 on a view. In a focused browser F2 is handled before the shortcuts
+when a row is picked, so a tool's F2 binding (Floor Plan) does not take it; with no row picked it falls through, and F2
+opens the Floor Plan as its Keyboard Shortcut says. `BimApp::browser_sel` is the row picked (an
+accent bar down its left side), `browser_edit` the name being edited; `browser_focused` and `browser_rect` keep F2 for a
+click in the palette. The command is `rename` ([schedules](schedules.md), [families](families.md), [views and graphics](views-and-graphics.md));
+a family's type and a category's type go through `rename_type`, and the window follows them in `component` and `types`, so
+the Component tool never goes on placing a name that is gone. `browser_picked` stays the print set's: F2 renames the row with
+the accent bar even when several are picked.
 Palettes dock and float (`dock.rs`): `Docking` is where they are (stacks of tabs down the left or right side or along the
 bottom, or floating windows), apart from its drawing, so tests and the settings file read it; a new palette is a row of
 `Palette` and its body in `palette_body`. A view's tab floats it in a window (`BimApp::floating`; `views` are the tabs and
@@ -744,7 +756,7 @@ Export (`txt`/`json`), Help (Markdown) and Reset All. The text format is `action
 `{"WA": "Wall"}` JSON, `<Shortcut … Shortcuts="WA#W1"/>` and `WA - Wall` / `WA = Wall` lines. Import has a preview with line-numbered errors and conflicts,
 replace and merge modes, and writes `shortcuts.bak` beside the settings before applying; Markdown is a read-only cheat sheet and is refused on import.
 The BIMCraft profile keeps the Revit-style sequences and adds chords; Home is `Ctrl+D`, `Ctrl+U` is free, and the guides are
-`F8` only. A text field keeps its letters but allows Save, Save As, Open, New, Find, Settings, Export PDF and Properties (Ctrl+P and Ctrl+1); dialogs and
+`F8` only. `F2` is the Project Browser's Rename, a fixed function key beside F8 that Keyboard Shortcuts does not configure. A text field keeps its letters but allows Save, Save As, Open, New, Find, Settings, Export PDF and Properties (Ctrl+P and Ctrl+1); dialogs and
 menus keep all global bindings away. A key never carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System,
 Reference Plane, the duct tools): it waits for the tool.
 `BimApp::keys` checks bindings before the tool's contextual keys, and a binding that finds nothing to run reports it in the status bar rather than falling through.

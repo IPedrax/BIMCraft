@@ -145,9 +145,13 @@ fn topmost(h: &mut Harness<BimApp>, name: &str) {
     let top = tab.map(|r| r.center());
     let top = top.or_else(|| h.get_all_by_label(name).min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).map(|n| n.rect().center()));
     let pos = top.unwrap();
+    // A browser row opens on a double click; a tab or a button takes one.
+    let clicks = if tab.is_none() && h.state().browser_rect.contains(pos) { 2 } else { 1 };
     h.hover_at(pos);
-    for pressed in [true, false] {
-        h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+    for _ in 0..clicks {
+        for pressed in [true, false] {
+            h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+        }
     }
     h.run();
 }
@@ -188,16 +192,20 @@ fn press_near(h: &mut Harness<BimApp>, name: &str, beside: &str) {
 
 /// A view in the Project Browser, opened as screen readers do: it may lie below the browser's fold.
 fn browse(h: &mut Harness<BimApp>, label: &str) {
-    h.get_by_label(label).click_accesskit();
+    h.get_by_label(label).scroll_to_me();
     h.run();
+    let pos = h.get_by_label(label).rect().center();
+    double_click_at(h, pos);
 }
 
 /// A view's entry in the Project Browser while its tab is open too: the lower of the two.
 fn browse_entry(h: &mut Harness<BimApp>, label: &str) {
     use egui_kittest::kittest::NodeT;
     let entry = h.get_all_by_label(label).max_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).map(|n| n.accesskit_node().id());
-    h.get_by(|n| Some(n.id()) == entry).click_accesskit();
+    h.get_by(|n| Some(n.id()) == entry).scroll_to_me();
     h.run();
+    let pos = h.get_by(|n| Some(n.id()) == entry).rect().center();
+    double_click_at(h, pos);
 }
 
 /// A primary click on the plan at a model point.
@@ -221,6 +229,16 @@ fn click_at(h: &mut Harness<BimApp>, pos: Pos2) {
     h.hover_at(pos);
     h.run();
     for pressed in [true, false] {
+        h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+    }
+    h.run();
+}
+
+/// Two primary clicks at a point on screen in one frame: a double click.
+fn double_click_at(h: &mut Harness<BimApp>, pos: Pos2) {
+    h.hover_at(pos);
+    h.run();
+    for pressed in [true, false, true, false] {
         h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
     }
     h.run();
@@ -538,8 +556,7 @@ fn a_tool_acts_where_the_button_went_down_in_sections_and_on_sheets_too() {
     type_into(&mut h, "Text:", "Tiled floor");
     browse(&mut h, "Section 1");
     drag(&mut h, P2(3000.0, 2500.0), P2(5000.0, 2500.0));
-    h.get_by_label("A101 - Unnamed").click_accesskit();
-    h.run();
+    browse(&mut h, "A101 - Unnamed");
     drag(&mut h, P2(50.0, 50.0), P2(120.0, 50.0));
     let notes = ids(&h, "text");
     assert_eq!(notes.len(), 2, "a note in the section and one on the sheet");
@@ -880,8 +897,7 @@ fn the_browser_opens_level_plans_and_schedules() {
     topmost(&mut h, "Level 2");
     assert_eq!(h.state().sheet, Sheet::Plan(100001));
     // Below the browser's fold, past the elevations and sections: reached as screen readers do.
-    h.get_by_label("Room Schedule").click_accesskit();
-    h.run();
+    browse(&mut h, "Room Schedule");
     assert_eq!(h.state().sheet, Sheet::Schedule("room"));
     assert!(h.query_by_label("Kitchen").is_some(), "a row of the room schedule");
 }
@@ -3076,8 +3092,7 @@ fn text_notes_go_where_clicked_in_plans_sections_and_sheets() {
     browse(&mut h, "Section 1");
     assert_eq!((h.state().sheet, &h.state().tool), (Sheet::Section(section), &Tool::Text));
     click(&mut h, P2(3000.0, 2500.0));
-    h.get_by_label("A101 - Unnamed").click_accesskit();
-    h.run();
+    browse(&mut h, "A101 - Unnamed");
     click(&mut h, P2(50.0, 50.0));
     let notes = ids(&h, "text");
     assert_eq!((field(&h, notes[1], "view"), field(&h, notes[1], "at")), (json!(section), json!([3000.0, 2500.0])));
@@ -6580,8 +6595,7 @@ fn a_view_that_does_not_show_the_active_option_says_so_and_picking_it_again_show
     assert!(!h.state().active_option_unseen(), "Level 1 shows it now");
     // Level 2's plan still shows the primary: what is made there in Low would not be seen.
     // By its row in the browser, whichever side of the palette's fold that lies.
-    h.get_all_by_label("Level 2").next().unwrap().click_accesskit();
-    h.run();
+    topmost(&mut h, "Level 2");
     assert!(plan_graphics(&h, 100001).options.is_empty());
     assert!(h.state().active_option_unseen());
     // The same pick again shows it in the view on screen.

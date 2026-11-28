@@ -14,6 +14,15 @@ m²), a field with no value leaving it with none (an unset yes or no is no). Fil
 them, so two that show the same are equal. The seven schedules every project has (`schedule::VIEWS`) aren't elements
 until changed or placed (`schedule::standard`), and a schedule named as one of them, in any language or case, is that one; renaming a parameter renames it in schedules and in the formulas naming it. The last of them is the sheet list (`of: "sheet"`), the project's sheets by their numbers, a category
 no view draws.
+Once one of the seven is made the project's own — renamed, or given fields, filters or a sort — its `Schedule.standard` is set
+(`#[serde(default)]`, so a file from before reads as it is), and `schedule::standard_id` finds it by its category and that flag,
+whatever it is called; a file from before the flag keeps finding it by the built-in name. `schedule::named` with a built-in
+name (in any language or case) answers that category's standard schedule first, so an open `Sheet::Schedule(cat)` shows the
+same table after the rename, and `BimApp::schedules` leaves the standard out so the browser lists the category once, under its
+new name. The `rename` command with `schedule: <category>` makes the built-in an element when it isn't one yet
+(`Schedule { name: new, standard: true, .. }`, answered `created: true`) and renames it when it is; a built-in schedule may not
+take another built-in's name, and `Model::check` allows one standard schedule a category. `rename` also takes a schedule by its
+name or id, and a sheet's name by `sheet` (its number stays).
 A component's Room Number and Room Name (as Revit's Room: Number and Room: Name) are the room it is in, found where it is
 read and never stored (`Rooms::component`, the one rule `elements`, schedules, `load_points` and IFC share): the room on its
 level whose boundary at the walls' centre lines holds its family's room calculation point (else its insertion point) in plan,

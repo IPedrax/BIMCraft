@@ -24,6 +24,19 @@ positions are preserved. `place` returns the chosen `scale` with its id and posi
 1" = 200'-0"), and 1 : n for any other. The Scale menu, Properties, templates and sheets' titles name them so, and a scale is typed
 as n, 1 : n, or two lengths (`1/4" = 1'-0"`).
 
+The names F2 in the Project Browser changes are the views' own fields: a plan view's, a level's own floor or ceiling plan's
+(see below), a section's or an elevation's, a callout's and a 3D view's. `rename` is the one command for them, by `id`, by
+`view` (a name, an id, or `{3D}`/`3D`), by `level` with `plan: floor|ceiling` for a level's own plan, and it makes the default
+3D view an element the first time it is renamed: `View3D { name: new, ..View3D::default_view() }`, answered with
+`created: true` and opened in the 3D tab by the window. `{3D}` and `3D` name the 3D view, so no other view may take them. A
+level's own floor and ceiling plans are `PlanView` elements with `primary: true` and `ceiling` saying which, dependent on the
+level so its annotation and view range show; the first rename makes one (`created: true`), and its name is then the view's,
+not the level's. Until then the row falls back to the level's name. A primary plan may share its own level's name; another
+level's name is refused. A sheet's name changes with `rename` too; its number does not (it stays Properties' or `modify`'s),
+and a name that is another sheet's number is refused so `Model::sheet_numbered` stays unambiguous. Every new name is checked
+by `Model::check` (views' names are one each), which the engine runs before the command's step is kept, so a refusal leaves
+the project as it was.
+
 The built-in sheet title block fits each complete project name, sheet name, scale and sheet number within its own cell,
 with 4 mm clear at either side. Long values shrink uniformly; short values keep their usual lettering size and alignment.
 The full values remain in the project file. The desktop, rendered sheet images and PDF share this lettering.

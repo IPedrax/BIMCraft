@@ -1879,6 +1879,11 @@ pub struct Placed {
 pub struct Schedule {
     pub name: String,
     pub of: String,
+    /// The schedule of category `of` every project has (`schedule::VIEWS`), once it has been made the project's own:
+    /// renamed, or given fields, filters or a sort. Kept so a renamed built-in schedule stays its category's, and the
+    /// browser lists it once.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub standard: bool,
     /// A multi-category schedule's categories (`schedule::MULTI`): none, every built one.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub categories: Vec<String>,
@@ -1908,6 +1913,13 @@ impl Schedule {
 pub struct PlanView {
     pub level: Guid,
     pub name: String,
+    /// The level's own plan, made an element when it is renamed: a dependent view of the level that shows its annotation,
+    /// with a name of its own. `plan_views` leaves it out, so the browser lists it once.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub primary: bool,
+    /// A primary plan's kind: the level's reflected ceiling plan rather than its floor plan.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ceiling: bool,
     #[serde(default)]
     pub view_range: ViewRange,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -6555,7 +6567,8 @@ impl Model {
         self.rare("planview")
             .into_iter()
             .filter_map(|id| match self.elements.get(id) {
-                Some(Element::PlanView(v)) if self.same(v.level, level) => Some((id, v)),
+                // The level's own plan is not one of its plan views: the browser lists it in the level's row.
+                Some(Element::PlanView(v)) if !v.primary && self.same(v.level, level) => Some((id, v)),
                 _ => None,
             })
             .collect()
@@ -6598,8 +6611,19 @@ impl Model {
     /// Whether plan `key` draws annotation `e`: when it is in the plan, or in the parent of a dependent view.
     pub fn annotation_in(&self, e: &Element, key: impl Key) -> bool {
         let Some(at) = self.annotation_plan(e) else { return false };
-        let key = self.guid(key);
-        at == key || matches!(self.elements.get(key), Some(Element::PlanView(PlanView { parent: Some(p), .. })) if *p == at)
+        let mut key = self.guid(key);
+        // A dependent view shows its parent's annotation; a level's own plan is a dependent of the level, so a dependent of it
+        // follows one more step.
+        for _ in 0..64 {
+            if at == key {
+                return true;
+            }
+            match self.elements.get(key) {
+                Some(Element::PlanView(PlanView { parent: Some(p), .. })) => key = *p,
+                _ => return false,
+            }
+        }
+        false
     }
 
     /// The names of a category's types (wall, floor, door or window, in any case, singular or
@@ -8091,7 +8115,8 @@ impl Model {
     /// none for another element.
     pub fn view_name(&self, id: impl Key) -> Option<&str> {
         match self.elements.get(id) {
-            Some(Element::Level(l)) => Some(&l.name),
+            // A level's floor plan is its own primary plan once that is an element (rename made it one).
+            Some(Element::Level(l)) => self.primary_plan(id, false).and_then(|p| self.view_name(p)).or(Some(&l.name)),
             Some(Element::Section(v) | Element::Elevation(v)) => Some(&v.name),
             Some(Element::Schedule(sc)) => Some(&sc.name),
             Some(Element::PanelSchedule(ps)) => Some(&ps.name),
@@ -8104,19 +8129,44 @@ impl Model {
     }
 
     /// The views, by id: the levels' plans, the plan views, sections, elevations, detail views, schedules and 3D views. From
-    /// the lookup.
+    /// the lookup. A level whose floor plan is its own primary `PlanView` is left out: that view is the plan.
     pub fn views(&self) -> BTreeSet<Id> {
         let lookup = self.lookup();
-        let mut ids: BTreeSet<Id> = lookup.levels().collect();
+        let primary: BTreeSet<Guid> = lookup
+            .rare("planview")
+            .filter_map(|id| match self.elements.get(id) {
+                Some(Element::PlanView(v)) if v.primary && !v.ceiling => Some(v.level),
+                _ => None,
+            })
+            .collect();
+        let mut ids: BTreeSet<Id> = lookup.levels().filter(|id| !primary.contains(&self.guid(*id))).collect();
         for cat in ["planview", "section", "elevation", "detail", "schedule", "panelschedule", "rebardetail", "view3d"] {
             ids.extend(lookup.rare(cat));
         }
         ids
     }
 
-    /// The view named `name` (the first, by id, were two so named).
+    /// The level's own plan of that kind, once it is an element: its primary floor plan, or its ceiling plan.
+    pub fn primary_plan(&self, level: impl Key, ceiling: bool) -> Option<Id> {
+        let level = self.guid(level);
+        self.lookup().rare("planview").find(|id| match self.elements.get(*id) {
+            Some(Element::PlanView(v)) => v.primary && v.ceiling == ceiling && v.level == level,
+            _ => false,
+        })
+    }
+
+    /// A level's ceiling plan's name: its own primary plan's, or the level's own while it has none.
+    pub fn ceiling_view_name(&self, level: impl Key) -> Option<&str> {
+        self.primary_plan(level, true).and_then(|p| self.view_name(p)).or_else(|| self.level(level).map(|l| l.name.as_str()))
+    }
+
+    /// The view named `name` (the first, by id, were two so named). A level's name names its floor plan, which is its
+    /// primary `PlanView` once that is an element.
     pub fn view_named(&self, name: &str) -> Option<Id> {
-        self.views().into_iter().find(|id| self.view_name(*id) == Some(name))
+        self.views()
+            .into_iter()
+            .find(|id| self.view_name(*id) == Some(name))
+            .or_else(|| self.levels().into_iter().find(|(_, l)| l.name == name).and_then(|(id, _)| self.primary_plan(id, false)))
     }
 
     /// The sheets, by id.
@@ -8179,7 +8229,12 @@ impl Model {
     /// The first of `base`, `base 2`, `base 3`… (or with `numbered`, `base 1`, `base 2`…) that no
     /// view has.
     pub fn free_view_name(&self, base: &str, numbered: bool) -> String {
-        let taken: BTreeSet<&str> = self.elements.keys().filter_map(|id| self.view_name(*id)).collect();
+        let taken: BTreeSet<&str> = self
+            .elements
+            .keys()
+            .filter_map(|id| self.view_name(*id))
+            .chain(self.levels().into_iter().map(|(_, l)| l.name.as_str()))
+            .collect();
         (1..)
             .map(|n| if n == 1 && !numbered { base.to_string() } else { format!("{base} {n}") })
             .find(|n| !taken.contains(n.as_str()))
@@ -9887,7 +9942,7 @@ impl Model {
 
     /// What [`Model::check`] asks of what the elements it went through hold in common.
     fn check_shared(&self, t: &Tally) -> Result<(), String> {
-        if let Some(n) = t.view_names.intersection(&t.level_names).next() {
+        if let Some(n) = t.view_names.intersection(&t.level_names).find(|n| t.primary_names.get(*n) != Some(*n)) {
             return Err(format!("a view is named `{n}`, as a level is; name it otherwise"));
         }
         for (host, v) in &t.spans {
@@ -10052,6 +10107,9 @@ impl Model {
             link_names,
             view_names,
             twins,
+            standards,
+            primary_plans,
+            primary_names,
             sheet_numbers,
             placed,
             spans,
@@ -10832,7 +10890,31 @@ impl Model {
                     return Err(format!("{who}: a view needs a name"));
                 }
                 crate::schedule::check(self, sc).map_err(|e| format!("{who} (`{}`): {e}", sc.name))?;
-                if let Some((of, name)) = crate::schedule::builtin(Some(&sc.name), None)
+                // A category has one standard schedule, and only one of the seven has one at all: renamed, it stays its
+                // category's, so the browser lists it once and the category's built-in name stays taken.
+                let mine = sc.category();
+                let named = crate::schedule::builtin(Some(&sc.name), None);
+                if sc.standard {
+                    if crate::schedule::builtin(None, Some(&mine)).is_none() {
+                        return Err(format!("{who} (`{}`): only the schedules every project has can be standard", sc.name));
+                    }
+                    if let Some((of, _)) = named
+                        && of != mine
+                    {
+                        return Err(format!(
+                            "{who} (`{}`): `{}` names the {of}s' built-in schedule, and this one is of {mine}s",
+                            sc.name, of
+                        ));
+                    }
+                    if !standards.insert(mine.clone()) {
+                        return Err(format!("{who} (`{}`): another schedule is already the {mine}s' standard", sc.name));
+                    }
+                } else if let Some((of, _)) = named
+                    && !standards.insert(of.to_string())
+                {
+                    return Err(format!("{who} (`{}`): another schedule is already the {of}s' standard", sc.name));
+                }
+                if let Some((of, name)) = named
                     && !twins.insert(of)
                 {
                     return Err(format!("{who} (`{}`): another schedule is already the {of}s' {name}; call it something else", sc.name));
@@ -10889,15 +10971,31 @@ impl Model {
                     crop(&who, a, b)?;
                 }
                 v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
-                // A level's name is its own plan's; a view of it takes another.
-                if self.levels().iter().any(|(_, l)| l.name == v.name) {
+                if v.primary {
+                    // A level's own plan, made an element: it hangs from its level and is the one of its kind there.
+                    if v.parent != Some(v.level) {
+                        return Err(format!("{who}: a level's own plan hangs from its level"));
+                    }
+                    if !primary_plans.insert((v.level, v.ceiling)) {
+                        let kind = if v.ceiling { "ceiling plan" } else { "floor plan" };
+                        return Err(format!("{who}: another {kind} is already this level's own"));
+                    }
+                    let level_name = self.level(v.level).map_or("", |l| l.name.as_str());
+                    primary_names.insert(v.name.as_str(), level_name);
+                } else if v.ceiling {
+                    return Err(format!("{who}: only a level's own plan is a ceiling plan"));
+                }
+                // A level's name is its own plan's; another view of it takes another.
+                if self.levels().iter().any(|(_, l)| l.name == v.name)
+                    && !(v.primary && self.level(v.level).is_some_and(|l| l.name == v.name))
+                {
                     return Err(format!("{who}: a level is already named `{}`; a plan view of it needs another name", v.name));
                 }
                 if let Some(p) = v.parent {
                     // Of a level's own plan, or of a plan view that is no dependent itself, on the same level.
                     let primary = match self.elements.get(p) {
                         Some(Element::Level(_)) => p == v.level,
-                        Some(Element::PlanView(o)) => o.parent.is_none() && o.level == v.level,
+                        Some(Element::PlanView(o)) => (o.parent.is_none() || o.primary) && o.level == v.level,
                         _ => false,
                     };
                     if !primary {
@@ -11696,6 +11794,12 @@ struct Tally<'a> {
     view_names: BTreeSet<&'a str>,
     /// The schedules every project has that the project has made its own: one each.
     twins: BTreeSet<&'a str>,
+    /// The categories whose standard schedule the project has made its own: one each.
+    standards: BTreeSet<String>,
+    /// Each level's primary floor and ceiling plan: one each, by the level's GUID and whether it is the ceiling plan.
+    primary_plans: BTreeSet<(Guid, bool)>,
+    /// A primary plan's name, and the name of its level: the one name a view may share with a level is its own.
+    primary_names: BTreeMap<&'a str, &'a str>,
     sheet_numbers: BTreeSet<&'a str>,
     /// Each view on a sheet: the sheet.
     placed: BTreeMap<Guid, Guid>,
@@ -11738,6 +11842,17 @@ impl<'a> Tally<'a> {
         once(&mut self.link_names, other.link_names)?;
         once(&mut self.view_names, other.view_names)?;
         once(&mut self.twins, other.twins)?;
+        for cat in other.standards {
+            if !self.standards.insert(cat) {
+                return None;
+            }
+        }
+        for plan in other.primary_plans {
+            if !self.primary_plans.insert(plan) {
+                return None;
+            }
+        }
+        self.primary_names.extend(other.primary_names);
         once(&mut self.sheet_numbers, other.sheet_numbers)?;
         for (view, sheet) in other.placed {
             self.placed.insert(view, sheet).is_none().then_some(())?;

@@ -32,7 +32,7 @@ fn ctrl_picks_views_in_the_browser_and_its_right_click_makes_them_a_print_set() 
     let mut h = app(PROJECT);
     let l = levels(&h);
     click_in(&mut h, "Level 1", Modifiers::NONE);
-    assert_eq!(h.state().browser_picked, vec![Pick::View(Sheet::Plan(l[0]))], "a click picks one, and opens it");
+    assert_eq!(h.state().browser_picked, vec![Pick::View(Sheet::Plan(l[0]))], "a click picks one, and leaves the view as it was");
     click_in(&mut h, "Level 2", Modifiers::COMMAND);
     assert_eq!(h.state().browser_picked, vec![Pick::View(Sheet::Plan(l[0])), Pick::View(Sheet::Plan(l[1]))]);
     assert_eq!(h.state().sheet, Sheet::Plan(l[0]), "Ctrl picks, it doesn't open");

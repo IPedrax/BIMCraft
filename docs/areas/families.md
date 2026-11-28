@@ -252,7 +252,12 @@ is read-only. Choosing `<None>` removes the association while retaining that eva
 unchanged; parameter creation stays in the family draft until the family is loaded.
 
 A type of a category or of a family is renamed with `rename_type` (`Model::move_entry` moves it in its map, and `rename_entry` the
-library entry and every reference `Model::lib_refs_mut` visits, so it keeps its GUID). A type or a family goes with `delete_type` (one entry, refused while an element uses it, and for the last type of a category or of a family: a
+library entry and every reference `Model::lib_refs_mut` visits, so it keeps its GUID). The one command the Project Browser's
+F2 and Rename use is `rename`: `{family, rename}` goes through `family {rename}` (its key, its instances, its library entries
+and the nested references follow) and `{family, type, rename}` or `{category, type, rename}` through `rename_type`, its reply
+normalized to `{kind, from, to}`. After a rename the window follows them in `BimApp::component` and `BimApp::types`, so the
+Component tool and the Type Selector never place a name that is gone; a family open in the Family Editor is the project's
+family renamed, and the document stays as it is. A type or a family goes with `delete_type` (one entry, refused while an element uses it, and for the last type of a category or of a family: a
 tool needs one to place) and `purge` (every entry of the kinds asked that nothing uses). Use is what `Model::lib_refs_mut` visits, the one place
 that names every reference to a library entry: `Model::library_uses` counts them on a copy of the model, `Model::unused_entries` is one pass of
 what purge takes out (each category keeps its default's type, else its first; a family that goes takes its types), the command repeats it

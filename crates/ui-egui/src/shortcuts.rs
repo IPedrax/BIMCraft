@@ -2740,7 +2740,18 @@ impl BimApp {
                 true
             }
             "ui.view.plan" => {
-                self.open_sheet(crate::Sheet::Plan(self.plan_key().unwrap_or_default()));
+                // The plan on screen, or the last plan tab, or the first level: never Plan(0), which has no level.
+                let key = match self.sheet {
+                    crate::Sheet::Plan(key) | crate::Sheet::Ceiling(key) => Some(key),
+                    _ => self.views.iter().find_map(|sheet| match *sheet {
+                        crate::Sheet::Plan(key) | crate::Sheet::Ceiling(key) => Some(key),
+                        _ => None,
+                    }),
+                }
+                .or_else(|| self.session.model.levels().first().map(|(id, _)| *id));
+                if let Some(key) = key {
+                    self.open_sheet(crate::Sheet::Plan(key));
+                }
                 true
             }
             "ui.title_blocks" => {
