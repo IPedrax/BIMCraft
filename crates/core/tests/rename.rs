@@ -85,7 +85,7 @@ fn the_default_3d_is_made_an_element_and_undo_makes_it_virtual_again() {
     assert_eq!(reply["created"], json!(true));
     let id = reply["id"].as_u64().unwrap();
     assert_eq!(s.model.view_name(id), Some("Model"));
-    assert_eq!(s.model.default_3d(), None, "the name is no longer {3D}");
+    assert_eq!(s.model.default_3d(), None, "the name is no longer {{3D}}");
     assert_eq!(s.history().len(), before + 1);
     s.execute("undo", &json!({})).unwrap();
     assert_eq!(s.model.default_3d(), None);
