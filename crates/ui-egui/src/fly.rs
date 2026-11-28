@@ -108,7 +108,7 @@ pub(crate) fn step(cam: Camera, fly: Fly, keys: Keys, look: Vec2, seconds: f64) 
 
 /// The words over the view while it flies, at the top of `rect`, the speed it flies at in `speed`.
 pub(crate) fn banner(ctx: &Context, rect: Rect, speed: &str) {
-    // Below the view's tabs, which float over its top in BIMCraft's profile (as the streamed note keeps clear of them).
+    // Below the view's tabs, which float over its top in BIMCraft's profile (as the memory note keeps clear of them).
     let at = pos2(rect.center().x, rect.top() + 48.0);
     egui::Area::new(egui::Id::new("fly-mode-banner"))
         .order(egui::Order::Foreground)

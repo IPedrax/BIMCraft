@@ -514,23 +514,22 @@ minutes into `Scene::new` and was on its way out of memory, which the system ans
 triangle of every copy in full for the processor, picking and sections: about 93 million at 100 storeys, and with them their
 planes, normals and faces, then the card's mesh.
 
-What a game does with a world bigger than memory is hold what is near and let the rest go. A 3D view of a model whose scene is
-estimated past a quarter of the memory that's free (at most 8 GB) (`view3d::stream`, at `BYTES_PER_TRIANGLE`, 600 bytes a triangle all told)
-holds:
+A 3D view first held only part of such a model (the building's fabric, and the components, runs and bars of the storeys
+round where it looked, from 2026-11-14). That was withdrawn on 2026-11-28: **a 3D view never leaves an element out**. An
+engineer checking routing or clashes must be able to trust that what isn't drawn isn't there; Revit and Archicad keep every
+element and stay light by holding each family's shape once, simplifying only the picture while the view moves.
 
-- **the building's fabric, always**: walls, floors, roofs, ceilings, columns, stairs, doors and windows, everything but the
-  detail: a twentieth of the tower's triangles, so the whole building is there to orbit;
-- **the detail of the storeys round where it looks**: components, runs and bars, the storey the camera's target is on first,
-  then the next above and below in turn, as many as fit.
+Now (`orbit.rs`, `Heavy`): before a whole scene is made afresh, the worker estimates what it needs (`view3d::estimate`, at
+`BYTES_PER_TRIANGLE`, 600 bytes a triangle all told):
 
-Each element is made against the whole model (`Scene::new_among_cancellable`, `solids_among_cancellable`), so what is held is
-exactly what the whole scene would have (`stream_tests.rs` holds the two to the same boxes). When the camera's target leaves
-the storeys held, the view asks its worker for the part round where it looks now and keeps the last picture until it comes,
-as an edit does. The view says in its corner from which storey to which the detail is shown and how many elements are left
-out. A model that fits is held whole, exactly as before; with no meter (the tests, the CLI) nothing is streamed.
+- **it fits what's free**: made as always, nothing said;
+- **more than is free, less than the machine has beside the open project**: made whole all the same, and a framed note over
+  the view says how much it needs against what's free, so a slow machine is explained;
+- **more than the machine has beside the open project** (its memory less what the app holds): not made, since running out of
+  memory is a crash nothing catches, and the view says why instead of drawing part of it.
 
-Next: a streamed scene is made afresh on an edit, not brought up to date (`Scene::update_cancellable` assumes the whole model);
-the copies of components could be held as placements on the processor's side too, which would let far more of a model fit.
+With no meter (the tests, the CLI) nothing is estimated. The real fix is the next step: the copies of components and round runs
+held once on the processor's side too, as the card already holds them, so a tower's scene takes a fraction of the memory it does.
 
 ## What isn't decided yet
 

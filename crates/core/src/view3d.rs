@@ -2475,30 +2475,6 @@ fn painted(m: &Model, tris: &mut [Tri], faces: &[&'static str]) {
     }
 }
 
-/// The model as triangles, each with its plane, and its corner normals where it's a curve's: what
-/// every picture of it is drawn from.
-/// What a 3D view of a model holds when the whole of it doesn't fit the memory it may take: every element of the building's
-/// fabric (walls, floors, roofs, ceilings, columns, stairs, openings: about a twentieth of a tower's triangles), and the detail
-/// (components, runs, bars: the rest) of the storeys nearest where the view looks, as many as fit. As a game streams the world
-/// round the player, the view asks for another set as it moves to other storeys ([`Streamed::covers`]).
-#[derive(Clone, Debug, PartialEq)]
-pub struct Streamed {
-    /// The elements to build the scene of.
-    pub among: Arc<BTreeSet<Id>>,
-    /// The heights whose detail is in it, mm, and its first and last storeys' names.
-    pub band: (f64, f64),
-    pub levels: (String, String),
-    /// How many elements of detail are left out.
-    pub left_out: usize,
-}
-
-impl Streamed {
-    /// Whether a view looking at height `z` is still among the storeys it holds the detail of.
-    pub fn covers(&self, z: f64) -> bool {
-        self.band.0 <= z && z <= self.band.1
-    }
-}
-
 /// About how much memory a triangle of the 3D view takes, all told: the scene's own (its points, plane, normals and face), the
 /// card's vertices, the picking hierarchy and the copies on the way to the card. 580 bytes measured on the annotated 10-storey
 /// tower (9.3 million triangles, 5.4 GB at the peak).
@@ -2516,72 +2492,14 @@ fn triangles_of(e: &Element) -> u64 {
     }
 }
 
-/// Whether `e` is detail, which a streamed view holds only for the storeys near where it looks.
-fn detail(e: &Element) -> bool {
-    matches!(e, Element::Component(_) | Element::Rebar(_)) || e.run().is_some()
+/// About how many bytes a 3D view of the whole of `m` takes ([`BYTES_PER_TRIANGLE`]). A 3D view always holds every element:
+/// this is what it tells the user it needs, never a reason to leave any out.
+pub fn estimate(m: &Model) -> u64 {
+    m.elements.values().map(triangles_of).sum::<u64>().saturating_mul(BYTES_PER_TRIANGLE)
 }
 
-/// What a 3D view of `m` should hold to stay within `budget` bytes, looking at height `focus` (mm): none when the whole model
-/// fits, which is then what it holds, exactly as before.
-pub fn stream(m: &Model, budget: u64, focus: f64) -> Option<Streamed> {
-    let estimate = |ids: &mut dyn Iterator<Item = &Element>| ids.map(triangles_of).sum::<u64>().saturating_mul(BYTES_PER_TRIANGLE);
-    if estimate(&mut m.elements.values()) <= budget {
-        return None;
-    }
-    let levels = m.levels();
-    let mut among = BTreeSet::new();
-    let mut fabric = 0u64;
-    // The detail by storey: each element's height its level's.
-    let mut by_storey: BTreeMap<usize, Vec<(Id, u64)>> = BTreeMap::new();
-    let storey = |z: f64| levels.iter().rposition(|(_, l)| l.elevation <= z + TOL).unwrap_or(0);
-    for (&id, e) in &m.elements {
-        if detail(e) {
-            let z = m.level_of(e).map_or(0.0, |l| m.elevation(l));
-            by_storey.entry(storey(z)).or_default().push((id, triangles_of(e)));
-        } else {
-            fabric += triangles_of(e);
-            among.insert(id);
-        }
-    }
-    let mut left = budget.saturating_sub(fabric.saturating_mul(BYTES_PER_TRIANGLE));
-    // Outward from the storey looked at, a storey at a time, below and above in turn, while they fit.
-    let at = storey(focus);
-    let (mut lo, mut hi) = (at, at);
-    let take = |k: usize, among: &mut BTreeSet<Id>, left: &mut u64| -> bool {
-        let ids = by_storey.get(&k).map(Vec::as_slice).unwrap_or_default();
-        let cost = ids.iter().map(|(_, t)| t).sum::<u64>().saturating_mul(BYTES_PER_TRIANGLE);
-        if cost > *left {
-            return false;
-        }
-        *left -= cost;
-        among.extend(ids.iter().map(|(id, _)| *id));
-        true
-    };
-    let n = levels.len().max(1);
-    let mut held = take(at, &mut among, &mut left);
-    while held {
-        let (down, up) = (lo > 0, hi + 1 < n);
-        if !down && !up {
-            break;
-        }
-        held = false;
-        if up && take(hi + 1, &mut among, &mut left) {
-            hi += 1;
-            held = true;
-        }
-        if down && take(lo - 1, &mut among, &mut left) {
-            lo -= 1;
-            held = true;
-        }
-    }
-    let name = |k: usize| levels.get(k).map_or_else(String::new, |(_, l)| l.name.clone());
-    let z = |k: usize| levels.get(k).map_or(0.0, |(_, l)| l.elevation);
-    let band = (if lo == 0 { f64::NEG_INFINITY } else { z(lo) }, if hi + 1 >= n { f64::INFINITY } else { z(hi + 1) });
-    let detail_count: usize = by_storey.values().map(Vec::len).sum();
-    let held_detail = among.len().saturating_sub(m.elements.len() - detail_count);
-    Some(Streamed { among: Arc::new(among), band, levels: (name(lo), name(hi)), left_out: detail_count - held_detail })
-}
-
+/// The model as triangles, each with its plane, and its corner normals where it's a curve's: what
+/// every picture of it is drawn from.
 pub struct Scene {
     tris: Vec<Tri>,
     planes: Vec<usize>,

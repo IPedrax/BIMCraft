@@ -8186,3 +8186,37 @@ mod select_instances;
 mod sheet_fit;
 
 mod window_drag;
+
+#[test]
+fn a_3d_view_of_a_model_bigger_than_the_memory_free_says_so_plainly_and_shows_every_element() {
+    let mut h = app_at(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"), 0.05);
+    press(&mut h, "Default 3D View");
+    let door = find(&h, |e| matches!(e, Element::Door(_)));
+    h.state_mut().orbit.heavy = Some(crate::orbit::Heavy { needs: 9_000_000_000, free: 2_000_000_000, room: 20_000_000_000 });
+    h.run();
+    assert!(
+        h.query_by_label_contains("needs about 9.0 GB, more than the 2.0 GB free: every element is shown").is_some(),
+        "the warning stands over the view"
+    );
+    // Nothing is left out of what the view shows or picks.
+    let at = h.state().screen3([2000.0, -25.0, 1000.0]);
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, [door]);
+}
+
+/// The 3D view's memory note in the three looks, to look at: run with `BIMCRAFT_HEAVY_UI_DUMP` a folder.
+#[test]
+fn the_3d_memory_note_in_three_looks() {
+    let Ok(folder) = std::env::var("BIMCRAFT_HEAVY_UI_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (name, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+        let mut h = app(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"));
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.state_mut().light_canvas = light_canvas;
+        h.set_size(vec2(1600., 1000.));
+        press(&mut h, "Default 3D View");
+        h.state_mut().orbit.heavy = Some(crate::orbit::Heavy { needs: 9_000_000_000, free: 2_000_000_000, room: 20_000_000_000 });
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("heavy-{name}.png"))).unwrap();
+    }
+}

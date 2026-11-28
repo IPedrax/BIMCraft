@@ -15,7 +15,7 @@ The headless numbers below were true and misleading: the window was far slower t
 | Opening, in one frame | 25.4 s | 16.6 s, then on a thread with a progress box and Cancel | the read on one core |
 | The first frame of the plan | 27.3 s (minutes before the fix below) | 17.9 s | each run's end scanned every element (O(n²)): `runs::arms` without an index; the canvas fitted the plan by drawing it |
 | Every frame after, idle or moving | 830 to 990 ms | 95 to 165 ms | the equality control and the padlocks of dimensions, the Properties palette and the browser each walked every element, every frame; each dimension's stations were found, wall outlines and all |
-| Opening the 3D view | out of memory: 35 GB and climbing at 3 minutes, of 46 | streamed (below) | the scene keeps every triangle of every copy in full, about 93 million |
+| Opening the 3D view | out of memory: 35 GB and climbing at 3 minutes, of 46 | refused with why where it can't fit (below) | the scene keeps every triangle of every copy in full, about 93 million |
 
 What changed:
 
@@ -28,8 +28,9 @@ What changed:
   elements read, Cancel through the read's `Budget`).
 - The file is compact JSON, read element by element on every core; Compressed save (an option) zips it (`bimc.rs`), deflated and
   inflated on every core.
-- A 3D view of a model bigger than a quarter of the memory that's free (at most 8 GB) holds the building's fabric and the detail of the
-  storeys round where it looks (`view3d::stream`), and streams other storeys' as the camera moves to them.
+- A 3D view always holds every element. One needing more memory than is free says so over the view; one needing more than the
+  machine has beside the open project isn't made, and says why (`orbit.rs`, `Heavy`). Partial loading (2026-11-14) was withdrawn
+  on 2026-11-28: an engineering view must never hide elements.
 - A banner says when the machine starts to swap (`memory::SwapWatch`, `ui-egui/src/swap.rs`).
 
 After (same tower, zipped, `bimcraft --bench`, the window's frames):
@@ -44,8 +45,8 @@ After (same tower, zipped, `bimcraft --bench`, the window's frames):
 
 Still to do, measured on the tower's open (about 16 s): `migrate`, `names_from_file` and `sync_library` on one core (about
 5 s); `Model::check` twice, once by `open` and again by the engine after it (about 3 s each, the per-element part now on every
-core); the 3D view's streamed scene holds one storey's detail in 8 GB, as the annotated tower's fabric alone takes most of it,
-and is made afresh, not brought up to date, on an edit.
+core); the 3D view's scene holds every copy of a component in full, so the annotated 100-storey tower doesn't fit a desktop's
+memory: its copies held once, as the card holds them, is next.
 
 ## What happened
 
