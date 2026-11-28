@@ -204,8 +204,12 @@ fn browse(h: &mut Harness<BimApp>, label: &str) {
 /// The point of the Project Browser's row named `label`, the topmost of them, not its view tab.
 fn browser_row(h: &Harness<BimApp>, label: &str) -> Pos2 {
     let rect = h.state().browser_rect;
+    let tabs: Vec<egui::Rect> = h.state().tab_rects.iter().map(|(_, r)| *r).collect();
     h.get_all_by_label(label)
-        .filter(|n| rect.contains(n.rect().center()))
+        .filter(|n| {
+            let at = n.rect().center();
+            rect.contains(at) && !tabs.iter().any(|tab| tab.contains(at))
+        })
         .min_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
         .map(|n| n.rect().center())
         .unwrap_or_else(|| h.get_by_label(label).rect().center())
