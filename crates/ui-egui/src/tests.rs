@@ -147,6 +147,8 @@ fn topmost(h: &mut Harness<BimApp>, name: &str) {
     let pos = top.unwrap();
     // A browser row opens on a double click; a tab or a button takes one.
     if tab.is_none() && h.state().browser_rect.contains(pos) {
+        h.run_steps(15);
+        let pos = browser_row(h, name);
         double_click_at(h, pos);
         return;
     }
@@ -193,6 +195,7 @@ fn press_near(h: &mut Harness<BimApp>, name: &str, beside: &str) {
 
 /// A view in the Project Browser, opened as screen readers do: it may lie below the browser's fold.
 fn browse(h: &mut Harness<BimApp>, label: &str) {
+    h.run_steps(15); // Age earlier clicks before the scroll moves the row.
     h.get_by_label(label).scroll_to_me();
     h.run();
     double_click_at(h, browser_row(h, label));
@@ -211,6 +214,7 @@ fn browser_row(h: &Harness<BimApp>, label: &str) -> Pos2 {
 /// A view's entry in the Project Browser while its tab is open too: the lower of the two.
 fn browse_entry(h: &mut Harness<BimApp>, label: &str) {
     use egui_kittest::kittest::NodeT;
+    h.run_steps(15);
     let entry = h.get_all_by_label(label).max_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).map(|n| n.accesskit_node().id());
     h.get_by(|n| Some(n.id()) == entry).scroll_to_me();
     h.run();
@@ -244,10 +248,9 @@ fn click_at(h: &mut Harness<BimApp>, pos: Pos2) {
     h.run();
 }
 
-/// Two primary clicks at a point on screen in one frame: a double click. Earlier clicks are aged first, or
+/// Two primary clicks at a point on screen in one frame: a double click. Callers age earlier clicks first, or
 /// they make this pair the third and fourth of a run and egui sees neither as a double click.
 fn double_click_at(h: &mut Harness<BimApp>, pos: Pos2) {
-    h.run_steps(15);
     h.hover_at(pos);
     h.run();
     for pressed in [true, false, true, false] {
