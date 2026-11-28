@@ -154,6 +154,12 @@ pub(crate) struct Tri {
     part: u8,
 }
 
+impl Default for Tri {
+    fn default() -> Tri {
+        Tri { p: [[0.0; 3]; 3], owner: 0, color: Rgb(0, 0, 0), tex: 0, curve: None, face: None, vis: 0, part: 0 }
+    }
+}
+
 /// The bits of a skin that hold the texture.
 const TEXTURE: u32 = 0x003f_ffff;
 /// The bits of a skin that say which part of a curtain wall it is on, so a view hides and paints panels and mullions apart
@@ -339,6 +345,7 @@ impl PreparedSolids {
 
 mod caps;
 mod fragments;
+mod tris;
 mod update;
 pub use caps::{CapSource, CapTri, Caps};
 pub use fragments::{FragmentStats, SectionCache};
@@ -2498,10 +2505,56 @@ pub fn estimate(m: &Model) -> u64 {
     m.elements.values().map(triangles_of).sum::<u64>().saturating_mul(BYTES_PER_TRIANGLE)
 }
 
+/// A scene being made, an element at a time ([`Scene::new_among_cancellable`]).
+struct Making {
+    tris: tris::Tris,
+    planes: Vec<usize>,
+    smooth: Vec<Option<Arc<[P3; 3]>>>,
+    faces: Vec<&'static str>,
+    placements: Vec<(usize, crate::component_geometry::ComponentInstance)>,
+    spans: Vec<Span>,
+    skins: Vec<Option<Sampler>>,
+    table: PlaneTable,
+    keys: HashMap<ShapeKey, usize>,
+    shapes: Vec<Vec<[P3; 3]>>,
+}
+
+impl Making {
+    /// The triangles of an element (of each element, in their order, where `tris` holds more than one's), put after those
+    /// put before: their surfaces numbered in the element, their faces named and painted, their textures found, their planes
+    /// numbered and their corner normals found, as the whole scene's would be, and each copy of a shape among them held once.
+    fn put(&mut self, m: &Model, rules: &HashMap<Id, Rule>, mut tris: Vec<Tri>) {
+        while !tris.is_empty() {
+            let owner = tris.first().map_or(0, |t| t.owner);
+            let n = tris.iter().take_while(|t| t.owner == owner).count();
+            let rest = tris.split_off(n);
+            self.one(m, rules, owner, tris);
+            tris = rest;
+        }
+    }
+
+    fn one(&mut self, m: &Model, rules: &HashMap<Id, Rule>, id: Id, mut own: Vec<Tri>) {
+        local_surfaces(&mut own);
+        let faces: Vec<&'static str> = own.iter().map(|t| rules.get(&t.owner).map_or("", |r| r.face(&t.p))).collect();
+        painted(m, &mut own, &faces);
+        skins_for(m, &mut self.skins, &own);
+        self.planes.extend(own.iter().map(|t| self.table.assign(t)));
+        self.smooth.extend(corner_normals(&own));
+        self.faces.extend(faces);
+        let start = self.tris.len();
+        let bounds = bounds(own.iter().flat_map(|t| t.p)).unwrap_or_default();
+        let copies = m.elements.get(id).map(|e| update::copies_in(m, id, e, &own, &mut self.keys, &mut self.shapes)).unwrap_or_default();
+        let len = own.len();
+        self.tris.extend_from(&tris::Tris::compact(own, &copies, &self.shapes), 0..len);
+        self.placements.extend(copies.into_iter().map(|(first, copy)| (start + first, copy)));
+        self.spans.push(Span { id, at: start..start + len, bounds });
+    }
+}
+
 /// The model as triangles, each with its plane, and its corner normals where it's a curve's: what
 /// every picture of it is drawn from.
 pub struct Scene {
-    tris: Vec<Tri>,
+    tris: tris::Tris,
     planes: Vec<usize>,
     smooth: Vec<Option<Arc<[P3; 3]>>>,
     /// Each triangle's face, as paint names them: `exterior`, `interior`, `top`, `bottom`, `all`, or none.
@@ -2551,14 +2604,29 @@ enum ShapeKey {
 }
 
 /// Each element's run of `tris`, in their order: an element's triangles are made together.
-fn spans_of(tris: &[Tri]) -> Vec<Span> {
-    let mut out = Vec::new();
+fn spans_of(tris: impl IntoIterator<Item = Tri>) -> Vec<Span> {
+    let mut out: Vec<Span> = Vec::new();
+    // The span being found: its first triangle's place, owner and the box so far.
+    let mut open: Option<(usize, Id, [P3; 2])> = None;
     let mut i = 0;
-    while let Some(first) = tris.get(i) {
-        let end = i + tris[i..].iter().take_while(|t| t.owner == first.owner).count();
-        let bounds = bounds(tris[i..end].iter().flat_map(|t| t.p)).unwrap_or_default();
-        out.push(Span { id: first.owner, at: i..end, bounds });
-        i = end;
+    for t in tris {
+        match &mut open {
+            Some((_, owner, b)) if *owner == t.owner => {
+                for q in t.p {
+                    *b = [std::array::from_fn(|k| b[0][k].min(q[k])), std::array::from_fn(|k| b[1][k].max(q[k]))];
+                }
+            }
+            _ => {
+                if let Some((at, id, bounds)) = open.take() {
+                    out.push(Span { id, at: at..i, bounds });
+                }
+                open = Some((i, t.owner, bounds(t.p.into_iter()).unwrap_or_default()));
+            }
+        }
+        i += 1;
+    }
+    if let Some((at, id, bounds)) = open {
+        out.push(Span { id, at: at..i, bounds });
     }
     out
 }
@@ -2768,7 +2836,7 @@ impl Scene {
 
     pub fn new(m: &Model) -> Scene {
         Self::new_cancellable(m, &|| false).unwrap_or_else(|| Scene {
-            tris: Vec::new(),
+            tris: Vec::new().into(),
             planes: Vec::new(),
             smooth: Vec::new(),
             faces: Arc::default(),
@@ -2797,62 +2865,54 @@ impl Scene {
         if cancelled() {
             return None;
         }
-        let mut tris = Vec::new();
-        for solid in solids_among_cancellable(m, among, cancelled)?.into_iter().flat_map(|s| layered(m, s)) {
+        let solids = solids_among_cancellable(m, among, cancelled)?;
+        // Each paintable element's rule for naming the faces of its triangles; paint gives those it's laid on their material.
+        let rules = rules_of(m, solids.iter().map(Solid::owner));
+        let mut made = Making {
+            tris: tris::Tris::default(),
+            planes: Vec::new(),
+            smooth: Vec::new(),
+            faces: Vec::new(),
+            placements: Vec::new(),
+            spans: Vec::new(),
+            skins: vec![None; m.materials.len() + 1],
+            table: PlaneTable::default(),
+            keys: HashMap::new(),
+            shapes: Vec::new(),
+        };
+        // An element at a time, its triangles made, numbered and painted, and each copy of a shape among them held once: the
+        // whole scene's triangles are never all made at once.
+        let mut element: Vec<Tri> = Vec::new();
+        for solid in solids.into_iter().flat_map(|s| layered(m, s)) {
             if cancelled() {
                 return None;
             }
-            solid.tris(&mut tris);
-        }
-        if cancelled() {
-            return None;
-        }
-        let spans = spans_of(&tris);
-        for span in &spans {
-            if let Some(own) = tris.get_mut(span.at.clone()) {
-                local_surfaces(own);
+            if element.first().is_some_and(|t| t.owner != solid.owner()) {
+                made.put(m, &rules, std::mem::take(&mut element));
             }
+            solid.tris(&mut element);
         }
-        // Each paintable element's rule for naming the faces of its triangles; paint gives those it's laid on their material.
-        let rules = rules_of(m, spans.iter().map(|s| s.id));
-        let faces: Vec<&'static str> = tris.iter().map(|t| rules.get(&t.owner).map_or("", |r| r.face(&t.p))).collect();
-        painted(m, &mut tris, &faces);
+        made.put(m, &rules, element);
         if cancelled() {
             return None;
         }
-        // The textures the scene uses, ready to look up, and what each textured triangle lies across.
-        let mut skins: Vec<Option<Sampler>> = vec![None; m.materials.len() + 1];
-        skins_for(m, &mut skins, &tris);
-        if cancelled() {
-            return None;
-        }
-        let mut table = PlaneTable::default();
-        let planes = tris.iter().map(|t| table.assign(t)).collect();
-        if cancelled() {
-            return None;
-        }
-        let smooth = corner_normals(&tris);
-        if cancelled() {
-            return None;
-        }
-        let (masses, levels, scans) = whole_model(m, &spans);
-        let (shapes, shape_keys, placements) = placements(m, &tris, cancelled)?;
+        let (masses, levels, scans) = whole_model(m, &made.spans);
         Some(Scene {
-            tris,
-            planes,
-            smooth,
-            faces: Arc::new(faces),
-            skins,
+            tris: made.tris,
+            planes: made.planes,
+            smooth: made.smooth,
+            faces: Arc::new(made.faces),
+            skins: made.skins,
             frames: pattern_frames(m),
             masses,
             levels,
             scans,
             edges: OnceLock::new(),
-            placements,
-            shapes,
-            shape_keys,
-            spans,
-            table,
+            placements: made.placements,
+            shapes: made.shapes,
+            shape_keys: made.keys,
+            spans: made.spans,
+            table: made.table,
         })
     }
 
@@ -3008,7 +3068,7 @@ impl Scene {
     /// A scene of `tris` alone: no planes, faces, textures, smooth normals, levels or scans.
     fn bare(tris: Vec<Tri>) -> Scene {
         Scene {
-            tris,
+            tris: tris.into(),
             planes: Vec::new(),
             smooth: Vec::new(),
             faces: Arc::new(Vec::new()),
@@ -3056,81 +3116,6 @@ fn whole_model(m: &Model, spans: &[Span]) -> (BTreeSet<Id>, Vec<(Id, String, [P3
         })
         .collect();
     (masses, levels, scans_of(m))
-}
-
-/// The components among `tris` that are a shape placed, to the last bit: each shape's triangles in its own axes, and for each
-/// copy where its run of triangles starts and how it is placed. A copy whose triangles aren't exactly its shape's placed (or
-/// aren't together) is left out, and is drawn from its own triangles as any element is.
-#[allow(clippy::type_complexity)]
-fn placements(
-    m: &Model,
-    tris: &[Tri],
-    cancelled: &(dyn Fn() -> bool + Sync),
-) -> Option<(Vec<Vec<[P3; 3]>>, HashMap<ShapeKey, usize>, Vec<(usize, crate::component_geometry::ComponentInstance)>)> {
-    let shared = crate::component_geometry::SharedComponents::new(m, cancelled)?;
-    let mut shapes: Vec<Vec<[P3; 3]>> =
-        shared.shapes.iter().map(|pieces| pieces.iter().flat_map(|p| p.tris.iter().copied()).collect()).collect();
-    let mut keys: HashMap<ShapeKey, usize> = shared.keys.into_iter().map(|(k, n)| (ShapeKey::Family(k), n)).collect();
-    let mut copies: HashMap<Id, crate::component_geometry::ComponentInstance> = shared.instances.iter().map(|i| (i.owner, *i)).collect();
-    // Each round run a copy of one tube, a tube for each material, so a copy takes its shape's colour and texture.
-    let tube = crate::runs::unit_tube().0;
-    let mut tubes: HashMap<&str, usize> = HashMap::new();
-    // A curtain wall is many copies, each with where it starts among the wall's triangles.
-    let mut curtains: HashMap<Id, Vec<(usize, crate::component_geometry::ComponentInstance)>> = HashMap::new();
-    for (n, (id, e)) in m.elements.iter().enumerate() {
-        if n % 4096 == 0 && cancelled() {
-            return None;
-        }
-        if let Element::Wall(w) = e
-            && crate::curtain::pattern(m, w).is_some()
-        {
-            curtains.insert(*id, curtain_copies(m, *id, w, &mut keys, &mut shapes));
-            continue;
-        }
-        let (Some(t), Some(g)) = (m.run_type(e), m.run_geom(e)) else { continue };
-        if !g.round || t.profile.is_some() {
-            continue;
-        }
-        let shape = *tubes.entry(t.material.as_str()).or_insert_with(|| {
-            shapes.push(tube.clone());
-            keys.insert(ShapeKey::Tube(t.material.clone()), shapes.len() - 1);
-            shapes.len() - 1
-        });
-        let place = g.tube_place(*id, shape);
-        if place.solid() {
-            copies.insert(*id, place);
-        }
-    }
-    let mut out = Vec::new();
-    let mut i = 0;
-    let mut runs = 0usize;
-    while i < tris.len() {
-        runs += 1;
-        if runs.is_multiple_of(4096) && cancelled() {
-            return None;
-        }
-        let owner = tris[i].owner;
-        let end = i + tris[i..].iter().take_while(|t| t.owner == owner).count();
-        if let Some(copy) = copies.get(&owner)
-            && let Some(local) = shapes.get(copy.shape)
-            && !local.is_empty()
-            && local.len() == end - i
-            && tris[i..end].iter().all(|t| t.vis == 0)
-            && local.iter().zip(&tris[i..end]).all(|(l, t)| l.map(|q| copy.place(q)) == t.p)
-        {
-            out.push((i, *copy));
-        }
-        for (first, copy) in curtains.get(&owner).into_iter().flatten() {
-            let (at, len) = (i + first, shapes.get(copy.shape).map_or(0, Vec::len));
-            if let (Some(local), Some(own)) = (shapes.get(copy.shape), tris.get(at..at + len).filter(|_| at + len <= end))
-                && update::placed(local, copy, own)
-            {
-                out.push((at, *copy));
-            }
-        }
-        i = end;
-    }
-    Some((shapes, keys, out))
 }
 
 /// How many elements a thread makes the triangles of at a time.
@@ -3591,7 +3576,7 @@ impl Scene {
             if i % 256 == 0 && cancelled() {
                 return;
             }
-            if !keep(t) || cut.is_some_and(|k| k.misses(t)) {
+            if !keep(&t) || cut.is_some_and(|k| k.misses(&t)) {
                 continue;
             }
             // In perspective, what is in front of the eye: a triangle, or the one or two its near part makes.
@@ -3693,7 +3678,7 @@ impl Scene {
         (depth, hit, lit): (&mut [f32], &mut [u32], &mut [f32]),
     ) {
         for (i, t) in self.tris.iter().enumerate() {
-            if !keep(t) || cut.is_some_and(|k| k.misses(t)) {
+            if !keep(&t) || cut.is_some_and(|k| k.misses(&t)) {
                 continue;
             }
             let [a, b, c] = t.p.map(|p| cam.project(p));
@@ -3767,7 +3752,7 @@ impl Scene {
                 return None;
             }
             for k in 0..3 {
-                let (qa, qb) = (q(corner(t, k)), q(corner(t, k + 1)));
+                let (qa, qb) = (q(corner(&t, k)), q(corner(&t, k + 1)));
                 if qa != qb {
                     sides.push((qa.min(qb), qa.max(qb), i * 3 + k));
                 }
@@ -3794,7 +3779,7 @@ impl Scene {
             .filter_map(|on| {
                 let (i, k) = (on.first()?.2 / 3, on.first()?.2 % 3);
                 let t = self.tris.get(i)?;
-                Some((i, [corner(t, k), corner(t, k + 1)]))
+                Some((i, [corner(&t, k), corner(&t, k + 1)]))
             })
             .collect();
         drop(sides);
@@ -3980,7 +3965,7 @@ impl Scene {
         let first = self.tris.len();
         let dots = self.dots((cam, clip, cut), (w, h), |s| plain || look.shows(s.owner), plain, look, (&mut depth, &mut hit));
         // Only a picture with something in it to see through needs the second pass, and its buffers.
-        let through_any = self.tris.iter().any(|t| shown(t) && see_through(t));
+        let through_any = self.tris.par_any_unplaced(|t| shown(&t) && see_through(&t));
         let (mut seen, mut seen_lit, mut near) = (Vec::new(), Vec::new(), Vec::new());
         if through_any {
             near = vec![f32::NEG_INFINITY; w * h];
@@ -3989,15 +3974,15 @@ impl Scene {
             self.raster((cam, clip, cut), (w, h), clear, Some(&depth), &corner_light, (&mut near, &mut seen, &mut seen_lit));
         }
         // How lit each triangle is, as its face turns to the light; and its flat colour, which a section's is the paper's.
-        let light: Vec<f64> = self
+        let (light, shade): (Vec<f64>, Vec<Rgb>) = self
             .tris
-            .iter()
-            .map(|t| {
+            .par_map(|_, t| {
                 let n = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
-                lit(if dot(n, toward(t.p[0])) < 0.0 { mul(n, -1.0) } else { n })
+                let l = lit(if dot(n, toward(t.p[0])) < 0.0 { mul(n, -1.0) } else { n });
+                (l, if flat { PAPER } else { paint(colour(&t), l) })
             })
-            .collect();
-        let shade: Vec<Rgb> = self.tris.iter().zip(&light).map(|(t, l)| if flat { PAPER } else { paint(colour(t), *l) }).collect();
+            .into_iter()
+            .unzip();
         // A textured triangle's colour at pixel `k`, where its surface lies `z` toward the camera: the texture at that point of
         // its plane, for a pixel's width of it. None for any other, or where the view colours it its own way, or in a section.
         let texturing = !flat && self.skins.iter().any(Option::is_some);
@@ -4008,11 +3993,11 @@ impl Scene {
             }
             let tri = self.tris.get(t)?;
             let sampler = self.skins.get(tri.texture() as usize)?.as_ref()?;
-            if !plain && colour(tri) != tri.color {
+            if !plain && colour(&tri) != tri.color {
                 return None;
             }
             let [ox, oy, turn] = self.frames.get(&tri.owner).copied().unwrap_or([0.0, 0.0, 0.0]);
-            let [across, up, n] = basis(tri, turn);
+            let [across, up, n] = basis(&tri, turn);
             let (x, y) = ((k % w) as f64 + 0.5, (k / w) as f64 + 0.5);
             let at = cam.point_at((x, y), f64::from(z));
             // A ground's pattern starts where a plan's does; a wall's or a roof's is anchored to the world.
@@ -4028,7 +4013,7 @@ impl Scene {
             Some(match (skin, corners) {
                 (Some(c), Some(l)) => paint(c, f64::from(*l)),
                 (Some(c), None) => paint(c, *light.get(t)?),
-                (None, Some(l)) => paint(colour(tri), f64::from(*l)),
+                (None, Some(l)) => paint(colour(&tri), f64::from(*l)),
                 (None, None) => *shade.get(t)?,
             })
         };
@@ -4107,7 +4092,8 @@ impl Scene {
         if through_any {
             hit = hit.iter().zip(&seen).map(|(h, s)| if *s == u32::MAX { *h } else { *s }).collect();
         }
-        let mut owners: Vec<Id> = self.tris.iter().map(|t| t.owner).chain(self.scans.iter().map(|s| s.owner)).collect();
+        let mut owners: Vec<Id> = self.tris.par_map_unplaced(|_, t| t.owner);
+        owners.extend(self.scans.iter().map(|s| s.owner));
         // Over it, each level's plane outlined where nothing nearer hides it (not in a section's picture,
         // which draws its own), picked as the level.
         // Unselected, the two edges nearer the camera are left out, as in Revit; selected, all four.
@@ -6241,7 +6227,7 @@ mod tests {
         let timber = s.model.materials["Timber"].color;
         assert_eq!(before.tris.len(), after.tris.len());
         let (mut painted, mut kept) = (0, 0);
-        for (i, (a, b)) in before.tris.iter().zip(&after.tris).enumerate() {
+        for (i, (a, b)) in before.tris.iter().zip(after.tris.iter()).enumerate() {
             if a.owner == 100004 && after.faces[i] == "exterior" {
                 assert_eq!(b.color, Rgb(timber[0], timber[1], timber[2]), "triangle {i}");
                 painted += 1;
@@ -6677,7 +6663,7 @@ mod tests {
         let mut on: HashMap<(Corner, Corner), Vec<(usize, usize)>> = HashMap::new();
         for (i, t) in scene.tris.iter().enumerate() {
             for k in 0..3 {
-                let (qa, qb) = (q(corner(t, k)), q(corner(t, k + 1)));
+                let (qa, qb) = (q(corner(&t, k)), q(corner(&t, k + 1)));
                 if qa != qb {
                     on.entry((qa.min(qb), qa.max(qb))).or_default().push((i, k));
                 }
@@ -6687,7 +6673,15 @@ mod tests {
         let mut edges: Vec<(usize, [P3; 2])> = on
             .into_values()
             .filter(|on| !matches!(on.as_slice(), [(x, _), (y, _)] if plane(*x) == plane(*y)))
-            .map(|on| (on[0].0, [corner(&scene.tris[on[0].0], on[0].1), corner(&scene.tris[on[0].0], on[0].1 + 1)]))
+            .map(|on| {
+                (
+                    on[0].0,
+                    [
+                        corner(&scene.tris.get(on[0].0).unwrap_or_default(), on[0].1),
+                        corner(&scene.tris.get(on[0].0).unwrap_or_default(), on[0].1 + 1),
+                    ],
+                )
+            })
             .collect();
         edges.sort_by(|x, y| x.0.cmp(&y.0).then(x.1.partial_cmp(&y.1).unwrap()));
         edges

@@ -9,15 +9,15 @@ use crate::model::{Component, Id, Model};
 pub(crate) type Key = (String, String, bool, String);
 
 /// One local family shape and every component that places it. Mirroring and instance parameters
-/// are part of the shape key; rotation and translation belong to the placement.
+/// are part of the shape key; rotation and translation belong to the placement. The scene finds its copies an element at a
+/// time ([`SharedComponents::key`]); the whole set is what the tests hold that to.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) struct SharedComponents {
     pub(crate) shapes: Vec<Vec<Piece>>,
     /// Local triangle bounds for each shape, used to bound placed instances without expanding triangles.
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) bounds: Vec<Option<[[f64; 3]; 2]>>,
     pub(crate) instances: Vec<ComponentInstance>,
-    /// Each shape's key, and where it is in `shapes`.
-    pub(crate) keys: BTreeMap<Key, usize>,
 }
 
 /// A copy of a local shape: `owner`'s, at `at`, its shape's axes taken to `axes` (each square to the others, any length, so a
@@ -83,6 +83,7 @@ impl SharedComponents {
     }
 
     /// Build each local shape once. No triangles are placed or copied for the instances here.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn new(model: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Self> {
         let mut shapes = Vec::new();
         let mut bounds = Vec::new();
@@ -116,7 +117,7 @@ impl SharedComponents {
             };
             instances.push(ComponentInstance::placed(*owner, shape, &model.component_placement(c)));
         }
-        (!cancelled()).then_some(Self { shapes, bounds, instances, keys: indices })
+        (!cancelled()).then_some(Self { shapes, bounds, instances })
     }
 }
 
