@@ -60,9 +60,8 @@ fn a_builtin_schedule_is_made_an_element_once_and_kept_one_row() {
     assert_eq!(schedule::named(&s.model, "Door Schedule"), Some(id));
     // The same name again is no change and no Undo step.
     let again = s.execute("rename", &json!({"schedule": "door", "rename": "Doors"})).unwrap();
-    assert_eq!(again["id"], id);
-    assert_eq!(again.get("created"), None);
-    assert_eq!(s.history().len(), before + 1);
+    assert_eq!(again["created"], json!(false), "no element is made again");
+    assert_eq!(s.history().len(), before + 1, "and no Undo step is added");
     // Undo takes the element away and the built-in row is virtual again.
     s.execute("undo", &json!({})).unwrap();
     assert_eq!(schedule::standard(&s.model, "door").0, None);
@@ -100,13 +99,14 @@ fn a_family_and_its_type_are_renamed_through_the_commands_that_own_them() {
     let mut s = Session::new();
     s.execute("family", &json!({"name":"Table","types":{"A":{}},"forms":[{"profile":[[0,0],[100,0],[100,100],[0,100]],"to":100}]}))
         .unwrap();
-    let reply = s.execute("rename", &json!({"family": "Table", "rename": "Desk"})).unwrap();
-    assert_eq!((reply["kind"].as_str(), reply["from"].as_str(), reply["to"].as_str()), (Some("family"), Some("Table"), Some("Desk")));
-    assert!(s.model.families.contains_key("Desk") && !s.model.families.contains_key("Table"));
-    let reply = s.execute("rename", &json!({"family": "Desk", "type": "A", "rename": "B"})).unwrap();
+    // `Desk` is one of the starter families a project starts with; rename to a free name.
+    let reply = s.execute("rename", &json!({"family": "Table", "rename": "Bench"})).unwrap();
+    assert_eq!((reply["kind"].as_str(), reply["from"].as_str(), reply["to"].as_str()), (Some("family"), Some("Table"), Some("Bench")));
+    assert!(s.model.families.contains_key("Bench") && !s.model.families.contains_key("Table"));
+    let reply = s.execute("rename", &json!({"family": "Bench", "type": "A", "rename": "B"})).unwrap();
     assert_eq!(reply["kind"], "type");
-    assert!(s.model.families["Desk"].types.contains_key("B"));
-    assert!(!s.model.families["Desk"].types.contains_key("A"));
+    assert!(s.model.families["Bench"].types.contains_key("B"));
+    assert!(!s.model.families["Bench"].types.contains_key("A"));
     // A category's type goes through `rename_type` too.
     s.execute("type", &json!({"category":"wall", "name":"Thick", "thickness":300})).unwrap();
     s.execute("rename", &json!({"category":"wall", "type":"Thick", "rename":"Very Thick"})).unwrap();
