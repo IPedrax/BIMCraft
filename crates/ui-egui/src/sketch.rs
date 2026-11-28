@@ -1335,7 +1335,7 @@ impl BimApp {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for row in tools.chunks(columns) {
-                    ui.horizontal(|ui| {
+                    crate::clipboard::row(ui, |ui| {
                         for (icon, label, tip, tool) in row {
                             let active = match (&self.tool, tool) {
                                 (Tool::TrimTo { many: a, .. }, Tool::TrimTo { many: b, .. }) => a == b,

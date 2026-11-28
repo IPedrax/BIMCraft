@@ -1769,7 +1769,7 @@ impl BimApp {
                 let mut shapes: Vec<Shape> = if s.axis_tool { vec![Shape::Line] } else { GALLERY.to_vec() };
                 shapes.push(Shape::PickLines);
                 for row in shapes.chunks(4) {
-                    ui.horizontal(|ui| {
+                    crate::clipboard::row(ui, |ui| {
                         for shape in row {
                             if crate::small_button(
                                 ui,
