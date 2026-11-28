@@ -120,3 +120,36 @@ fn the_browsers_families_list_grids_and_a_right_click_deletes_an_unused_axis_typ
     assert!(!h.state().session.model.grid_types.contains_key("Spare Axis"));
     assert!(h.state().session.model.library.id(&bimcraft_core::library::Kind::GridType, "Spare Axis").is_none());
 }
+
+/// A click on the checkbox of the spare wall type, scrolled to first: the list holds scores of rows and the box is far down it.
+fn tick_spare(h: &mut Harness<BimApp>) {
+    h.get_by_role_and_label(Role::CheckBox, "wall type: Spare 100").scroll_to_me();
+    h.run();
+    pick(h, Role::CheckBox, "wall type: Spare 100");
+}
+
+#[test]
+fn what_is_unchecked_in_purge_unused_stays_in_the_project() {
+    // Issue #539: the starter library went with what the project made; each entry listed is checked, and what is
+    // unchecked is kept.
+    let mut h = with_spare_types();
+    press(&mut h, "Manage");
+    press(&mut h, "Purge Unused");
+    let n = h.state().purge_dialog.as_ref().map_or(0, |d| d.listed.len());
+    assert!(n > 1);
+    let count = |h: &Harness<BimApp>| purge_button(h).and_then(|b| b.accesskit_node().label().map(String::from));
+    assert_eq!(count(&h), Some(format!("Purge {n}")));
+    tick_spare(&mut h);
+    assert_eq!(count(&h), Some(format!("Purge {}", n - 1)), "one fewer to take out");
+    // Check None leaves nothing to purge; Check All checks them again.
+    press(&mut h, "Check None");
+    assert!(purge_button(&h).is_some_and(|b| b.accesskit_node().is_disabled()));
+    press(&mut h, "Check All");
+    assert_eq!(count(&h), Some(format!("Purge {n}")));
+    tick_spare(&mut h);
+    purge_button(&h).expect("a Purge button").click_accesskit();
+    h.run();
+    let m = &h.state().session.model;
+    assert!(m.types.wall.contains_key("Spare 100"), "the unchecked type stays");
+    assert!(!m.types.window.contains_key("Round 600"), "the checked one goes");
+}

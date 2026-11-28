@@ -170,3 +170,29 @@ fn rename_type_renames_a_type_or_a_family_type_and_what_uses_it_follows() {
     run(&mut s, "undo", json!({}));
     assert!(s.model.families["Chair"].types.contains_key("Small"));
 }
+
+#[test]
+fn purge_keeps_what_it_is_told_to_and_what_that_uses() {
+    // Issue #539: the starter library is purged with what the project made; what the user unchecks stays.
+    let mut s = walls();
+    run(&mut s, "type", json!({"category": "wall", "name": "Spare 100", "thickness": 100}));
+    chair(&mut s);
+    let keep = json!([{"kind": "wall type", "name": "Spare 100"}, {"kind": "family", "name": "Chair"}]);
+    let chair_types = s.model.families["Chair"].types.len();
+    let dry = run(&mut s, "purge", json!({"keep": keep, "dry_run": true}));
+    let listed: Vec<(&str, &str)> =
+        dry["removed"].as_array().unwrap().iter().map(|e| (e["kind"].as_str().unwrap(), e["name"].as_str().unwrap())).collect();
+    assert!(!listed.contains(&("wall type", "Spare 100")) && !listed.contains(&("family", "Chair")), "{listed:?}");
+    assert!(!listed.is_empty(), "the rest is still offered");
+    let r = run(&mut s, "purge", json!({"keep": keep}));
+    assert_eq!(r["count"], dry["count"]);
+    assert!(wall_types(&s).contains(&"Spare 100".to_string()));
+    // A family kept keeps its types, which only it names.
+    let after = s.model.families.get("Chair").map(|f| f.types.keys().cloned().collect::<Vec<_>>());
+    assert_eq!(after.as_ref().map(Vec::len), Some(chair_types), "{after:?} of {chair_types}; removed {:?}", r["removed"]);
+    // What it keeps is a list of kinds and names, as `removed` lists them.
+    for bad in [json!("Chair"), json!(["Chair"]), json!([{"kind": "family"}]), json!([{"kind": "family", "name": 7}])] {
+        let e = s.execute("purge", &json!({"keep": bad})).unwrap_err();
+        assert!(e.contains("`keep`"), "{e}");
+    }
+}
