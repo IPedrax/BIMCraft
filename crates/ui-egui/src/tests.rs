@@ -4423,7 +4423,6 @@ wall {"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "c
 
 #[test]
 fn ceilings_go_in_the_room_clicked_and_show_in_its_ceiling_plan() {
-    use egui_kittest::kittest::NodeT;
     let mut h = app(BOX);
     tool(&mut h, "Ceiling");
     assert!(h.query_by_label("Modify | Place Ceiling").is_some());
