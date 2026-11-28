@@ -305,6 +305,7 @@ pub struct Owner {
     pub frame: [f32; 4],
 }
 
+#[derive(Clone, Debug, PartialEq)]
 struct Node {
     lo: P3,
     hi: P3,
@@ -381,6 +382,10 @@ pub struct Mesh {
     bvh: OnceLock<Bvh>,
 }
 
+/// Of a run of a scene's elements: the triangles the view shows, how see-through each of the run's triangles is, and the box round
+/// those shown.
+type Shown = (Vec<usize>, Vec<u8>, Option<(P3, P3)>);
+
 fn bounds<'a>(points: impl Iterator<Item = &'a P3>) -> Option<(P3, P3)> {
     points.fold(None, |b, p| {
         let (lo, hi) = b.unwrap_or((*p, *p));
@@ -401,7 +406,7 @@ impl Mesh {
     }
 
     /// The same mesh, abandoning a superseded view between batches of triangles.
-    pub fn new_cancellable(scene: &Scene, look: &Look, cancelled: &dyn Fn() -> bool) -> Result<Option<Mesh>, String> {
+    pub fn new_cancellable(scene: &Scene, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Result<Option<Mesh>, String> {
         Self::build(scene, look, cancelled, true)
     }
 
@@ -410,7 +415,21 @@ impl Mesh {
         self.vertices.len() / 3 + self.shapes.iter().map(|s| s.vertices.len() / 3 * s.instances.len()).sum::<usize>()
     }
 
-    fn build(scene: &Scene, look: &Look, cancelled: &dyn Fn() -> bool, instancing: bool) -> Result<Option<Mesh>, String> {
+    fn build(scene: &Scene, look: &Look, cancelled: &(dyn Fn() -> bool + Sync), instancing: bool) -> Result<Option<Mesh>, String> {
+        // A big scene's triangles are gone through on the render threads, a run at a time, each run's result put in its place,
+        // so what comes out is what one thread makes.
+        let pool = (scene.tris.len() >= 65_536).then(super::render_pool).flatten();
+        Self::build_on(scene, look, cancelled, instancing, pool)
+    }
+
+    /// [`Mesh::build`] on `pool`'s threads, or on this one.
+    fn build_on(
+        scene: &Scene,
+        look: &Look,
+        cancelled: &(dyn Fn() -> bool + Sync),
+        instancing: bool,
+        pool: Option<&rayon::ThreadPool>,
+    ) -> Result<Option<Mesh>, String> {
         if cancelled() {
             return Ok(None);
         }
@@ -434,32 +453,60 @@ impl Mesh {
         } else {
             &scene.spans
         };
-        for (n, span) in spans.iter().enumerate() {
-            if n % 1024 == 0 && cancelled() {
-                return Ok(None);
+        let widen = |reach: Option<(P3, P3)>, (lo, hi): (P3, P3)| {
+            Some(match reach {
+                None => (lo, hi),
+                Some((a, b)) => (std::array::from_fn(|k| a[k].min(lo[k])), std::array::from_fn(|k| b[k].max(hi[k]))),
+            })
+        };
+        // Of a run of elements, those of their triangles the view shows, how see-through each of their triangles is (from the
+        // first one's on), and the box round those shown; none when cancelled.
+        let of_spans = |run: &[super::Span]| -> Option<Shown> {
+            if cancelled() {
+                return None;
             }
-            if plain || look.shows(span.id) {
-                // A part the view hides (a stair's headroom unless it shows it, a curtain wall's panels or mullions) is left out
-                // of its element's run.
-                let part_shown =
-                    |i: &usize| scene.tris.get(*i).is_some_and(|t| if plain { look.forms_show(t.vis, false) } else { t.seen_in(look) });
-                shown.extend(span.at.clone().filter(part_shown));
-                for (a, t) in
-                    alphas.get_mut(span.at.clone()).unwrap_or_default().iter_mut().zip(scene.tris.get(span.at.clone()).unwrap_or_default())
-                {
-                    *a = if lines {
-                        0
-                    } else if plain {
-                        t.clearness()
-                    } else {
-                        t.clearness().max(look.transparency_of(t.curtain_part(), span.id))
-                    };
+            let from = run.first().map_or(0, |s| s.at.start);
+            let mut out = (Vec::new(), vec![0u8; run.last().map_or(0, |s| s.at.end).saturating_sub(from)], None);
+            for span in run {
+                if plain || look.shows(span.id) {
+                    // A part the view hides (a stair's headroom unless it shows it, a curtain wall's panels or mullions) is left
+                    // out of its element's run.
+                    let part_shown =
+                        |i: &usize| scene.tris.get(*i).is_some_and(|t| if plain { look.forms_show(t.vis, false) } else { t.seen_in(look) });
+                    out.0.extend(span.at.clone().filter(part_shown));
+                    let at = span.at.start.saturating_sub(from)..span.at.end.saturating_sub(from);
+                    for (a, t) in out.1.get_mut(at).unwrap_or_default().iter_mut().zip(scene.tris.get(span.at.clone()).unwrap_or_default())
+                    {
+                        *a = if lines {
+                            0
+                        } else if plain {
+                            t.clearness()
+                        } else {
+                            t.clearness().max(look.transparency_of(t.curtain_part(), span.id))
+                        };
+                    }
+                    let [lo, hi] = span.bounds;
+                    out.2 = widen(out.2, (lo, hi));
                 }
-                let [lo, hi] = span.bounds;
-                reach = Some(match reach {
-                    None => (lo, hi),
-                    Some((a, b)) => (std::array::from_fn(|k| a[k].min(lo[k])), std::array::from_fn(|k| b[k].max(hi[k]))),
-                });
+            }
+            Some(out)
+        };
+        let runs: Vec<Option<Shown>> = match pool {
+            Some(pool) => pool.install(|| {
+                use rayon::prelude::*;
+                spans.par_chunks(1024).map(of_spans).collect()
+            }),
+            None => spans.chunks(1024).map(of_spans).collect(),
+        };
+        for (run, made) in spans.chunks(1024).zip(runs) {
+            let Some((own, clearness, box_)) = made else { return Ok(None) };
+            shown.extend(own);
+            let from = run.first().map_or(0, |s| s.at.start);
+            if let Some(slot) = alphas.get_mut(from..from + clearness.len()) {
+                slot.copy_from_slice(&clearness);
+            }
+            if let Some(b) = box_ {
+                reach = widen(reach, b);
             }
         }
         // A wireframe's box comes from the elements as any view's, and it draws none of their surfaces.
@@ -496,23 +543,34 @@ impl Mesh {
         // The copies that may be drawn from their shape, in the scene's order, and whether each is its shape's first, which
         // the others are held to.
         let mut candidates: Vec<(usize, ComponentInstance, bool)> = Vec::new();
-        for (n, &(first, place)) in scene.placements.iter().enumerate() {
-            if !instancing {
-                break;
-            }
-            if n % 256 == 0 && cancelled() {
-                return Ok(None);
-            }
-            let Some(local) = scene.shapes.get(place.shape) else { continue };
-            let Some(tris) = scene.tris.get(first..first + local.len()) else { continue };
+        // Whether a copy may be drawn from its shape at all: shown, and see-through one way.
+        let may = |&(first, place): &(usize, ComponentInstance)| {
+            let Some(local) = scene.shapes.get(place.shape) else { return false };
+            let Some(tris) = scene.tris.get(first..first + local.len()) else { return false };
             if !(plain || (look.shows(place.owner) && tris.first().is_none_or(|t| t.seen_in(look)))) {
-                continue;
+                return false;
             }
             // One owner for what is seen through of a copy, so one way see-through.
             let mut clear_alphas = (first..first + tris.len()).map(alpha_at).filter(|a| *a > 0);
-            if clear_alphas.next().is_some_and(|a| clear_alphas.any(|b| b != a)) {
+            !clear_alphas.next().is_some_and(|a| clear_alphas.any(|b| b != a))
+        };
+        let placements: &[(usize, ComponentInstance)] = if instancing { &scene.placements } else { &[] };
+        let mays: Vec<bool> = match pool {
+            Some(pool) => pool.install(|| {
+                use rayon::prelude::*;
+                placements.par_iter().map(may).collect()
+            }),
+            None => placements.iter().map(may).collect(),
+        };
+        if cancelled() {
+            return Ok(None);
+        }
+        for (&(first, place), may) in placements.iter().zip(mays) {
+            if !may {
                 continue;
             }
+            let Some(local) = scene.shapes.get(place.shape) else { continue };
+            let Some(tris) = scene.tris.get(first..first + local.len()) else { continue };
             let leads = match templates.get_mut(place.shape) {
                 Some(slot @ None) => {
                     *slot = Some(Template {
@@ -615,7 +673,8 @@ impl Mesh {
         };
         // However many there are: a model too big for this machine's memory is said, not an abort.
         let room = |_| "more than this machine's memory holds".to_string();
-        mesh.vertices.try_reserve_exact(drawn.saturating_mul(3)).map_err(room)?;
+        let mut vertices: Vec<[Vertex; 3]> = Vec::new();
+        vertices.try_reserve_exact(drawn).map_err(room)?;
         mesh.tris.try_reserve_exact(drawn).map_err(room)?;
         // An element's parts may have edges of their own colours (a curtain wall's): one owner for each.
         type OwnerKey = (Id, u8, (u8, u8, u8));
@@ -639,38 +698,75 @@ impl Mesh {
             last = Some((key, n));
             n
         };
-        for (k, i) in shown.into_iter().enumerate() {
-            if k % 8192 == 0 && cancelled() {
-                return Ok(None);
+        // Each triangle's owner, as `owner_of` is asked: what it is asked is worked out on the render threads.
+        let edge_of = |&i: &usize| scene.tris.get(i).map(|t| (t.owner, alpha_at(i), t.edge(look, EDGE)));
+        let asked: Vec<Option<(Id, u8, Rgb)>> = match pool {
+            Some(pool) => pool.install(|| {
+                use rayon::prelude::*;
+                shown.par_iter().map(edge_of).collect()
+            }),
+            None => shown.iter().map(edge_of).collect(),
+        };
+        if cancelled() {
+            return Ok(None);
+        }
+        // The owners numbered in the order they are met, a copy's among them; and what is drawn of its own, with its owner.
+        let mut own: Vec<(usize, u32)> = Vec::new();
+        own.try_reserve_exact(drawn).map_err(room)?;
+        for (&i, ask) in shown.iter().zip(asked) {
+            let Some((id, alpha, edge)) = ask else { continue };
+            let owner = owner_of(&mut mesh, id, alpha, edge);
+            if !is_taken(i) {
+                own.push((i, owner));
             }
+        }
+        let vertices_of = |&(i, owner): &(usize, u32)| {
             let t = &scene.tris[i];
-            let alpha = alpha_at(i);
-            // The owners numbered in the order they are met, a copy's among them.
-            let owner = owner_of(&mut mesh, t.owner, alpha, t.edge(look, EDGE));
-            if is_taken(i) {
-                continue;
-            }
             let color = packed(t);
             let face = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
             let smooth = scene.smooth.get(i).and_then(Option::as_deref);
             let plane = scene.planes.get(i).map_or(i, |p| *p) as u32 + 1;
             let tex = tex_of(t);
-            for (k, p) in t.p.iter().enumerate() {
+            std::array::from_fn(|k| {
                 let normal = smooth.map_or(face, |n| unit(n[k])).map(|v| v as f32);
-                let position = sub(*p, origin).map(|v| v as f32);
-                mesh.vertices.push(Vertex { position, normal, face: face.map(|v| v as f32), color, owner, plane, tex });
-            }
+                let position = sub(t.p[k], origin).map(|v| v as f32);
+                Vertex { position, normal, face: face.map(|v| v as f32), color, owner, plane, tex }
+            })
+        };
+        let pick_of = |&(i, _): &(usize, u32)| {
+            let t = &scene.tris[i];
             let face = scene.faces.get(i).copied().filter(|f| !f.is_empty()).unwrap_or("");
-            mesh.tris.push(Tri { p: t.p, hit: Hit { id: t.owner, face }, clear: clear(i), key: i });
+            Tri { p: t.p, hit: Hit { id: t.owner, face }, clear: clear(i), key: i }
+        };
+        match pool {
+            Some(pool) => pool.install(|| {
+                use rayon::prelude::*;
+                vertices.par_extend(own.par_iter().map(vertices_of));
+                mesh.tris.par_extend(own.par_iter().map(pick_of));
+            }),
+            None => {
+                vertices.extend(own.iter().map(vertices_of));
+                mesh.tris.extend(own.iter().map(pick_of));
+            }
+        }
+        drop(own);
+        mesh.vertices = vertices.into_flattened();
+        if cancelled() {
+            return Ok(None);
         }
         // Each shape once, in its family's axes, and its copies, in the order of the scene.
         let too_many = || "more copies' triangles than the card counts".to_string();
-        for (shape, template) in templates.into_iter().enumerate() {
+        let mut by_shape: Vec<Vec<&(usize, ComponentInstance)>> = vec![Vec::new(); templates.len()];
+        for copy in &chosen {
+            if let Some(copies) = by_shape.get_mut(copy.1.shape) {
+                copies.push(copy);
+            }
+        }
+        for (shape, (template, copies)) in templates.into_iter().zip(by_shape).enumerate() {
             if cancelled() {
                 return Ok(None);
             }
             let (Some(template), Some(local)) = (template, scene.shapes.get(shape)) else { continue };
-            let copies: Vec<&(usize, ComponentInstance)> = chosen.iter().filter(|(_, c)| c.shape == shape).collect();
             if copies.is_empty() {
                 continue;
             }
@@ -772,8 +868,23 @@ impl Mesh {
             mesh.instance_planes.push(base.saturating_add(k as u32 / 2));
         }
         mesh.cube = start..mesh.shape_vertices.len();
-        let used: std::collections::BTreeSet<u32> =
-            mesh.vertices.iter().chain(&mesh.shape_vertices).map(|v| v.tex).filter(|t| *t > 0).collect();
+        // The textures used, in order.
+        let mark = |mut used: Vec<bool>, v: &Vertex| {
+            if let Some(u) = used.get_mut(v.tex as usize) {
+                *u = true;
+            }
+            used
+        };
+        let either = |a: Vec<bool>, b: Vec<bool>| a.iter().zip(&b).map(|(x, y)| *x || *y).collect::<Vec<bool>>();
+        let none = || vec![false; scene.skins.len()];
+        let used: Vec<bool> = match pool {
+            Some(pool) => pool.install(|| {
+                use rayon::prelude::*;
+                mesh.vertices.par_iter().chain(mesh.shape_vertices.par_iter()).fold(none, mark).reduce(none, either)
+            }),
+            None => mesh.vertices.iter().chain(&mesh.shape_vertices).fold(none(), mark),
+        };
+        let used = used.iter().enumerate().filter(|(t, u)| **u && *t > 0).map(|(t, _)| t as u32);
         for id in used {
             if cancelled() {
                 return Ok(None);
@@ -801,9 +912,18 @@ impl Mesh {
         }
         let f = |p: [f32; 3]| p.map(f64::from);
         let wide = radius * 2.0 * GROUP_WIDE;
-        let triangles =
-            mesh.vertices.chunks(3).map(|t| bounds(t.iter().map(|v| f(v.position)).collect::<Vec<_>>().iter()).unwrap_or_default());
-        mesh.groups = grouped(triangles, |k| k * 3 == mesh.clear_from, GROUP_TRIANGLES, wide);
+        let triangle = |t: &[Vertex]| {
+            let corners: [P3; 3] = std::array::from_fn(|k| t.get(k).map_or([0.0; 3], |v| f(v.position)));
+            bounds(corners.iter().take(t.len())).unwrap_or_default()
+        };
+        let triangles: Vec<(P3, P3)> = match pool {
+            Some(pool) => pool.install(|| {
+                use rayon::prelude::*;
+                mesh.vertices.par_chunks(3).map(triangle).collect()
+            }),
+            None => mesh.vertices.chunks(3).map(triangle).collect(),
+        };
+        mesh.groups = grouped(triangles.into_iter(), |k| k * 3 == mesh.clear_from, GROUP_TRIANGLES, wide);
         if cancelled() {
             return Ok(None);
         }
@@ -1129,14 +1249,25 @@ impl Mesh {
 
     /// What the hierarchy is over: each triangle drawn of its own, then each copy, as boxes.
     fn boxes(&self) -> Vec<(P3, P3)> {
-        let own = self.tris.iter().map(|t| bounds(t.p.iter()).unwrap_or_default());
-        let copies = self.copies.iter().map(|c| {
-            let local = self.locals.get(c.shape).and_then(|l| bounds(l.tris.iter().flatten())).unwrap_or_default();
+        let shapes: Vec<(P3, P3)> = self.locals.iter().map(|l| bounds(l.tris.iter().flatten()).unwrap_or_default()).collect();
+        let copy = |c: &Copy| {
+            let local = shapes.get(c.shape).copied().unwrap_or_default();
             let [lo, hi] = c.place.bounds([local.0, local.1]);
             (lo, hi)
-        });
-        let wires = self.wires.iter().map(|w| bounds(w.ends.iter()).unwrap_or_default());
-        own.chain(copies).chain(wires).collect()
+        };
+        let wire = |w: &Wire| bounds(w.ends.iter()).unwrap_or_default();
+        let own = |t: &Tri| bounds(t.p.iter()).unwrap_or_default();
+        match (self.tris.len() >= Bvh::APART).then(super::render_pool).flatten() {
+            Some(pool) => pool.install(|| {
+                use rayon::prelude::*;
+                let mut out = Vec::with_capacity(self.tris.len() + self.copies.len() + self.wires.len());
+                out.par_extend(self.tris.par_iter().map(own));
+                out.par_extend(self.copies.par_iter().map(copy));
+                out.par_extend(self.wires.par_iter().map(wire));
+                out
+            }),
+            None => self.tris.iter().map(own).chain(self.copies.iter().map(copy)).chain(self.wires.iter().map(wire)).collect(),
+        }
     }
 
     fn bvh(&self) -> &Bvh {
@@ -1158,18 +1289,29 @@ impl Mesh {
     }
 
     /// Build the hierarchy while a worker owns this mesh, abandoning a superseded snapshot.
-    pub fn prepare_picking_cancellable(&self, cancelled: &dyn Fn() -> bool) -> bool {
+    pub fn prepare_picking_cancellable(&self, cancelled: &(dyn Fn() -> bool + Sync)) -> bool {
         if self.bvh.get().is_some() {
             return true;
         }
         if cancelled() {
             return false;
         }
-        for local in &self.locals {
+        let local = |local: &Local| {
             if local.bvh.get().is_none() {
                 let Some(bvh) = Bvh::over(&local.boxes(), cancelled) else { return false };
                 let _ = local.bvh.set(bvh);
             }
+            true
+        };
+        let locals = match (self.locals.len() >= 64).then(super::render_pool).flatten() {
+            Some(pool) => pool.install(|| {
+                use rayon::prelude::*;
+                self.locals.par_iter().all(local)
+            }),
+            None => self.locals.iter().all(local),
+        };
+        if !locals {
+            return false;
         }
         let Some(bvh) = Bvh::over(&self.boxes(), cancelled) else { return false };
         let Some(dots) = Bvh::over(&self.dot_boxes(), cancelled) else { return false };
@@ -1411,34 +1553,86 @@ impl Bvh {
         Bvh { nodes: Vec::new(), order: Vec::new() }
     }
 
-    /// The hierarchy over `boxes`; none when `cancelled`.
-    fn over(boxes: &[(P3, P3)], cancelled: &dyn Fn() -> bool) -> Option<Bvh> {
-        let mut bvh = Bvh { nodes: Vec::new(), order: (0..boxes.len()).collect() };
+    /// The hierarchy over `boxes`; none when `cancelled`. Made on the render threads where it is big, node for node the one
+    /// made on one thread: each node's place is known from how many it holds ([`Bvh::nodes_for`]), so the two halves of a node
+    /// are made apart, each into its own places.
+    fn over(boxes: &[(P3, P3)], cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Bvh> {
+        let mut order: Vec<usize> = (0..boxes.len()).collect();
+        let empty = Node { lo: [0.0; 3], hi: [0.0; 3], first: 0, count: 0, children: None };
+        let mut nodes: Vec<Node> = (0..if boxes.is_empty() { 0 } else { Self::nodes_for(boxes.len()) }).map(|_| empty.clone()).collect();
         if !boxes.is_empty() {
-            bvh.build(boxes, 0, boxes.len(), cancelled)?;
+            let pool = (boxes.len() >= Self::APART).then(super::render_pool).flatten();
+            let made = match pool {
+                Some(pool) => pool.install(|| Self::build(boxes, &mut nodes, &mut order, 0, 0, true, cancelled)),
+                None => Self::build(boxes, &mut nodes, &mut order, 0, 0, false, cancelled),
+            };
+            made?;
         }
-        Some(bvh)
+        Some(Bvh { nodes, order })
     }
 
-    /// The node for `order[first..first + count]`, split in two at the middle of its longest side while it holds more than 8.
-    fn build(&mut self, boxes: &[(P3, P3)], first: usize, count: usize, cancelled: &dyn Fn() -> bool) -> Option<usize> {
+    /// The fewest items whose node's two halves are made on two threads.
+    const APART: usize = 16_384;
+
+    /// How many nodes a node over `count` items has, itself and all under it.
+    fn nodes_for(count: usize) -> usize {
+        Self::nodes_for_two(count).0
+    }
+
+    /// [`Bvh::nodes_for`] `n` items and `n + 1`, from those for half as many: a step for each halving.
+    fn nodes_for_two(n: usize) -> (usize, usize) {
+        if n < 8 {
+            return (1, 1);
+        }
+        if n == 8 {
+            // Nine split into four and five.
+            return (1, 3);
+        }
+        let (a, b) = Self::nodes_for_two(n / 2);
+        if n.is_multiple_of(2) { (1 + 2 * a, 1 + a + b) } else { (1 + a + b, 1 + 2 * b) }
+    }
+
+    /// The node over `order` (which starts at `first` of the whole order), split in two at the middle of its longest side
+    /// while it holds more than 8, into `nodes` (which starts at node `at`): it first, then its first half's nodes, then its
+    /// second's.
+    fn build(
+        boxes: &[(P3, P3)],
+        nodes: &mut [Node],
+        order: &mut [usize],
+        first: usize,
+        at: usize,
+        apart: bool,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<()> {
         if cancelled() {
             return None;
         }
-        let range = first..first + count;
-        let corners = self.order[range.clone()].iter().filter_map(|&i| boxes.get(i)).flat_map(|(lo, hi)| [lo, hi]);
+        let count = order.len();
+        let corners = order.iter().filter_map(|&i| boxes.get(i)).flat_map(|(lo, hi)| [lo, hi]);
         let (lo, hi) = bounds(corners).unwrap_or(([0.0; 3], [0.0; 3]));
-        let id = self.nodes.len();
-        self.nodes.push(Node { lo, hi, first, count, children: None });
+        let (node, below) = nodes.split_first_mut()?;
+        *node = Node { lo, hi, first, count, children: None };
         if count > 8 {
             let axis = (0..3).max_by(|&a, &b| (hi[a] - lo[a]).total_cmp(&(hi[b] - lo[b]))).unwrap_or(0);
             let centre = |i: usize| boxes.get(i).map_or(0.0, |(lo, hi)| lo[axis] + hi[axis]);
-            self.order[range].select_nth_unstable_by(count / 2, |&a, &b| centre(a).total_cmp(&centre(b)).then(a.cmp(&b)));
+            order.select_nth_unstable_by(count / 2, |&a, &b| centre(a).total_cmp(&centre(b)).then(a.cmp(&b)));
             let half = count / 2;
-            let children = [self.build(boxes, first, half, cancelled)?, self.build(boxes, first + half, count - half, cancelled)?];
-            self.nodes[id].children = Some(children);
+            let left = Self::nodes_for(half);
+            node.children = Some([at + 1, at + 1 + left]);
+            let (low, high) = order.split_at_mut(half);
+            let (low_nodes, high_nodes) = below.split_at_mut(left);
+            let low_half = |n: &mut [Node], o: &mut [usize]| Self::build(boxes, n, o, first, at + 1, apart, cancelled);
+            let high_half = |n: &mut [Node], o: &mut [usize]| Self::build(boxes, n, o, first + half, at + 1 + left, apart, cancelled);
+            if apart && count >= Self::APART {
+                let (a, b) = rayon::join(|| low_half(low_nodes, low), || high_half(high_nodes, high));
+                a?;
+                b?;
+            } else {
+                low_half(low_nodes, low)?;
+                high_half(high_nodes, high)?;
+            }
         }
-        Some(id)
+        Some(())
     }
 
     /// Each item in a leaf whose box, as `bounds` gives it, the pixel isn't outside of (`misses`).
@@ -1466,7 +1660,6 @@ mod tests {
     use crate::engine::Session;
     use crate::view3d::{AZIMUTH, ELEVATION};
     use serde_json::json;
-    use std::cell::Cell;
 
     fn sample() -> Session {
         let mut s = Session::new();
@@ -1474,18 +1667,97 @@ mod tests {
         s
     }
 
+    /// That `a` and `b` are the same mesh, to the bit: what the card draws, what picks and what stands in.
+    fn same_mesh(a: &Mesh, b: &Mesh, what: &str) {
+        assert_eq!((a.origin, a.radius, a.clear_from), (b.origin, b.radius, b.clear_from), "{what}: origin, radius, clear_from");
+        assert!(a.vertices == b.vertices, "{what}: vertices");
+        assert!(a.shape_vertices == b.shape_vertices, "{what}: shape vertices");
+        assert!(a.shapes == b.shapes && a.instances == b.instances, "{what}: shapes and copies");
+        assert!(a.instance_planes == b.instance_planes, "{what}: copies' planes");
+        assert!(a.owners == b.owners, "{what}: owners");
+        assert!(a.skins == b.skins && a.texels == b.texels, "{what}: textures");
+        assert!(a.groups == b.groups && a.cube == b.cube && a.cube_planes == b.cube_planes, "{what}: groups");
+        assert!(a.dots == b.dots && a.wires == b.wires, "{what}: dots and wires");
+        assert!(a.group_spheres == b.group_spheres && a.copy_spheres == b.copy_spheres, "{what}: spheres");
+        let picks = |m: &Mesh| m.tris.iter().map(|t| (t.p, t.hit, t.clear, t.key)).collect::<Vec<_>>();
+        assert!(picks(a) == picks(b), "{what}: what picks");
+        let copies = |m: &Mesh| m.copies.iter().map(|c| (c.place.owner, c.place.at, c.shape, c.key)).collect::<Vec<_>>();
+        assert!(copies(a) == copies(b), "{what}: copies picked");
+        let locals =
+            |m: &Mesh| m.locals.iter().map(|l| (l.tris.clone(), l.faces.clone(), l.keys.clone(), l.clear.clone())).collect::<Vec<_>>();
+        assert!(locals(a) == locals(b), "{what}: shapes picked");
+    }
+
+    /// The mesh made on the render threads is the one made on one, in every style and through a view that hides and paints.
+    #[test]
+    fn a_mesh_made_on_many_threads_is_the_one_made_on_one() {
+        let mut s = Session::new();
+        s.execute("tower", &json!({"storeys": 2, "plate": "small"})).unwrap();
+        let scene = Scene::new(&s.model);
+        assert!(scene.tris.len() >= 65_536, "big enough for the threads: {}", scene.tris.len());
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+        let steps = [
+            ("shaded", json!({})),
+            ("walls see-through", json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})),
+            ("doors hidden", json!({"view": "{3D}", "hide": ["doors"]})),
+            ("hidden line", json!({"style": "hidden_line"})),
+            ("wireframe", json!({"style": "wireframe"})),
+        ];
+        for (what, p) in steps {
+            match what {
+                "shaded" => {}
+                "hidden line" | "wireframe" => {
+                    s.execute("visual_style", &p).unwrap();
+                }
+                _ => {
+                    s.execute("graphics", &p).unwrap();
+                }
+            }
+            let look = Look::of_3d(&s.model);
+            let one = Mesh::build_on(&scene, &look, &|| false, true, None).unwrap().unwrap();
+            let many = Mesh::build_on(&scene, &look, &|| false, true, Some(&pool)).unwrap().unwrap();
+            same_mesh(&one, &many, what);
+            assert!(Mesh::build_on(&scene, &look, &|| true, true, Some(&pool)).unwrap().is_none(), "{what}: abandoned");
+        }
+    }
+
+    #[test]
+    fn a_hierarchy_made_on_many_threads_is_node_for_node_the_one_made_on_one() {
+        fn direct(n: usize) -> usize {
+            if n > 8 { 1 + direct(n / 2) + direct(n - n / 2) } else { 1 }
+        }
+        for n in (0..2000).chain([16_383, 16_384, 16_385, 100_001]) {
+            assert_eq!(Bvh::nodes_for(n), direct(n), "{n} items");
+        }
+        // Boxes in a jumble, many alike so ties are broken by place.
+        let boxes: Vec<(P3, P3)> = (0..70_001u64)
+            .map(|i| {
+                let h = i.wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 40;
+                let p = [(h % 997) as f64, (h / 997 % 89) as f64, (i % 7) as f64];
+                (p, p.map(|v| v + (h % 5) as f64))
+            })
+            .collect();
+        let one = {
+            let mut order: Vec<usize> = (0..boxes.len()).collect();
+            let empty = Node { lo: [0.0; 3], hi: [0.0; 3], first: 0, count: 0, children: None };
+            let mut nodes = vec![empty; Bvh::nodes_for(boxes.len())];
+            Bvh::build(&boxes, &mut nodes, &mut order, 0, 0, false, &|| false).unwrap();
+            Bvh { nodes, order }
+        };
+        let many = Bvh::over(&boxes, &|| false).unwrap();
+        assert!(one.nodes == many.nodes && one.order == many.order, "the same hierarchy");
+        assert!(Bvh::over(&boxes, &|| true).is_none(), "abandoned");
+    }
+
     #[test]
     fn cancelled_mesh_and_picking_builds_publish_nothing_and_can_retry() {
         let s = sample();
         let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
-        let calls = Cell::new(0);
-        let cancel = || {
-            calls.set(calls.get() + 1);
-            calls.get() > 2
-        };
+        let calls = std::sync::atomic::AtomicI32::new(0);
+        let cancel = || calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1 > 2;
         assert!(Mesh::new_cancellable(&scene, &look, &cancel).unwrap().is_none());
         let mesh = Mesh::new(&scene, &look).unwrap();
-        calls.set(0);
+        calls.store(0, std::sync::atomic::Ordering::Relaxed);
         assert!(!mesh.prepare_picking_cancellable(&cancel));
         assert!(mesh.bvh.get().is_none());
         assert!(mesh.prepare_picking_cancellable(&|| false));
@@ -2306,11 +2578,8 @@ mod tests {
         let mut s = sample();
         s.execute("visual_style", &json!({"style": "wireframe"})).unwrap();
         let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
-        let asked = Cell::new(0);
-        let later = || {
-            asked.set(asked.get() + 1);
-            asked.get() > 1
-        };
+        let asked = std::sync::atomic::AtomicI32::new(0);
+        let later = || asked.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1 > 1;
         assert!(Mesh::new_cancellable(&scene, &look, &later).unwrap().is_none());
         // What was abandoned isn't kept as the answer.
         assert!(!Mesh::new(&scene, &look).unwrap().wires.is_empty());

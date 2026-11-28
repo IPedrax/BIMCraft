@@ -430,6 +430,20 @@ This was measured before the mesh cap was removed. The several-million-triangle 
 matched Linux's (plan redrawn 7.6 ms, the scene built in 260 ms, a changing-camera frame 132 ms); the window was slow only because the
 driver's vsync held it to 32 frames a second or fewer, which the window now paces itself ([the desktop](areas/desktop.md), Frame pacing).
 
+### After an edit (2026-11-28)
+
+After an edit the 3D view's worker brings the scene up to date, then made the card's mesh and the pick hierarchy over every triangle on
+one thread. Both are now made on the render threads (`Mesh::build_on`, `Bvh::over`), a run at a time, each run's result put in its
+place, so the mesh and the hierarchy are, to the bit and node for node, what one thread makes
+(`a_mesh_made_on_many_threads_is_the_one_made_on_one`, `a_hierarchy_made_on_many_threads_is_node_for_node_the_one_made_on_one`). A
+hierarchy's node has its place worked out from how many items it holds, so its two halves are made apart. Annotated 10-storey tower
+(7.66 million vertices, 64,900 copies), release, Apple M4 Pro, median of five:
+
+| Step | Before | After |
+|---|---:|---:|
+| Card's mesh from the scene | 313 ms | 167 ms |
+| Pick hierarchy | 354 ms | 84 ms |
+
 ## Verification
 
 `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings` and
