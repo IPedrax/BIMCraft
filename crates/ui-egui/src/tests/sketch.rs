@@ -590,3 +590,25 @@ fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_
         assert!(f.query_by_role_and_label(Role::TextInput, "Slope").is_none(), "rev {rev}");
     }
 }
+
+#[test]
+fn massings_property_line_sketches_the_sites_boundary_and_finish_makes_it() {
+    let mut h = app(BOX);
+    press(&mut h, "Massing");
+    press(&mut h, "Property Line");
+    assert!(h.query_by_label("Modify | Create Property Line Sketch").is_some());
+    for p in [P2(1000.0, 1000.0), P2(5000.0, 1000.0), P2(5000.0, 4000.0), P2(1000.0, 4000.0), P2(1000.0, 1000.0)] {
+        click(&mut h, p);
+    }
+    press(&mut h, "Finish Edit Mode");
+    assert!(h.state().sketch.is_none(), "{}", h.state().status.text);
+    let lines: Vec<_> = h
+        .state()
+        .session
+        .model
+        .elements
+        .values()
+        .filter_map(|e| if let Element::PropertyLine(pl) = e { Some(pl.points.len()) } else { None })
+        .collect();
+    assert_eq!(lines, [4], "one property line of four corners");
+}

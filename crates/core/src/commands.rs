@@ -845,7 +845,8 @@ other_files(
         "property_line",
         ui_msg!("Property Line"),
         &[],
-        "{points: [[x,y],…], name?, level?} a named closed property boundary (mm), on the lowest level unless given. \
+        "{points: [[x,y],…] | sketch: lines as a floor's, name?, level?} a named closed property boundary (mm), on the lowest \
+         level unless given; a sketch is solved into one ring, as Massing > Property Line draws it. \
          A repeated closing point is accepted. The outline must be simple, without crossings, spikes or repeated corners. \
          Plans draw a dash-dot boundary with its name and area. `elements` gives area_m2, perimeter_m and segments \
          (length in mm, bearing in survey quadrants, azimuth clockwise from north: the map's, turned by the georeference's \
@@ -11225,10 +11226,16 @@ fn grid(s: &mut Session, p: &Value) -> R {
 
 fn property_line(s: &mut Session, p: &Value) -> R {
     let c = "property_line";
-    only(c, p, &["points", "name", "level"])?;
+    only(c, p, &["points", "sketch", "name", "level"])?;
     let m = &s.model;
     let level = level_param(c, m, p, "level")?;
-    let mut pts = points(c, p, "points")?;
+    // Sketched (the desktop's Property Line tool), the boundary is its lines solved; a property is one ring.
+    let mut pts = match sketched(c, p, "", &[])? {
+        Some(_) if !absent(p.get("points")) => return Err(bad(c, "give the boundary as `sketch` or `points`, not both")),
+        Some((r, _)) if r.holes.is_empty() => r.outer,
+        Some(_) => return Err(bad(c, "the sketch has a loop inside its outline; a property line is one ring: draw it without")),
+        None => points(c, p, "points")?,
+    };
     if pts.len() > 3 && pts.first() == pts.last() {
         pts.pop();
     }

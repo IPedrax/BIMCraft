@@ -5327,6 +5327,16 @@ impl BimApp {
                 }
             });
         });
+        panel(ui, msg!("Modify Site"), |ui| {
+            let on = matches!(self.sketch.as_ref().map(|s| s.of), Some(crate::sketch::Of::PropertyLine(_)));
+            let tip = msg!("Property Line: sketch the site's boundary; plans draw it dash-dot with its name and area");
+            if big_button(ui, Icon::Line, "Property Line", on, tip).clicked() {
+                match self.plan_level() {
+                    Some(level) => self.start_sketch(crate::sketch::Of::PropertyLine(level), Vec::new()),
+                    None => self.status = Status { text: t("Open a plan to sketch a property line in.").into(), error: true },
+                }
+            }
+        });
     }
 
     /// Show Mass (MH): the masses in the view on screen, hidden if they show and shown if they're hidden.
