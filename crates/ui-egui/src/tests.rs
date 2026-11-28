@@ -201,8 +201,8 @@ fn browse(h: &mut Harness<BimApp>, label: &str) {
     double_click_at(h, browser_row(h, label));
 }
 
-/// The point of the Project Browser's row named `label`, the topmost of them, not its view tab.
-fn browser_row(h: &Harness<BimApp>, label: &str) -> Pos2 {
+/// The Project Browser's entry named `label`, the topmost of them, not its view tab.
+fn browser_row_node<'a>(h: &'a Harness<BimApp>, label: &'a str) -> egui_kittest::Node<'a> {
     let rect = h.state().browser_rect;
     let tabs: Vec<egui::Rect> = h.state().tab_rects.iter().map(|(_, r)| *r).collect();
     h.get_all_by_label(label)
@@ -211,8 +211,18 @@ fn browser_row(h: &Harness<BimApp>, label: &str) -> Pos2 {
             rect.contains(at) && !tabs.iter().any(|tab| tab.contains(at))
         })
         .min_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
-        .map(|n| n.rect().center())
-        .unwrap_or_else(|| h.get_by_label(label).rect().center())
+        .unwrap_or_else(|| h.get_by_label(label))
+}
+
+/// The point of the Project Browser's row named `label`; not its view tab.
+fn browser_row(h: &Harness<BimApp>, label: &str) -> Pos2 {
+    browser_row_node(h, label).rect().center()
+}
+
+/// Picks the Project Browser's row named `label`, as a click does, without opening it.
+fn pick_browser_row(h: &mut Harness<BimApp>, label: &str) {
+    browser_row_node(h, label).click_accesskit();
+    h.run();
 }
 
 /// A view's entry in the Project Browser while its tab is open too: the lower of the two.
@@ -741,9 +751,8 @@ fn a_tool_acts_on_what_lay_under_the_press_not_under_where_the_hand_let_go() {
 fn upper_plan_opening_preview_and_placement_use_the_upper_level() {
     let mut h = app(r#"level {"name":"Upper","elevation":3400}
 wall {"points":[[0,0],[8000,0],[8000,6000],[0,6000]],"closed":true,"height":7200}"#);
-    // The first browser entry is the floor plan; use its accessible action even below the palette's fold.
-    h.get_all_by_label("Upper").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().click_accesskit();
-    h.run();
+    // The first browser entry is the floor plan, below the palette's fold.
+    browse(&mut h, "Upper");
     let upper = find(&h, |e| matches!(e, Element::Level(l) if l.name == "Upper"));
     assert_eq!(h.state().sheet, Sheet::Plan(upper));
     for (name, point, expected) in [("Window", P2(4000.0, 0.0), 4300.0), ("Door", P2(8000.0, 3000.0), 3400.0)] {
@@ -4429,9 +4438,7 @@ fn ceilings_go_in_the_room_clicked_and_show_in_its_ceiling_plan() {
     assert_eq!(h.state().tool, Tool::Ceiling, "ready for the next room");
     // The browser's Ceiling Plans open the level's reflected ceiling plan: its tiles pick the ceiling.
     key(&mut h, Key::Escape);
-    let lowest = h.get_all_by_label("Level 1").max_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).map(|n| n.accesskit_node().id());
-    h.get_by(|n| Some(n.id()) == lowest).click_accesskit();
-    h.run();
+    browse_entry(&mut h, "Level 1");
     assert_eq!(h.state().sheet, Sheet::Ceiling(100000));
     assert_eq!(h.get_all_by_label("Ceiling Plan: Level 1").count(), 2, "its tab and the palette name the view");
     click(&mut h, P2(4000.0, 1000.0));
@@ -6615,7 +6622,7 @@ fn a_view_that_does_not_show_the_active_option_says_so_and_picking_it_again_show
     assert!(!h.state().active_option_unseen(), "Level 1 shows it now");
     // Level 2's plan still shows the primary: what is made there in Low would not be seen.
     // By its row in the browser, whichever side of the palette's fold that lies.
-    topmost(&mut h, "Level 2");
+    browse(&mut h, "Level 2");
     assert!(plan_graphics(&h, 100001).options.is_empty());
     assert!(h.state().active_option_unseen());
     // The same pick again shows it in the view on screen.

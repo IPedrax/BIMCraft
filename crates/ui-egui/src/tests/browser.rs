@@ -106,8 +106,7 @@ fn f2_with_no_row_picked_is_the_shortcuts_floor_plan() {
 #[test]
 fn f2_renames_the_picked_plan_view_and_one_undo_brings_the_level_name_back() {
     let mut h = app(BOX);
-    let row = browser_row(&h, "Level 1");
-    click_at(&mut h, row);
+    pick_browser_row(&mut h, "Level 1");
     h.key_press(Key::F2);
     h.run();
     assert_eq!(h.query_all_by_label("New name").count(), 1, "one row edits, not the floor plan and the ceiling plan");
@@ -128,8 +127,7 @@ fn f2_renames_the_picked_plan_view_and_one_undo_brings_the_level_name_back() {
 #[test]
 fn f2_esc_leaves_the_name_and_a_duplicate_stays_in_the_row() {
     let mut h = app(BOX);
-    let row = browser_row(&h, "Level 1");
-    click_at(&mut h, row);
+    pick_browser_row(&mut h, "Level 1");
     h.key_press(Key::F2);
     h.run();
     type_into(&mut h, "New name", "Ground");
@@ -170,14 +168,9 @@ fn f2_makes_a_builtin_schedule_its_own_row_and_keeps_one_row_of_it() {
 #[test]
 fn the_menu_renames_the_row_it_was_opened_on() {
     let mut h = app(BOX);
-    let row = browser_row(&h, "Level 1");
-    click_at(&mut h, row);
+    pick_browser_row(&mut h, "Level 1");
     // Right-click another row: Rename names it, not the row picked before.
-    let pos = browser_row(&h, "Level 2");
-    h.hover_at(pos);
-    for pressed in [true, false] {
-        h.event(Event::PointerButton { pos, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
-    }
+    browser_row_node(&h, "Level 2").click_secondary();
     h.run();
     press(&mut h, "Rename");
     h.run();
