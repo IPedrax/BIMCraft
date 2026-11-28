@@ -147,10 +147,26 @@ pub fn builtin(name: Option<&str>, cat: Option<&str>) -> Option<(&'static str, &
     }
 }
 
-/// The project's schedule named `name`: one every project has, whatever language or case names it;
-/// else the one of that name.
+/// The project's own schedule of category `cat` every project has, once it has been made the project's: flagged
+/// `standard`, or in a file from before the flag, named the built-in one.
+pub fn standard_id(m: &Model, cat: &str) -> Option<Id> {
+    m.lookup().rare("schedule").find(|id| match m.elements.get(*id) {
+        Some(Element::Schedule(sc)) => {
+            sc.category() == cat && (sc.standard || builtin(Some(&sc.name), None).is_some_and(|(of, _)| of == cat))
+        }
+        _ => false,
+    })
+}
+
+/// The project's schedule named `name`: one every project has, whatever language or case names it, or that category's
+/// standard schedule once it has a name of its own; else the one of that name.
 pub fn named(m: &Model, name: &str) -> Option<Id> {
     let twin = builtin(Some(name), None);
+    if let Some((cat, _)) = twin
+        && let Some(id) = standard_id(m, cat)
+    {
+        return Some(id);
+    }
     m.lookup().rare("schedule").find(|id| match m.elements.get(*id) {
         Some(Element::Schedule(sc)) if twin.is_some() => builtin(Some(&sc.name), None) == twin,
         Some(Element::Schedule(sc)) => sc.name == name,
@@ -162,7 +178,7 @@ pub fn named(m: &Model, name: &str) -> Option<Id> {
 /// as every project has it, named in its language.
 pub fn standard(m: &Model, cat: &str) -> (Option<Id>, Schedule) {
     let name = VIEWS.iter().find(|(c, _)| *c == cat).map_or("", |(_, n)| *n);
-    match named(m, name).and_then(|id| Some((id, m.elements.get(id)?))) {
+    match standard_id(m, cat).and_then(|id| Some((id, m.elements.get(id)?))) {
         Some((id, Element::Schedule(sc))) => (Some(id), sc.clone()),
         _ => (None, Schedule { name: m.language.word(name).to_string(), of: cat.to_string(), ..Schedule::default() }),
     }

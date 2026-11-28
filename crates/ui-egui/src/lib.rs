@@ -1335,6 +1335,12 @@ pub struct BimApp {
     /// The views and sheets picked in the Project Browser (Ctrl and Shift pick more than one), and the one a Shift-click runs from.
     browser_picked: Vec<browser::Pick>,
     browser_anchor: Option<browser::Pick>,
+    /// The row picked to rename, and the name being edited on it.
+    browser_sel: Option<browser::Ren>,
+    browser_edit: Option<browser::BrowserEdit>,
+    /// Where the Project Browser was last drawn, and whether the keys go to it: F2 renames only then.
+    browser_rect: Rect,
+    browser_focused: bool,
     /// Expand All or Collapse All, for the next frame's groups.
     browser_fold: Option<bool>,
     /// The export being written, on a thread of its own.
@@ -2237,6 +2243,10 @@ impl BimApp {
             name_set: None,
             browser_picked: Vec::new(),
             browser_anchor: None,
+            browser_sel: None,
+            browser_edit: None,
+            browser_rect: Rect::ZERO,
+            browser_focused: false,
             browser_fold: None,
             export_job: None,
             export_format: None,
@@ -2458,7 +2468,12 @@ impl BimApp {
 
     fn view_name(&self, sheet: Sheet) -> String {
         match sheet {
-            Sheet::Plan(key) | Sheet::Ceiling(key) => self.session.model.view_name(key).map_or_else(|| "Floor Plan".into(), String::from),
+            Sheet::Plan(key) => self.session.model.view_name(key).map_or_else(|| "Floor Plan".into(), String::from),
+            Sheet::Ceiling(key) => {
+                let m = &self.session.model;
+                let name = if m.level(key).is_some() { m.ceiling_view_name(key) } else { m.view_name(key) };
+                name.map_or_else(|| "Ceiling Plan".into(), String::from)
+            }
             Sheet::View3D => {
                 self.active_3d().and_then(|id| self.session.model.view_name(id).map(String::from)).unwrap_or_else(|| "{3D}".into())
             }
@@ -2956,6 +2971,15 @@ impl BimApp {
             return;
         }
         let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
+        // A second F2 while the name is being edited selects the whole name, as File Explorer does, rather than opening a
+        // second editor; the field, which has the keyboard, would otherwise take the key for nothing.
+        if self.browser_edit.is_some() && pressed(Modifiers::NONE, Key::F2) {
+            if let Some(edit) = &mut self.browser_edit {
+                edit.focus = true;
+                edit.select_all = true;
+            }
+            return;
+        }
         // Space in Walls' Outline's Offset field turns a centre-line offset from the inside to the outside, instead of
         // typing a space.
         if self.outline_pending
@@ -2993,6 +3017,14 @@ impl BimApp {
         let events: Vec<Event> = ctx.input(|i| i.events.clone());
         // A text field keeps its letters, but Save, Save As, Open, New, Find and Settings may be
         // pressed there: they do not take text away.
+        // F2 renames the row picked in the Project Browser, before the shortcuts: F2 may be bound to a tool, and the
+        // browser's Rename is the function key Revit's is. With no row picked it falls through to its shortcut (Floor
+        // Plan by default), so the browser does not swallow a key it has nothing to rename.
+        let picked = self.browser_sel.as_ref().is_some_and(|ren| self.ren_exists(ren));
+        if self.browser_visible() && self.browser_focused && picked && !ctx.text_edit_focused() && pressed(Modifiers::NONE, Key::F2) {
+            self.begin_browser_rename(None);
+            return;
+        }
         if ctx.egui_wants_keyboard_input() {
             self.typed.clear();
             self.global_shortcuts(ctx, &events);
@@ -4361,7 +4393,8 @@ impl BimApp {
             })
             .collect();
         let plans = m.levels().into_iter().flat_map(|(id, l)| {
-            let own = std::iter::once((json!(id), tf("Floor Plan: {}", &[&l.name]), l.name.as_str()));
+            let name = m.view_name(id).unwrap_or(&l.name);
+            let own = std::iter::once((json!(id), tf("Floor Plan: {}", &[name]), name));
             own.chain(m.plan_views(id).into_iter().map(|(v, pv)| (json!(v), tf("Floor Plan: {}", &[&pv.name]), pv.name.as_str())))
         });
         let cuts = m.elements.iter().filter_map(|(id, e)| match e {
@@ -4387,7 +4420,9 @@ impl BimApp {
             .rare("schedule")
             .into_iter()
             .filter_map(|id| match m.elements.get(id) {
-                Some(Element::Schedule(sc)) if schedule::builtin(Some(&sc.name), None).is_none() => Some((id, sc.name.as_str())),
+                Some(Element::Schedule(sc)) if !sc.standard && schedule::builtin(Some(&sc.name), None).is_none() => {
+                    Some((id, sc.name.as_str()))
+                }
                 _ => None,
             })
             .collect();

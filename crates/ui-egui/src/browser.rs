@@ -6,10 +6,12 @@
 
 use bimcraft_i18n::msg;
 
-use egui::text::{LayoutJob, TextFormat};
-use egui::{Align, CollapsingHeader, Layout, Rect, Sense, Stroke, StrokeKind, TextEdit, TextStyle, Ui, WidgetInfo, WidgetType, vec2};
+use egui::text::{CCursor, CCursorRange, LayoutJob, TextFormat};
+use egui::{
+    Align, Button, CollapsingHeader, Key, Layout, Rect, Sense, Stroke, StrokeKind, TextEdit, TextStyle, Ui, WidgetInfo, WidgetType, vec2,
+};
 
-use bimcraft_core::model::{Element, Id};
+use bimcraft_core::model::{Element, Id, MAX_TEXT};
 use bimcraft_core::schedule;
 
 use crate::icons::{self, Icon};
@@ -68,6 +70,68 @@ impl Tab {
 const SYSTEM_FAMILIES: [&str; 13] =
     ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "stair", "structuralcolumn", "footing", "grid", "framing"];
 
+/// What a row of the tree renames, as F2 and its menu's Rename do: a target that survives the tree being built again each
+/// frame, not a node that is made again.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Ren {
+    /// A level's floor plan row: the name is the level's.
+    Level(Id),
+    /// A level's ceiling plan row: the name is the level's, but it is its own row, with its own editor.
+    CeilingLevel(Id),
+    /// A plan view, a section, an elevation, a callout, a 3D view, a schedule, a panel schedule or a reinforcement detail.
+    View(Id),
+    /// A plan view listed under Ceiling Plans (the same view is listed under Floor Plans too): its own row and editor.
+    CeilingView(Id),
+    /// The default `{3D}`, before anything has made it an element.
+    Default3D,
+    Sheet(Id),
+    /// One of the schedules every project has, by its category (`schedule::VIEWS`), while it is not the project's own.
+    BuiltinSchedule(&'static str),
+    Family(String),
+    Type {
+        category: Option<&'static str>,
+        family: Option<String>,
+        name: String,
+    },
+}
+
+impl Ren {
+    /// A key that stays the same while the tree is made again: the rename editor's id, and what makes a row the one selected.
+    pub(crate) fn key(&self) -> String {
+        match self {
+            Ren::Level(id) => format!("level:{id}"),
+            Ren::CeilingLevel(id) => format!("ceiling:{id}"),
+            Ren::View(id) => format!("view:{id}"),
+            Ren::CeilingView(id) => format!("ceiling-view:{id}"),
+            Ren::Default3D => "3d:default".into(),
+            Ren::Sheet(id) => format!("sheet:{id}"),
+            Ren::BuiltinSchedule(cat) => format!("schedule:{cat}"),
+            Ren::Family(name) => format!("family:{name}"),
+            Ren::Type { category, family, name } => match (category, family) {
+                (Some(cat), _) => format!("type:{cat}:{name}"),
+                (None, Some(family)) => format!("type:{family}:{name}"),
+                (None, None) => format!("type:{name}"),
+            },
+        }
+    }
+}
+
+/// A name being edited in its row: what it renames, the text typed, the name it had, why the command refused it, and whether
+/// the field still needs the focus (opened, or kept open after an error).
+#[derive(Clone, Debug)]
+pub(crate) struct BrowserEdit {
+    pub target: Ren,
+    pub text: String,
+    pub was: String,
+    pub error: Option<String>,
+    /// The field asks for the focus next frame.
+    pub focus: bool,
+    /// The field opened: the whole name is selected, to type over.
+    pub select_all: bool,
+    /// The field's id where it was drawn: one place, even when the palette is drawn twice in a frame.
+    id: Option<egui::Id>,
+}
+
 /// A view or sheet picked in the browser: Ctrl adds or takes one, Shift a run of them, as in any list of the system's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Pick {
@@ -121,6 +185,10 @@ enum Act {
     SelectInstances(serde_json::Value, crate::context::InstanceScope),
     /// Show as Underlay: the view under the one on screen.
     Underlay(Id),
+    /// Rename the row: F2, or the menu's Rename.
+    Rename(Ren),
+    /// A plain click on a view or sheet: it is picked, and the row selected, but the view does not open.
+    Picked(Pick),
 }
 
 /// An entry of the tree, or a group of them.
@@ -135,19 +203,27 @@ struct Node {
     kids: Vec<Node>,
     /// Its right-click menu: each item's label and what it does.
     menu: Vec<(&'static str, Act)>,
+    /// What F2 renames on it: none for a group, a category or a link.
+    rename: Option<Ren>,
 }
 
 impl Node {
     fn group(label: &str, open: bool, kids: Vec<Node>) -> Node {
-        Node { label: label.to_string(), act: Act::Group, on: false, open, kids, menu: Vec::new() }
+        Node { label: label.to_string(), act: Act::Group, on: false, open, kids, menu: Vec::new(), rename: None }
     }
 
     fn leaf(label: &str, act: Act, on: bool) -> Node {
-        Node { label: label.to_string(), act, on, open: false, kids: Vec::new(), menu: Vec::new() }
+        Node { label: label.to_string(), act, on, open: false, kids: Vec::new(), menu: Vec::new(), rename: None }
     }
 
     fn with_menu(mut self, menu: Vec<(&'static str, Act)>) -> Node {
         self.menu = menu;
+        self
+    }
+
+    /// The row renames `ren`: F2 or its menu's Rename.
+    fn renamed(mut self, ren: Ren) -> Node {
+        self.rename = Some(ren);
         self
     }
 
@@ -156,6 +232,7 @@ impl Node {
         match self.act {
             Act::Open(s) => Some(Pick::View(s)),
             Act::Open3D(id) => Some(Pick::View3D(id)),
+            Act::Picked(p) => Some(p),
             _ => None,
         }
     }
@@ -240,6 +317,15 @@ pub fn words(find: &str) -> Vec<String> {
 impl BimApp {
     /// The Project Browser's palette: the minimap of the view, its tabs and its search over the tree, which scrolls under them.
     pub(crate) fn browser_palette(&mut self, ui: &mut Ui) {
+        let rect = ui.clip_rect();
+        self.browser_rect = rect;
+        // A click in the palette makes it the one the keys go to; one elsewhere takes that away, so F2 never renames a row
+        // while the user works on the canvas.
+        if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary))
+            && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
+        {
+            self.browser_focused = rect.contains(pos);
+        }
         egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 8, top: 6, bottom: 4 }).show(ui, |ui| {
             self.minimap(ui);
             self.browser_tabs(ui);
@@ -337,6 +423,17 @@ impl BimApp {
         }
         let tree = self.browser_tree();
         let words = words(&self.browser_find);
+        // A target that undo, a delete or closing the project took away is no longer picked or edited.
+        if self.browser_sel.as_ref().is_some_and(|r| !self.ren_exists(r)) {
+            self.browser_sel = None;
+        }
+        if let Some(edit) = &self.browser_edit
+            && !self.ren_exists(&edit.target)
+        {
+            let id = edit.id.unwrap_or_else(|| egui::Id::new(("browser-rename", edit.target.key())));
+            self.browser_edit = None;
+            ui.memory_mut(|m| m.surrender_focus(id));
+        }
         let shown: Vec<&Node> = tree.iter().filter(|n| n.shows(&words)).collect();
         if shown.is_empty() {
             let note = if words.is_empty() { t("Nothing here yet.") } else { t("Nothing matches the search.") };
@@ -344,16 +441,42 @@ impl BimApp {
             return;
         }
         let mut act = None;
+        // The row clicked, and what it renames: the outer option says a row (or the empty tree) was clicked, the inner one
+        // what it renames, none where it renames nothing and so clears the selection.
+        let mut click: Option<Option<Ren>> = None;
         for node in &shown {
-            self.browser_node(ui, node, &words, "", &mut act);
+            self.browser_node(ui, node, &words, "", &mut act, &mut click);
         }
         self.browser_fold = None;
+        let tree_rect = self.browser_rect;
+        if click.is_none()
+            && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary))
+            && ui.input(|i| i.pointer.interact_pos().is_some_and(|p| tree_rect.contains(p)))
+            && !egui::Popup::is_any_open(ui.ctx())
+        {
+            click = Some(None);
+        }
+        if let Some(ren) = &click {
+            // A click on another row finishes the name being edited first, as the field losing the focus does, then the row
+            // does what it is clicked for.
+            if let Some(edit) = &self.browser_edit
+                && ren.as_ref() != Some(&edit.target)
+            {
+                let id = edit.id.unwrap_or_else(|| egui::Id::new(("browser-rename", edit.target.key())));
+                self.finish_browser_rename(false);
+                if self.browser_edit.is_none() {
+                    ui.memory_mut(|m| m.surrender_focus(id));
+                }
+            }
+            self.browser_sel = ren.clone();
+        }
         // A plain click on a view picks it alone, and opens it.
         if let Some(pick) = act.as_ref().and_then(|a| Node::leaf("", a.clone(), false).pick()) {
             self.browser_picked = vec![pick];
             self.browser_anchor = Some(pick);
         }
         match act {
+            Some(Act::Rename(ren)) => self.begin_browser_rename(Some(ren)),
             Some(Act::Open(sheet)) => self.open_sheet(sheet),
             Some(Act::Open3D(id)) => self.open_3d(id),
             Some(Act::Choose(pick, shift, ctrl)) => {
@@ -431,11 +554,31 @@ impl BimApp {
     }
 
     /// An entry, or a group and what in it shows: the words its groups matched are spent, the rest must match below.
-    fn browser_node(&self, ui: &mut Ui, node: &Node, words: &[String], path: &str, act: &mut Option<Act>) {
+    fn browser_node(
+        &mut self,
+        ui: &mut Ui,
+        node: &Node,
+        words: &[String],
+        path: &str,
+        act: &mut Option<Act>,
+        click: &mut Option<Option<Ren>>,
+    ) {
         let left: Vec<String> = words.iter().filter(|w| spans(&node.label, w).is_none()).cloned().collect();
         let text = marked(ui, &node.label, words);
-        // Its right-click menu: its own items, a print set of what is picked (or of what it holds), and folding.
+        // Its right-click menu: Rename first, then its own items, a print set of what is picked (or of what it holds), and folding.
         let menu = |ui: &mut Ui, act: &mut Option<Act>, picks: Vec<Pick>| {
+            if let Some(ren) = &node.rename {
+                let label = t("Rename");
+                let mut response = ui.add(Button::new(label).shortcut_text("F2"));
+                if matches!(ren, Ren::Sheet(_)) {
+                    response = response.on_hover_text(t("A sheet's number changes in Properties."));
+                }
+                if response.clicked() {
+                    *act = Some(Act::Rename(ren.clone()));
+                    ui.close();
+                }
+                ui.separator();
+            }
             browser_menu(ui, &node.menu, act);
             if !node.menu.is_empty() {
                 ui.separator();
@@ -466,19 +609,38 @@ impl BimApp {
                 ui.close();
             }
         };
+        let editing = self.browser_edit.as_ref().is_some_and(|e| Some(&e.target) == node.rename.as_ref());
+        if editing {
+            self.browser_name_editor(ui);
+        }
         if node.act != Act::Group {
+            if editing {
+                return;
+            }
             let pick = node.pick();
             let on = match pick {
                 Some(p) if self.browser_picked.len() > 1 => self.browser_picked.contains(&p),
                 _ => node.on,
             };
             let r = ui.selectable_label(on, text);
-            if r.clicked() {
+            if r.double_clicked() {
+                // A double click opens the view or sheet, as a folder's row does in the system's file manager.
+                self.browser_focused = true;
+                *act = Some(node.act.clone());
+                *click = Some(node.rename.clone());
+            } else if r.clicked() {
+                // A plain click only picks the row, so F2 can rename it; the view opens on a double click.
+                self.browser_focused = true;
                 let mods = ui.input(|i| i.modifiers);
                 *act = Some(match pick {
                     Some(p) if mods.command || mods.shift => Act::Choose(p, mods.shift, mods.command),
-                    _ => node.act.clone(),
+                    Some(p) => Act::Picked(p),
+                    None => node.act.clone(),
                 });
+                *click = Some(node.rename.clone());
+            }
+            if node.rename.is_some() && self.browser_sel.as_ref() == node.rename.as_ref() {
+                paint_selected(ui, r.rect);
             }
             // Of the picked when it is one of them, else of itself.
             let picks = match pick {
@@ -490,6 +652,18 @@ impl BimApp {
             return;
         }
         let path = format!("{path}/{}", node.label);
+        if editing {
+            // The family's name is edited in its row; what it holds stays under it, open as it was.
+            let open = !words.is_empty() || self.browser_fold.unwrap_or(node.open);
+            if open {
+                ui.indent(("browser-edit", &path), |ui| {
+                    for kid in node.kids.iter().filter(|k| k.shows(&left)) {
+                        self.browser_node(ui, kid, &left, &path, act, click);
+                    }
+                });
+            }
+            return;
+        }
         let mut header = CollapsingHeader::new(text).id_salt(("browser", &path)).default_open(node.open);
         if !words.is_empty() {
             header = header.open(Some(true));
@@ -498,12 +672,283 @@ impl BimApp {
         }
         let shown = header.show(ui, |ui| {
             for kid in node.kids.iter().filter(|k| k.shows(&left)) {
-                self.browser_node(ui, kid, &left, &path, act);
+                self.browser_node(ui, kid, &left, &path, act, click);
             }
         });
+        if shown.header_response.clicked() {
+            self.browser_focused = true;
+            *click = Some(node.rename.clone());
+        }
+        if node.rename.is_some() && self.browser_sel.as_ref() == node.rename.as_ref() {
+            paint_selected(ui, shown.header_response.rect);
+        }
         let mut picks = Vec::new();
         node.picks(words, &mut picks);
         shown.header_response.context_menu(|ui| menu(ui, act, picks));
+    }
+
+    /// The name being edited, in the row it belongs to: Enter saves, Esc cancels, and losing the focus saves what it can and
+    /// cancels what it can't, so the user is never locked in the field.
+    fn browser_name_editor(&mut self, ui: &mut Ui) {
+        let Some(mut edit) = self.browser_edit.take() else { return };
+        let id = ui.make_persistent_id(("browser-rename", edit.target.key()));
+        edit.id = Some(id);
+        // Esc closes the editor: the name stays as it was.
+        if ui.input(|i| i.key_pressed(Key::Escape)) {
+            ui.memory_mut(|m| m.surrender_focus(id));
+            self.status = crate::Status::default();
+            return;
+        }
+        let (focus, select_all) = (edit.focus, edit.select_all);
+        edit.focus = false;
+        edit.select_all = false;
+        let mut text = edit.text.clone();
+        let r = ui.add(TextEdit::singleline(&mut text).id(id).desired_width(ui.available_width()).char_limit(MAX_TEXT));
+        let accessible = t("New name").to_string();
+        r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, accessible.clone()));
+        if focus {
+            r.request_focus();
+            if let Some(mut state) = TextEdit::load_state(ui.ctx(), id) {
+                let end = CCursor::new(text.chars().count());
+                let range = if select_all { CCursorRange::two(CCursor::new(0), end) } else { CCursorRange::one(end) };
+                state.cursor.set_char_range(Some(range));
+                state.store(ui.ctx(), id);
+            }
+        }
+        edit.text = text;
+        if let Some(error) = &edit.error {
+            r.clone().on_hover_text(error);
+            paint_refused(ui, r.rect);
+            ui.label(egui::RichText::new(error).color(pal().error).small());
+        }
+        let entered = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+        let lost = r.lost_focus();
+        if entered || lost {
+            let keep = entered;
+            self.browser_edit = Some(edit);
+            self.finish_browser_rename(keep);
+            if self.browser_edit.is_none() {
+                ui.memory_mut(|m| m.surrender_focus(id));
+            }
+        } else {
+            self.browser_edit = Some(edit);
+        }
+    }
+
+    /// Whether the Project Browser is on screen: the tab its stack shows, not another of its stack's.
+    pub(crate) fn browser_visible(&self) -> bool {
+        self.docking.stack_of(crate::dock::Palette::Browser).and_then(|s| s.shown()) == Some(crate::dock::Palette::Browser)
+    }
+
+    /// Whether a row can still be renamed: its element, family or type is still the project's.
+    pub(crate) fn ren_exists(&self, ren: &Ren) -> bool {
+        let m = &self.session.model;
+        match ren {
+            Ren::Level(id) | Ren::CeilingLevel(id) => matches!(m.elements.get(*id), Some(Element::Level(_))),
+            Ren::View(id) | Ren::CeilingView(id) => matches!(
+                m.elements.get(*id),
+                Some(
+                    Element::PlanView(_)
+                        | Element::Section(_)
+                        | Element::Elevation(_)
+                        | Element::DetailView(_)
+                        | Element::View3D(_)
+                        | Element::Schedule(_)
+                        | Element::PanelSchedule(_)
+                        | Element::RebarDetail(_)
+                )
+            ),
+            Ren::Default3D => true,
+            Ren::Sheet(id) => m.sheet(*id).is_some(),
+            Ren::BuiltinSchedule(cat) => schedule::builtin(None, Some(cat)).is_some(),
+            Ren::Family(name) => m.families.contains_key(name),
+            Ren::Type { category, family, name } => match (category, family) {
+                (Some(cat), _) => m.type_names(cat).contains(&name.as_str()),
+                (None, Some(family)) => m.families.get(family).is_some_and(|f| f.types.contains_key(name)),
+                (None, None) => false,
+            },
+        }
+    }
+
+    /// What a row is called now: a sheet by its name alone, the default `{3D}`, a built-in schedule as it shows.
+    fn ren_name(&self, ren: &Ren) -> String {
+        let m = &self.session.model;
+        match ren {
+            Ren::Level(id) | Ren::View(id) | Ren::CeilingView(id) => m.view_name(*id).unwrap_or_default().to_string(),
+            Ren::CeilingLevel(id) => m.ceiling_view_name(*id).unwrap_or_default().to_string(),
+            Ren::Sheet(id) => m.sheet(*id).map_or_else(String::new, |s| s.name.clone()),
+            Ren::Default3D => "{3D}".to_string(),
+            Ren::BuiltinSchedule(cat) => schedule::standard(m, cat).1.name,
+            Ren::Family(name) => name.clone(),
+            Ren::Type { name, .. } => name.clone(),
+        }
+    }
+
+    /// The command's parameters for renaming `ren` to `to`.
+    fn ren_params(&self, ren: &Ren, to: &str) -> serde_json::Value {
+        match ren {
+            Ren::Level(id) => serde_json::json!({"level": id, "plan": "floor", "rename": to}),
+            Ren::CeilingLevel(id) => serde_json::json!({"level": id, "plan": "ceiling", "rename": to}),
+            Ren::View(id) | Ren::CeilingView(id) | Ren::Sheet(id) => serde_json::json!({"id": id, "rename": to}),
+            Ren::Default3D => serde_json::json!({"view": "{3D}", "rename": to}),
+            Ren::BuiltinSchedule(cat) => serde_json::json!({"schedule": cat, "rename": to}),
+            Ren::Family(name) => serde_json::json!({"family": name, "rename": to}),
+            Ren::Type { category: Some(cat), name, .. } => serde_json::json!({"category": cat, "type": name, "rename": to}),
+            Ren::Type { family: Some(family), name, .. } => serde_json::json!({"family": family, "type": name, "rename": to}),
+            Ren::Type { .. } => serde_json::Value::Null,
+        }
+    }
+
+    /// Opens the name editor on `target`, or on the row picked when it is none. A second F2 on the same row selects the name.
+    pub(crate) fn begin_browser_rename(&mut self, target: Option<Ren>) {
+        let Some(ren) = target.or_else(|| self.browser_sel.clone()) else {
+            self.status = crate::Status { text: t("Select an item in the Project Browser to rename.").into(), error: false };
+            return;
+        };
+        if !self.ren_exists(&ren) {
+            self.browser_sel = None;
+            self.browser_edit = None;
+            self.status = crate::Status { text: t("This item can't be renamed.").into(), error: true };
+            return;
+        }
+        self.browser_sel = Some(ren.clone());
+        if let Some(edit) = &mut self.browser_edit
+            && edit.target == ren
+        {
+            edit.focus = true;
+            edit.select_all = true;
+            return;
+        }
+        let was = self.ren_name(&ren);
+        self.browser_edit = Some(BrowserEdit { target: ren, text: was.clone(), was, error: None, focus: true, select_all: true, id: None });
+        self.status = crate::Status::default();
+    }
+
+    /// Saves the name being edited: one command, one Undo step. With `keep` the editor stays open on what the command
+    /// refused, so Enter never loses what was typed.
+    pub(crate) fn finish_browser_rename(&mut self, keep: bool) {
+        let Some(edit) = self.browser_edit.clone() else { return };
+        // The target went while the field was open (Undo, a delete): the editor closes and no command runs.
+        if !self.ren_exists(&edit.target) {
+            self.browser_edit = None;
+            self.browser_sel = None;
+            return;
+        }
+        let text = edit.text.trim().to_string();
+        if text.chars().count() > MAX_TEXT {
+            let error = tf("A name is at most {} characters.", &[&MAX_TEXT.to_string()]);
+            self.rename_refused(edit, error, keep);
+            return;
+        }
+        if text.is_empty() {
+            self.rename_refused(edit, t("A name can't be empty.").to_string(), keep);
+            return;
+        }
+        if text == edit.was {
+            self.browser_edit = None;
+            self.status = crate::Status::default();
+            return;
+        }
+        let params = self.ren_params(&edit.target, &text);
+        match self.exec("rename", &params) {
+            Ok(reply) => {
+                self.browser_edit = None;
+                self.status = crate::Status::default();
+                self.renamed(edit, &text, &reply);
+            }
+            Err(error) => self.rename_refused(edit, error, keep),
+        }
+    }
+
+    /// The editor stays open on what was refused, or closes and says why in the status line.
+    fn rename_refused(&mut self, mut edit: BrowserEdit, error: String, keep: bool) {
+        if keep {
+            edit.error = Some(error);
+            edit.focus = true;
+            edit.select_all = false;
+            self.browser_edit = Some(edit);
+            self.status = crate::Status::default();
+        } else {
+            self.browser_edit = None;
+            self.status = crate::Status { text: error, error: true };
+        }
+    }
+
+    /// What follows a successful rename: the row stays picked at its new name, and Component and the Type Selector follow the
+    /// family or the type, so they don't go on placing a name that is gone.
+    fn renamed(&mut self, edit: BrowserEdit, to: &str, reply: &serde_json::Value) {
+        let id = reply.get("id").and_then(serde_json::Value::as_u64);
+        if matches!(&edit.target, Ren::Default3D)
+            && let Some(id) = id
+        {
+            self.open_3d(Some(id));
+        }
+        // A level's own plan made a view: its tabs, and the views picked for printing, follow the new view.
+        if let Some(id) = id {
+            let level = match edit.target {
+                Ren::Level(level) => Some((level, false)),
+                Ren::CeilingLevel(level) => Some((level, true)),
+                _ => None,
+            };
+            if let Some((level, ceiling)) = level {
+                let old = if ceiling { Sheet::Ceiling(level) } else { Sheet::Plan(level) };
+                let new = if ceiling { Sheet::Ceiling(id) } else { Sheet::Plan(id) };
+                for sheet in &mut self.views {
+                    if *sheet == old {
+                        *sheet = new;
+                    }
+                }
+                for float in &mut self.floating {
+                    if float.sheet == old {
+                        float.sheet = new;
+                    }
+                }
+                for pick in &mut self.browser_picked {
+                    if *pick == crate::browser::Pick::View(old) {
+                        *pick = crate::browser::Pick::View(new);
+                    }
+                }
+                if self.browser_anchor == Some(crate::browser::Pick::View(old)) {
+                    self.browser_anchor = Some(crate::browser::Pick::View(new));
+                }
+                if self.sheet == old {
+                    self.sheet = new;
+                }
+                if self.front == old {
+                    self.front = new;
+                }
+            }
+        }
+        let target = match &edit.target {
+            Ren::Level(one) => id.map_or(Ren::Level(*one), Ren::View),
+            Ren::CeilingLevel(one) => id.map_or(Ren::CeilingLevel(*one), Ren::CeilingView),
+            Ren::View(one) => Ren::View(*one),
+            Ren::CeilingView(one) => Ren::CeilingView(*one),
+            Ren::Sheet(one) => Ren::Sheet(*one),
+            Ren::Default3D => id.map_or(Ren::Default3D, Ren::View),
+            Ren::BuiltinSchedule(cat) => Ren::BuiltinSchedule(cat),
+            Ren::Family(_) => Ren::Family(to.to_string()),
+            Ren::Type { category, family, .. } => Ren::Type { category: *category, family: family.clone(), name: to.to_string() },
+        };
+        if let Ren::Family(_) = &edit.target
+            && let Some((family, _)) = &mut self.component
+            && *family == edit.was
+        {
+            *family = to.to_string();
+        }
+        if let Ren::Type { category, family, .. } = &edit.target {
+            if let Some(cat) = category
+                && self.types.get(cat).is_some_and(|t| *t == edit.was)
+            {
+                self.types.insert(cat, to.to_string());
+            }
+            if let Some(family) = family
+                && self.component.as_ref().is_some_and(|(f, t)| f == family && *t == edit.was)
+            {
+                self.component = Some((family.clone(), to.to_string()));
+            }
+        }
+        self.browser_sel = Some(target);
     }
 
     /// A name for a new print set that no set has: Print Set 1, 2…
@@ -524,7 +969,8 @@ impl BimApp {
             out.push(self.schedules_node());
         }
         if wants(Tab::Sheets) && (tab == Tab::Sheets || !self.sheets().is_empty()) {
-            let sheets = self.sheets().into_iter().map(|(id, name)| self.view_leaf(&name, Sheet::Paper(id))).collect();
+            let sheets =
+                self.sheets().into_iter().map(|(id, name)| self.view_leaf(&name, Sheet::Paper(id)).renamed(Ren::Sheet(id))).collect();
             out.push(Node::group(t("Sheets (all)"), true, sheets));
         }
         if wants(Tab::Families) {
@@ -576,30 +1022,46 @@ impl BimApp {
             v.sort_by(|a, b| a.1.cmp(&b.1));
             v
         };
-        // Each level's own plan, then its plan views, which also have a right-click Delete.
-        let keyed: Vec<(Id, String, bool)> = levels
-            .iter()
-            .flat_map(|(id, name)| {
-                let views = m.plan_views(*id).into_iter().map(|(v, pv)| (v, pv.name.clone(), true));
-                std::iter::once((*id, name.clone(), false)).chain(views)
-            })
-            .collect();
-        let plan_leaf = |id: Id, name: &str, view: bool, sheet: Sheet| {
+        // Each level's own plan, which is its own primary `PlanView` once renamed, then its plan views (which have Delete).
+        let plan_leaf = |id: Id, name: &str, sheet: Sheet, ren: Ren, deletable: bool| {
             let mut menu = vec![
                 (msg!("Duplicate"), Act::Duplicate(id, "duplicate")),
                 (msg!("Duplicate with Detailing"), Act::Duplicate(id, "detailing")),
                 (msg!("Duplicate as Dependent"), Act::Duplicate(id, "dependent")),
             ];
-            if view {
+            if deletable {
                 menu.push(("Delete", Act::Delete(vec![id])));
             }
             if self.underlay_target().is_some_and(|on| on != id) {
                 menu.push((msg!("Show as Underlay"), Act::Underlay(id)));
             }
-            self.view_leaf(name, sheet).with_menu(menu)
+            self.view_leaf(name, sheet).with_menu(menu).renamed(ren)
         };
-        let plans = keyed.iter().map(|(id, name, view)| plan_leaf(*id, name, *view, Sheet::Plan(*id))).collect();
-        let ceilings = keyed.iter().map(|(id, name, view)| plan_leaf(*id, name, *view, Sheet::Ceiling(*id))).collect();
+        let own_or_duplicates = |ceiling: bool| {
+            levels.iter().flat_map(move |(level, level_name)| {
+                let primary = m.primary_plan(*level, ceiling);
+                let own_id = primary.unwrap_or(*level);
+                let own_name = if ceiling && primary.is_none() {
+                    m.ceiling_view_name(*level).unwrap_or(level_name).to_string()
+                } else {
+                    m.view_name(own_id).unwrap_or(level_name).to_string()
+                };
+                let (sheet, ren) = match (primary, ceiling) {
+                    (Some(v), false) => (Sheet::Plan(v), Ren::View(v)),
+                    (Some(v), true) => (Sheet::Ceiling(v), Ren::CeilingView(v)),
+                    (None, false) => (Sheet::Plan(own_id), Ren::Level(own_id)),
+                    (None, true) => (Sheet::Ceiling(own_id), Ren::CeilingLevel(own_id)),
+                };
+                let own = plan_leaf(own_id, &own_name, sheet, ren, false);
+                let copies = m.plan_views(*level).into_iter().map(move |(v, pv)| {
+                    let (sheet, ren) = if ceiling { (Sheet::Ceiling(v), Ren::CeilingView(v)) } else { (Sheet::Plan(v), Ren::View(v)) };
+                    plan_leaf(v, &pv.name, sheet, ren, true)
+                });
+                std::iter::once(own).chain(copies)
+            })
+        };
+        let plans: Vec<Node> = own_or_duplicates(false).collect();
+        let ceilings: Vec<Node> = own_or_duplicates(true).collect();
         let mut kids = vec![
             Node::group(t("Floor Plans"), true, plans),
             Node::group(t("Ceiling Plans"), true, ceilings),
@@ -608,14 +1070,14 @@ impl BimApp {
                 // camera view. Opening one stands the 3D tab where its camera looks from.
                 let active = self.active_3d();
                 let mut three: Vec<Node> = vec![match m.default_3d() {
-                    Some(id) => Node::leaf("{3D}", Act::Open3D(Some(id)), active == Some(id)),
-                    None => Node::leaf("{3D}", Act::Open3D(None), active.is_none()),
+                    Some(id) => Node::leaf("{3D}", Act::Open3D(Some(id)), active == Some(id)).renamed(Ren::View(id)),
+                    None => Node::leaf("{3D}", Act::Open3D(None), active.is_none()).renamed(Ren::Default3D),
                 }];
                 // A rare kind, kept by the lookup: the browser is built every frame.
                 three.extend(m.lookup().rare("view3d").filter_map(|id| Some((id, m.elements.get(id)?))).filter_map(|(id, e)| match e {
                     Element::View3D(v) if v.name != "{3D}" => {
                         let leaf = Node::leaf(&v.name, Act::Open3D(Some(id)), active == Some(id));
-                        Some(leaf.with_menu(vec![("Delete", Act::Delete(vec![id]))]))
+                        Some(leaf.with_menu(vec![("Delete", Act::Delete(vec![id]))]).renamed(Ren::View(id)))
                     }
                     _ => None,
                 }));
@@ -627,7 +1089,7 @@ impl BimApp {
             let views = views(category);
             if !views.is_empty() {
                 let leaf = |id: Id, name: &str| {
-                    let node = self.view_leaf(name, Sheet::Section(id));
+                    let node = self.view_leaf(name, Sheet::Section(id)).renamed(Ren::View(id));
                     if self.underlay_target().is_some_and(|on| on != id) {
                         node.with_menu(vec![(msg!("Show as Underlay"), Act::Underlay(id))])
                     } else {
@@ -654,7 +1116,7 @@ impl BimApp {
                         .into_iter()
                         .map(|(id, name)| {
                             let sheet = if m.plan_level(id).is_some() { Sheet::Plan(id) } else { Sheet::Section(id) };
-                            self.view_leaf(&name, sheet).with_menu(vec![("Delete", Act::Delete(vec![id]))])
+                            self.view_leaf(&name, sheet).with_menu(vec![("Delete", Act::Delete(vec![id]))]).renamed(Ren::View(id))
                         })
                         .collect();
                     (m.view_name(parent).unwrap_or_default().to_string(), leaves)
@@ -680,19 +1142,17 @@ impl BimApp {
                     (Some(_), sc) => sc.name,
                     (None, _) => t(name).to_string(),
                 };
-                self.view_leaf(&name, Sheet::Schedule(cat))
+                self.view_leaf(&name, Sheet::Schedule(cat)).renamed(Ren::BuiltinSchedule(cat))
             })
             .collect();
         // The project's own have a right-click Delete; the seven every project has stay.
-        kids.extend(
-            self.schedules()
-                .into_iter()
-                .map(|(id, name)| self.view_leaf(name, Sheet::Table(id)).with_menu(vec![("Delete", Act::Delete(vec![id]))])),
-        );
+        kids.extend(self.schedules().into_iter().map(|(id, name)| {
+            self.view_leaf(name, Sheet::Table(id)).with_menu(vec![("Delete", Act::Delete(vec![id]))]).renamed(Ren::View(id))
+        }));
         // The panel schedules of the distribution boards.
         let panels = self.panel_schedules();
         if !panels.is_empty() {
-            let leaves = panels.into_iter().map(|(id, name)| self.view_leaf(name, Sheet::Table(id))).collect();
+            let leaves = panels.into_iter().map(|(id, name)| self.view_leaf(name, Sheet::Table(id)).renamed(Ren::View(id))).collect();
             kids.push(Node::group(t("Panel Schedules"), true, leaves));
         }
         // The detail drawings of reinforced members.
@@ -700,7 +1160,9 @@ impl BimApp {
         if !details.is_empty() {
             let leaves = details
                 .into_iter()
-                .map(|(id, name)| self.view_leaf(name, Sheet::Table(id)).with_menu(vec![("Delete", Act::Delete(vec![id]))]))
+                .map(|(id, name)| {
+                    self.view_leaf(name, Sheet::Table(id)).with_menu(vec![("Delete", Act::Delete(vec![id]))]).renamed(Ren::View(id))
+                })
                 .collect();
             kids.push(Node::group(t("Reinforcement Details"), true, leaves));
         }
@@ -753,7 +1215,11 @@ impl BimApp {
                     let on = self.types.get(category).is_some_and(|t| t == ty);
                     let act =
                         if *category == "framing" { Act::EditType(category, ty.to_string()) } else { Act::Pick(category, ty.to_string()) };
-                    Node::leaf(ty, act, on).with_menu(type_menu(serde_json::json!({"category": category, "type": ty})))
+                    Node::leaf(ty, act, on).with_menu(type_menu(serde_json::json!({"category": category, "type": ty}))).renamed(Ren::Type {
+                        category: Some(*category),
+                        family: None,
+                        name: ty.to_string(),
+                    })
                 })
                 .collect();
             (!names.is_empty()).then(|| Node::group(&crate::lang::category(category, true), false, leaves))
@@ -767,10 +1233,12 @@ impl BimApp {
                     .iter()
                     .map(|ty| {
                         let on = self.types.get(category).is_some_and(|t| t == ty);
-                        Node::leaf(ty, Act::Pick(category, ty.to_string()), on).with_menu(vec![
-                            ("Edit Type", Act::EditType(category, ty.to_string())),
-                            ("Delete", Act::Do("delete_type", serde_json::json!({"category": category, "type": ty}))),
-                        ])
+                        Node::leaf(ty, Act::Pick(category, ty.to_string()), on)
+                            .with_menu(vec![
+                                ("Edit Type", Act::EditType(category, ty.to_string())),
+                                ("Delete", Act::Do("delete_type", serde_json::json!({"category": category, "type": ty}))),
+                            ])
+                            .renamed(Ren::Type { category: Some(category), family: None, name: ty.to_string() })
                     })
                     .collect();
                 (!names.is_empty())
@@ -784,9 +1252,10 @@ impl BimApp {
                     let on = self.tool == Tool::Component && self.component.as_ref() == Some(&(name.clone(), ty.clone()));
                     Node::leaf(ty, Act::Place(name.clone(), ty.clone()), on)
                         .with_menu(type_menu(serde_json::json!({"family": name, "type": ty})))
+                        .renamed(Ren::Type { category: None, family: Some(name.clone()), name: ty.clone() })
                 })
                 .collect();
-            Node::group(name, false, types).with_menu(delete(serde_json::json!({"family": name})))
+            Node::group(name, false, types).with_menu(delete(serde_json::json!({"family": name}))).renamed(Ren::Family(name.clone()))
         });
         // Alphabetical by the name shown, case aside (the families' map order would put capitals first).
         let mut categories: Vec<Node> = system.chain(curtain).collect();
@@ -809,6 +1278,17 @@ fn browser_menu(ui: &mut Ui, entries: &[(&'static str, Act)], act: &mut Option<A
             ui.close();
         }
     }
+}
+
+/// The accent bar that marks the row picked for renaming: 2 px down its left side, the row's own fill kept.
+fn paint_selected(ui: &Ui, rect: Rect) {
+    let (top, bottom) = (rect.left_top() + vec2(-3.0, 1.0), rect.left_bottom() + vec2(-1.0, -1.0));
+    ui.painter().rect_filled(Rect::from_min_max(top, bottom), 0.0, pal().accent);
+}
+
+/// A field whose name the command refused: a red edge round it, where the row shows why.
+fn paint_refused(ui: &Ui, rect: Rect) {
+    ui.painter().rect_stroke(rect.expand(1.0), 2.0, Stroke::new(1.0, pal().error), StrokeKind::Outside);
 }
 
 /// A name with what the search's words matched in it marked.

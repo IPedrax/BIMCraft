@@ -19,8 +19,7 @@ fn the_search_keeps_the_tree_to_what_matches_as_it_is_typed() {
     assert_eq!((count(&h, "Level 1"), count(&h, "Level 2")), (0, 1), "the ceiling plan alone");
     assert!(h.query_by_label("Ceiling Plans").is_some() && h.query_by_label("Floor Plans").is_none());
     assert!(h.query_by_label("Schedules/Quantities (all)").is_none(), "nor anything else");
-    h.get_by_label("Level 2").click_accesskit();
-    h.run();
+    browse(&mut h, "Level 2");
     assert!(matches!(h.state().sheet, Sheet::Ceiling(_)), "what's left opens");
     // Wildcards: ? one character, * any run.
     type_into(&mut h, FIND, "l?v*1");
@@ -77,6 +76,110 @@ fn the_families_list_curtain_panels_and_mullions_under_their_system_families() {
         h.run();
     }
     assert_eq!(h.state().types.get("mullion").map(String::as_str), Some("50 x 150"));
+}
+
+/// A text field of the row being renamed: opened by F2, its whole name selected, saved by Enter.
+fn rename_with(h: &mut Harness<BimApp>, text: &str) {
+    type_into(h, "New name", text);
+    h.key_press(Key::Enter);
+    h.run();
+}
+
+#[test]
+fn f2_with_no_row_picked_is_the_shortcuts_floor_plan() {
+    let mut h = app(BOX);
+    h.state_mut().sheet = Sheet::View3D;
+    h.run();
+    let row = h.get_by_label("Views (all)").rect().center();
+    click_at(&mut h, row);
+    assert!(h.state().browser_sel.is_none(), "a group is no row to rename");
+    h.key_press(Key::F2);
+    h.run();
+    let opened = h.state().sheet;
+    assert!(
+        matches!(opened, Sheet::Plan(id) if h.state().session.model.plan_level(id).is_some()),
+        "F2 is Floor Plan again, and it opens a real level's plan: {opened:?}"
+    );
+    assert_eq!(h.query_all_by_label("New name").count(), 0, "no name is edited");
+}
+
+#[test]
+fn f2_renames_the_picked_plan_view_and_one_undo_brings_the_level_name_back() {
+    let mut h = app(BOX);
+    pick_browser_row(&mut h, "Level 1");
+    h.key_press(Key::F2);
+    h.run();
+    assert_eq!(h.query_all_by_label("New name").count(), 1, "one row edits, not the floor plan and the ceiling plan");
+    assert_eq!(h.get_by_role_and_label(Role::TextInput, "New name").value().as_deref(), Some("Level 1"));
+    rename_with(&mut h, "Ground");
+    let m = &h.state().session.model;
+    let level = m.levels().into_iter().find(|(_, l)| l.name == "Level 1").map(|(id, _)| id).expect("the level keeps its name");
+    let view = m.primary_plan(level, false).expect("the plan is a view of its own now");
+    assert_eq!(m.view_name(view), Some("Ground"), "the view is renamed");
+    assert_eq!(m.view_name(level), Some("Ground"), "the level's plan reads the view's name");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    let m = &h.state().session.model;
+    assert!(m.primary_plan(level, false).is_none(), "one undo takes the view away");
+    assert_eq!(m.view_name(level), Some("Level 1"));
+}
+
+#[test]
+fn f2_esc_leaves_the_name_and_a_duplicate_stays_in_the_row() {
+    let mut h = app(BOX);
+    pick_browser_row(&mut h, "Level 1");
+    h.key_press(Key::F2);
+    h.run();
+    type_into(&mut h, "New name", "Ground");
+    h.key_press(Key::Escape);
+    h.run();
+    assert!(h.query_by_role_and_label(Role::TextInput, "New name").is_none(), "the editor closes");
+    assert!(h.state().session.model.levels().iter().any(|(_, l)| l.name == "Level 1"), "Esc cancels");
+    // A name another level has is refused in the row: the field stays open with what was typed.
+    h.key_press(Key::F2);
+    h.run();
+    type_into(&mut h, "New name", "Level 2");
+    h.key_press(Key::Enter);
+    h.run();
+    let field = h.get_by_role_and_label(Role::TextInput, "New name");
+    assert_eq!(field.value().as_deref(), Some("Level 2"), "what was typed stays");
+    assert!(h.state().session.model.levels().iter().filter(|(_, l)| l.name == "Level 2").count() <= 1);
+    h.key_press(Key::Escape);
+    h.run();
+}
+
+#[test]
+fn f2_makes_a_builtin_schedule_its_own_row_and_keeps_one_row_of_it() {
+    let mut h = app(BOX);
+    press(&mut h, "List Schedules");
+    let row = h.get_by_label("Door Schedule").rect().center();
+    click_at(&mut h, row);
+    h.key_press(Key::F2);
+    h.run();
+    assert_eq!(h.get_by_role_and_label(Role::TextInput, "New name").value().as_deref(), Some("Door Schedule"));
+    rename_with(&mut h, "Doors");
+    let m = &h.state().session.model;
+    let id = bimcraft_core::schedule::standard(m, "door").0.expect("the built-in is the project's now");
+    assert_eq!(m.view_name(id), Some("Doors"));
+    assert_eq!(count(&h, "Doors"), 1, "one row, not Door Schedule and Doors");
+    assert!(h.query_by_label("Door Schedule").is_none());
+}
+
+#[test]
+fn the_menu_renames_the_row_it_was_opened_on() {
+    let mut h = app(BOX);
+    pick_browser_row(&mut h, "Level 1");
+    // Right-click another row: Rename names it, not the row picked before.
+    browser_row_node(&h, "Level 2").click_secondary();
+    h.run();
+    press(&mut h, "Rename");
+    h.run();
+    assert_eq!(h.get_by_role_and_label(Role::TextInput, "New name").value().as_deref(), Some("Level 2"));
+    rename_with(&mut h, "Second");
+    let m = &h.state().session.model;
+    let level = m.levels().into_iter().find(|(_, l)| l.name == "Level 2").map(|(id, _)| id).expect("the level keeps its name");
+    let view = m.primary_plan(level, false).expect("the plan is a view of its own now");
+    assert_eq!(m.view_name(view), Some("Second"));
 }
 
 #[test]

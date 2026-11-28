@@ -1694,8 +1694,9 @@ impl BimApp {
             ([], _, Sheet::Section(id) | Sheet::Paper(id)) => Subject::Element(id),
             // A Callout opened as a plan or a section shows its own parameters, not its level's or its parent's.
             ([], _, Sheet::Plan(id)) if matches!(self.session.model.elements.get(id), Some(Element::DetailView(_))) => Subject::Element(id),
-            // Modify, and the tools that pick walls rather than place anything: the view.
-            ([], _, Sheet::Plan(level)) => Subject::Plan(level),
+            // Modify, and the tools that pick walls rather than place anything: the view. A level's floor plan is its
+            // primary `PlanView` once that is an element, and Properties edits that view's name.
+            ([], _, Sheet::Plan(level)) => Subject::Plan(self.session.model.primary_plan(level, false).unwrap_or(level)),
             ([], _, Sheet::Ceiling(_)) => Subject::CeilingPlan,
             ([], _, Sheet::View3D) => Subject::View3D,
             // A family document's Properties are its own (`family_properties`).
@@ -1884,7 +1885,7 @@ impl BimApp {
             Subject::New(category) => (tf("New {}", &[&lang::category(category, true)]), Vec::new(), &[][..]),
             Subject::Plan(level) => {
                 let rows = match self.session.model.plan_view(level) {
-                    Some(v) if v.parent.is_some() => PLAN_DEPENDENT,
+                    Some(v) if v.parent.is_some() && !v.primary => PLAN_DEPENDENT,
                     Some(_) => PLAN_VIEW,
                     None => PLAN,
                 };
@@ -2008,7 +2009,7 @@ impl BimApp {
                 crate::browser::Pick::View(Sheet::Plan(id)) => match model.elements.get(id) {
                     Some(Element::DetailView(_)) => (msg!("Callouts"), Some(id), rows("detail")),
                     _ => match model.plan_view(id) {
-                        Some(v) if v.parent.is_some() => (msg!("Floor Plans"), Some(id), PLAN_DEPENDENT),
+                        Some(v) if v.parent.is_some() && !v.primary => (msg!("Floor Plans"), Some(id), PLAN_DEPENDENT),
                         Some(_) => (msg!("Floor Plans"), Some(id), PLAN_VIEW),
                         None => (msg!("Floor Plans"), Some(id), PLAN),
                     },

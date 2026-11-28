@@ -2946,6 +2946,20 @@ other_files(
         detail_line,
     ),
     edit(
+        "rename",
+        ui_msg!("Rename"),
+        &[],
+        "{id | view | level (+ plan) | schedule | sheet | family (+ type)? | category, type; rename} renames a view, a level, \
+         a schedule, a sheet, a family or a type, as F2 in the Project Browser does. Exactly one selector: `id` (a view, a \
+         schedule, a sheet or a level), `view` (a name, an id, or `{3D}`/`3D`), `level` with `plan: floor|ceiling` (the level's \
+         own plan, made a `PlanView` the first time it is renamed), `schedule` (a category every project has, or a schedule's \
+         name or id), `sheet` (a number, an id or a name), `family` (with `type`, one of its types), or `category` and `type`. \
+         A sheet's name changes; its number stays. A built-in schedule, the default `{3D}` or a level's own plan is made an \
+         element the first time it is renamed. Answers {kind, id?, from, to, created?}; one call is one Undo step, and a name \
+         that is empty or already another's is refused without changing the project",
+        rename,
+    ),
+    edit(
         "delete_type",
         ui_msg!("Delete Type"),
         &[],
@@ -6481,6 +6495,10 @@ fn schedule(s: &mut Session, p: &Value) -> R {
         (None, None, None, Some(k)) => Schedule { of: k.clone(), ..Schedule::default() },
         (None, None, None, None) => return Err(bad(c, "`name` or `category` is required")),
     };
+    // A schedule that stands for one every project has is its category's standard from then on, renamed or not.
+    if builtin.is_some() {
+        sc.standard = true;
+    }
     if let Some(k) = cat.as_deref().filter(|k| *k != category(&sc.of)) {
         return Err(bad(c, format!("`{}` schedules {}s, not {k}s; make another for those", sc.name, sc.of)));
     }
@@ -16662,7 +16680,7 @@ fn duplicate_view(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("`mode` is duplicate, detailing or dependent, not `{mode}`")));
     }
     let from = m.plan_view(view);
-    if mode == "dependent" && from.is_some_and(|v| v.parent.is_some()) {
+    if mode == "dependent" && from.is_some_and(|v| v.parent.is_some() && !v.primary) {
         return Err(bad(c, format!("{} is a dependent view, which has none of its own: make it of its parent", view_title(m, view))));
     }
     let name = match string(c, p, "name")? {
@@ -16683,6 +16701,8 @@ fn duplicate_view(s: &mut Session, p: &Value) -> R {
     let new = PlanView {
         level,
         name: name.clone(),
+        primary: false,
+        ceiling: false,
         view_range: if dependent { Default::default() } else { view_range },
         crop: m.crop_of(view),
         graphics: if dependent { Graphics::default() } else { graphics },
@@ -23069,6 +23089,290 @@ fn entry_of(c: &str, m: &Model, p: &Value) -> Result<(LibKind, String), String> 
         }
         _ => Err(bad(c, "give `category` and `type`, or `family`, or `family` and `type`")),
     }
+}
+
+/// What `rename` changes: an element, the default `{3D}` before it is one, one of the schedules every project has, a family,
+/// or a type of a category or a family.
+enum RenameTarget {
+    Element(Id),
+    Default3D,
+    /// A level's own floor or ceiling plan, made a `PlanView` the first time it is renamed.
+    PrimaryPlan {
+        level: Id,
+        ceiling: bool,
+    },
+    BuiltinSchedule(&'static str),
+    Family(String),
+    Type {
+        category: Option<String>,
+        family: Option<String>,
+        name: String,
+    },
+}
+
+/// The element `id`, as `rename` reads what it can rename: its kind and the name it has.
+fn rename_of_element(c: &str, m: &Model, id: Id) -> Result<(RenameTarget, &'static str, String), String> {
+    let (kind, from) = match m.elements.get(id) {
+        Some(Element::Level(l)) => ("level", l.name.clone()),
+        Some(Element::Sheet(sh)) => ("sheet", sh.name.clone()),
+        Some(Element::Schedule(sc)) => ("schedule", sc.name.clone()),
+        Some(Element::PlanView(v)) => ("view", v.name.clone()),
+        Some(Element::Section(v) | Element::Elevation(v)) => ("view", v.name.clone()),
+        Some(Element::DetailView(v)) => ("view", v.name.clone()),
+        Some(Element::View3D(v)) => ("view", v.name.clone()),
+        Some(Element::PanelSchedule(v)) => ("view", v.name.clone()),
+        Some(Element::RebarDetail(v)) => ("view", v.name.clone()),
+        Some(e) => return Err(bad(c, format!("{} {id} can't be renamed", e.category()))),
+        None => return Err(bad(c, format!("no element {id}"))),
+    };
+    Ok((RenameTarget::Element(id), kind, from))
+}
+
+/// What `rename`'s selectors name, its kind and its name now: one selector, as `rename`'s parameters say.
+fn rename_target(c: &str, m: &Model, p: &Value) -> Result<(RenameTarget, &'static str, String), String> {
+    let has = |k: &str| p.get(k).is_some_and(|v| !v.is_null());
+    let family = string(c, p, "family")?;
+    let cat = string(c, p, "category")?;
+    let ty = string(c, p, "type")?;
+    let selectors = [has("id"), has("view"), has("schedule"), has("sheet"), has("level"), family.is_some(), cat.is_some()]
+        .into_iter()
+        .filter(|b| *b)
+        .count();
+    if selectors != 1 {
+        return Err(bad(c, "name one thing: `id`, `view`, `schedule`, `sheet`, `level`, `family` or `category`"));
+    }
+    if ty.is_some() && family.is_none() && cat.is_none() {
+        return Err(bad(c, "`type` needs `category` or `family`"));
+    }
+    if has("plan") && !has("level") {
+        return Err(bad(c, "`plan` needs `level`: the level whose own plan to rename"));
+    }
+    if has("id") {
+        let id = element_id(c, m, &p["id"])?;
+        return rename_of_element(c, m, id);
+    }
+    if has("level") {
+        let (floor, view) = plan_param(c, m, p, "level")?;
+        if view.is_some() {
+            return Err(bad(c, "`level` names a level, not one of its plan views"));
+        }
+        let level = m.elements.id(floor).ok_or_else(|| bad(c, "there's no such level"))?;
+        let ceiling = choice(c, p, "plan", &["floor", "ceiling"], "floor")? == "ceiling";
+        let from = if ceiling { m.ceiling_view_name(level) } else { m.view_name(level) }.unwrap_or_default().to_string();
+        return Ok((RenameTarget::PrimaryPlan { level, ceiling }, "view", from));
+    }
+    if has("view") {
+        let v = &p["view"];
+        let name = match v {
+            Value::String(n) => Some(n.as_str()),
+            _ => None,
+        };
+        if let Some(name) = name {
+            if name == "{3D}" || name.eq_ignore_ascii_case("3D") {
+                return Ok(match m.default_3d() {
+                    Some(id) => {
+                        let (target, _, _) = rename_of_element(c, m, id)?;
+                        (target, "view", "{3D}".to_string())
+                    }
+                    None => (RenameTarget::Default3D, "view", "{3D}".to_string()),
+                });
+            }
+            if let Some(id) = m.view_named(name) {
+                return rename_of_element(c, m, id);
+            }
+            // A view by its id, given as text.
+            if let Ok(n) = name.parse::<u32>()
+                && let Ok(id) = element_id(c, m, &json!(n))
+            {
+                return rename_of_element(c, m, id);
+            }
+            return Err(bad(c, format!("there's no view `{name}`")));
+        }
+        let id = element_id(c, m, v)?;
+        return rename_of_element(c, m, id);
+    }
+    if has("schedule") {
+        let name = string(c, p, "schedule")?.ok_or_else(|| bad(c, "`schedule` is a name"))?;
+        if let Some((cat, _)) = schedule::builtin(None, Some(&name)) {
+            return Ok((RenameTarget::BuiltinSchedule(cat), "schedule", schedule::standard(m, cat).1.name));
+        }
+        if let Some(id) = schedule::named(m, &name) {
+            return match m.elements.get(id) {
+                Some(Element::Schedule(sc)) => Ok((RenameTarget::Element(id), "schedule", sc.name.clone())),
+                _ => Err(bad(c, format!("`{name}` isn't a schedule"))),
+            };
+        }
+        if let Ok(n) = name.parse::<u32>()
+            && let Ok(id) = element_id(c, m, &json!(n))
+            && matches!(m.elements.get(id), Some(Element::Schedule(_)))
+        {
+            return rename_of_element(c, m, id);
+        }
+        return Err(bad(c, format!("there's no schedule `{name}`")));
+    }
+    if has("sheet") {
+        let name = string(c, p, "sheet")?.ok_or_else(|| bad(c, "`sheet` is a number or a name"))?;
+        if let Some(id) = m.sheet_numbered(&name) {
+            return rename_of_element(c, m, id);
+        }
+        if let Ok(n) = name.parse::<u32>()
+            && let Ok(id) = element_id(c, m, &json!(n))
+        {
+            return rename_of_element(c, m, id);
+        }
+        return Err(bad(c, format!("there's no sheet `{name}`")));
+    }
+    // A family or a type.
+    match (family, ty, cat) {
+        (Some(f), Some(t), None) => {
+            let fam = m.families.get(&f).ok_or_else(|| bad(c, format!("there is no family `{f}`")))?;
+            if !fam.types.contains_key(&t) {
+                return Err(bad(c, format!("family `{f}` has no type `{t}`")));
+            }
+            Ok((RenameTarget::Type { category: None, family: Some(f), name: t.clone() }, "type", t))
+        }
+        (Some(f), None, None) => {
+            if !m.families.contains_key(&f) {
+                return Err(bad(c, format!("there is no family `{f}`")));
+            }
+            Ok((RenameTarget::Family(f.clone()), "family", f))
+        }
+        (None, Some(t), Some(k)) => {
+            let k = category(&k);
+            if !m.type_names(&k).contains(&t.as_str()) {
+                return Err(bad(c, format!("there is no {k} type `{t}`")));
+            }
+            Ok((RenameTarget::Type { category: Some(k), family: None, name: t.clone() }, "type", t))
+        }
+        (None, None, Some(_)) => Err(bad(c, "`category` needs `type`: the type to rename")),
+        (None, Some(_), None) => Err(bad(c, "`type` needs `category` or `family`")),
+        (Some(_), Some(_), Some(_)) => Err(bad(c, "give `family` and `type`, or `category` and `type`, not all three")),
+        (Some(_), None, Some(_)) => Err(bad(c, "give `family` alone, or `family` and `type`, or `category` and `type`")),
+        (None, None, None) => Err(bad(c, "name one thing: `id`, `view`, `schedule`, `sheet`, `family` or `category`")),
+    }
+}
+
+fn rename(s: &mut Session, p: &Value) -> R {
+    let c = "rename";
+    only(c, p, &["id", "view", "schedule", "sheet", "level", "plan", "family", "category", "type", "rename"])?;
+    let raw = string(c, p, "rename")?.ok_or_else(|| bad(c, "`rename` is required: the new name"))?;
+    let to = raw.trim();
+    if to.is_empty() {
+        return Err(bad(c, "a name can't be empty"));
+    }
+    let to = to.to_string();
+    let (target, kind, from) = rename_target(c, &s.model, p)?;
+    // A name the commands read as the 3D view is no other view's.
+    let is_3d = matches!(target, RenameTarget::Default3D)
+        || matches!(target, RenameTarget::Element(id) if matches!(s.model.elements.get(id), Some(Element::View3D(_))));
+    if matches!(kind, "view" | "level") && !is_3d && (to == "{3D}" || to.eq_ignore_ascii_case("3D")) {
+        return Err(bad(c, "`{3D}` and `3D` name the 3D view"));
+    }
+    // A sheet's number stays; a name that is another sheet's number would make `sheet_numbered` ambiguous.
+    if kind == "sheet"
+        && let RenameTarget::Element(id) = &target
+        && s.model.sheets().into_iter().any(|other| other != *id && s.model.sheet(other).is_some_and(|sh| sh.number == to))
+    {
+        return Err(bad(c, format!("`{to}` is another sheet's number; a sheet's name can't be one")));
+    }
+    // One of the seven built-ins is one category's: another's name would make `schedule::named` find the wrong one.
+    let standard_schedule = match &target {
+        RenameTarget::BuiltinSchedule(cat) => Some((*cat).to_string()),
+        RenameTarget::Element(id) => match s.model.elements.get(*id) {
+            Some(Element::Schedule(sc)) if sc.standard => Some(sc.category()),
+            _ => None,
+        },
+        _ => None,
+    };
+    if let Some(cat) = standard_schedule
+        && let Some((other, _)) = schedule::builtin(Some(&to), None)
+        && other != cat
+    {
+        return Err(bad(c, format!("`{to}` names the {other}s' built-in schedule, and this one is of {cat}s")));
+    }
+    if from == to {
+        return Ok(json!({"kind": kind, "from": from, "to": to, "created": false}));
+    }
+    let mut created = false;
+    let mut id = None;
+    match target {
+        RenameTarget::Element(one) => {
+            // A schedule every project has, from a file before the flag, keeps its category when renamed.
+            let standard = matches!(s.model.elements.get(one), Some(Element::Schedule(sc)) if sc.standard
+                || schedule::builtin(Some(&from), None).is_some_and(|(of, _)| of == sc.category()));
+            modify(s, &json!({"id": one, "name": to}))?;
+            if standard && let Some(Element::Schedule(sc)) = s.model_mut().elements.get_mut(one) {
+                sc.standard = true;
+            }
+            id = Some(one);
+        }
+        RenameTarget::Default3D => {
+            let mut view = View3D::default_view();
+            view.name = to.clone();
+            id = Some(s.model_mut().insert(Element::View3D(view)));
+            created = true;
+        }
+        RenameTarget::PrimaryPlan { level, ceiling } => match s.model.primary_plan(level, ceiling) {
+            Some(one) => {
+                modify(s, &json!({"id": one, "name": to}))?;
+                id = Some(one);
+            }
+            None => {
+                let m = &s.model;
+                let l = m.level(level).ok_or_else(|| bad(c, "there's no such level"))?;
+                let level_guid = m.guid(level);
+                let view = PlanView {
+                    level: level_guid,
+                    name: to.clone(),
+                    primary: true,
+                    ceiling,
+                    view_range: l.view_range,
+                    crop: l.crop,
+                    graphics: l.graphics.clone(),
+                    parent: Some(level_guid),
+                    section_box: l.section_box,
+                    underlay: l.underlay.clone(),
+                };
+                id = Some(s.model_mut().insert(Element::PlanView(view)));
+                created = true;
+            }
+        },
+        RenameTarget::BuiltinSchedule(cat) => match schedule::standard_id(&s.model, cat) {
+            Some(one) => {
+                modify(s, &json!({"id": one, "name": to}))?;
+                if let Some(Element::Schedule(sc)) = s.model_mut().elements.get_mut(one) {
+                    sc.standard = true;
+                }
+                id = Some(one);
+            }
+            None => {
+                let (_, mut sc) = schedule::standard(&s.model, cat);
+                sc.name = to.clone();
+                sc.standard = true;
+                id = Some(s.model_mut().insert(Element::Schedule(sc)));
+                created = true;
+            }
+        },
+        RenameTarget::Family(from) => {
+            family(s, &json!({"name": from, "rename": to}))?;
+        }
+        RenameTarget::Type { category, family, name } => {
+            let params = match (category, family) {
+                (Some(k), _) => json!({"category": k, "type": name, "name": to}),
+                (None, Some(f)) => json!({"family": f, "type": name, "name": to}),
+                (None, None) => return Err(bad(c, "a type needs `category` or `family`")),
+            };
+            rename_type(s, &params)?;
+        }
+    }
+    let mut out = json!({"kind": kind, "from": from, "to": to});
+    if let Some(id) = id {
+        out["id"] = json!(id);
+    }
+    if created {
+        out["created"] = json!(true);
+    }
+    Ok(out)
 }
 
 fn delete_type(s: &mut Session, p: &Value) -> R {
