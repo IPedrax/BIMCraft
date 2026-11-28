@@ -196,7 +196,7 @@ fn press_near(h: &mut Harness<BimApp>, name: &str, beside: &str) {
 /// A view in the Project Browser, opened as screen readers do: it may lie below the browser's fold.
 fn browse(h: &mut Harness<BimApp>, label: &str) {
     h.run_steps(15); // Age earlier clicks before the scroll moves the row.
-    h.get_by_label(label).scroll_to_me();
+    browser_row_node(h, label).scroll_to_me();
     h.run();
     double_click_at(h, browser_row(h, label));
 }
@@ -204,14 +204,15 @@ fn browse(h: &mut Harness<BimApp>, label: &str) {
 /// The Project Browser's entry named `label`, the topmost of them, not its view tab.
 fn browser_row_node<'a>(h: &'a Harness<BimApp>, label: &'a str) -> egui_kittest::Node<'a> {
     let rect = h.state().browser_rect;
+    let find = h.get_by_label("Search the Project Browser").rect();
     let tabs: Vec<egui::Rect> = h.state().tab_rects.iter().map(|(_, r)| *r).collect();
     h.get_all_by_label(label)
         .filter(|n| {
             let at = n.rect().center();
-            rect.contains(at) && !tabs.iter().any(|tab| tab.contains(at))
+            rect.contains(at) && at.y > find.bottom() && !tabs.iter().any(|tab| tab.contains(at))
         })
         .min_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
-        .unwrap_or_else(|| h.get_by_label(label))
+        .unwrap_or_else(|| h.get_all_by_label(label).min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap())
 }
 
 /// The point of the Project Browser's row named `label`; not its view tab.
