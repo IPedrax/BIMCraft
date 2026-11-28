@@ -146,12 +146,13 @@ fn topmost(h: &mut Harness<BimApp>, name: &str) {
     let top = top.or_else(|| h.get_all_by_label(name).min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).map(|n| n.rect().center()));
     let pos = top.unwrap();
     // A browser row opens on a double click; a tab or a button takes one.
-    let clicks = if tab.is_none() && h.state().browser_rect.contains(pos) { 2 } else { 1 };
+    if tab.is_none() && h.state().browser_rect.contains(pos) {
+        double_click_at(h, pos);
+        return;
+    }
     h.hover_at(pos);
-    for _ in 0..clicks {
-        for pressed in [true, false] {
-            h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
-        }
+    for pressed in [true, false] {
+        h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
     }
     h.run();
 }
@@ -194,8 +195,17 @@ fn press_near(h: &mut Harness<BimApp>, name: &str, beside: &str) {
 fn browse(h: &mut Harness<BimApp>, label: &str) {
     h.get_by_label(label).scroll_to_me();
     h.run();
-    let pos = h.get_by_label(label).rect().center();
-    double_click_at(h, pos);
+    double_click_at(h, browser_row(h, label));
+}
+
+/// The point of the Project Browser's row named `label`, the topmost of them, not its view tab.
+fn browser_row(h: &Harness<BimApp>, label: &str) -> Pos2 {
+    let rect = h.state().browser_rect;
+    h.get_all_by_label(label)
+        .filter(|n| rect.contains(n.rect().center()))
+        .min_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
+        .map(|n| n.rect().center())
+        .unwrap_or_else(|| h.get_by_label(label).rect().center())
 }
 
 /// A view's entry in the Project Browser while its tab is open too: the lower of the two.
@@ -234,8 +244,10 @@ fn click_at(h: &mut Harness<BimApp>, pos: Pos2) {
     h.run();
 }
 
-/// Two primary clicks at a point on screen in one frame: a double click.
+/// Two primary clicks at a point on screen in one frame: a double click. Earlier clicks are aged first, or
+/// they make this pair the third and fourth of a run and egui sees neither as a double click.
 fn double_click_at(h: &mut Harness<BimApp>, pos: Pos2) {
+    h.run_steps(15);
     h.hover_at(pos);
     h.run();
     for pressed in [true, false, true, false] {
