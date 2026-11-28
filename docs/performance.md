@@ -444,6 +444,10 @@ hierarchy's node has its place worked out from how many items it holds, so its t
 | Card's mesh from the scene | 313 ms | 167 ms |
 | Pick hierarchy | 354 ms | 84 ms |
 
+The upload packs the vertices into the bytes the card reads on several threads too (`pack_vertices`, a run at a time into its own
+place, so the bytes are those packed one after another): on the same tower through the real card (Metal, `tower_scene_and_upload_leave_the_requesting_thread_free`)
+the upload went from 155 ms to 70 ms; frames and picks are unchanged.
+
 ## Verification
 
 `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings` and

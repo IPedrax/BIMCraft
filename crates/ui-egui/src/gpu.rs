@@ -253,23 +253,14 @@ struct WireStream {
 }
 
 /// The bytes of buffer `k` of a kind held `per` to a buffer, as the card reads them.
-fn store_bytes(mesh: &Mesh, kind: Kind, k: usize, per: usize, cancelled: &dyn Fn() -> bool) -> Result<Words, Hold> {
+fn store_bytes(mesh: &Mesh, kind: Kind, k: usize, per: usize, cancelled: &(dyn Fn() -> bool + Sync)) -> Result<Words, Hold> {
     let stop = "3D upload was cancelled";
     let mut bytes = Words::new();
     let range = |len: usize| (k * per).min(len)..((k + 1) * per).min(len);
     match kind {
         Kind::Own => {
             let part = mesh.vertices.get(range(mesh.vertices.len())).unwrap_or_default();
-            bytes.reserve(part.len() * STRIDE as usize);
-            for (n, Vertex { position, normal, face, color, owner, plane, tex }) in part.iter().enumerate() {
-                if n % 8192 == 0 && cancelled() {
-                    return Err(Hold::Failed(stop.into()));
-                }
-                put(&mut bytes, position);
-                put_unit(&mut bytes, normal);
-                put_unit(&mut bytes, face);
-                put_words(&mut bytes, &[*color, *owner, *plane, *tex]);
-            }
+            return pack_vertices(part, cancelled).ok_or_else(|| Hold::Failed(stop.into()));
         }
         // From the origin so that f32 holds them.
         Kind::Wires => {
@@ -299,6 +290,36 @@ fn store_bytes(mesh: &Mesh, kind: Kind, k: usize, per: usize, cancelled: &dyn Fn
         }
     }
     Ok(bytes)
+}
+
+/// Vertices as the card reads them, [`STRIDE`] bytes each; none when `cancelled`. Many are packed a run at a time on several
+/// threads, each run into its own place, so the bytes are those packed one after another.
+fn pack_vertices(part: &[Vertex], cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Words> {
+    const RUN: usize = 8192;
+    let stride = STRIDE as usize;
+    let mut bytes = vec![0u8; part.len() * stride];
+    let pack = |(out, vertices): (&mut [u8], &[Vertex])| {
+        if cancelled() {
+            return None;
+        }
+        let mut one = Words::with_capacity(stride);
+        for (slot, Vertex { position, normal, face, color, owner, plane, tex }) in out.chunks_exact_mut(stride).zip(vertices) {
+            one.clear();
+            put(&mut one, position);
+            put_unit(&mut one, normal);
+            put_unit(&mut one, face);
+            put_words(&mut one, &[*color, *owner, *plane, *tex]);
+            slot.copy_from_slice(&one);
+        }
+        Some(())
+    };
+    if part.len() >= 4 * RUN {
+        use rayon::prelude::*;
+        bytes.par_chunks_mut(RUN * stride).zip(part.par_chunks(RUN)).map(pack).collect::<Option<()>>()?;
+    } else {
+        bytes.chunks_mut(RUN * stride).zip(part.chunks(RUN)).map(pack).collect::<Option<()>>()?;
+    }
+    Some(bytes)
 }
 
 /// `bytes`, on the card in a buffer of its own, with `held` bytes there already.
@@ -736,6 +757,34 @@ fn within(seen: &[std::ops::Range<usize>], span: std::ops::Range<usize>) -> Vec<
         .map(|r| r.start.max(span.start)..r.end.min(span.end))
         .filter(|r| !r.is_empty())
         .collect()
+}
+
+#[cfg(test)]
+#[test]
+fn vertices_packed_on_many_threads_are_the_bytes_packed_one_after_another() {
+    let vertices: Vec<Vertex> = (0..100_003u32)
+        .map(|i| {
+            let f = i as f32;
+            Vertex {
+                position: [f, -f * 0.5, f * 1e-3],
+                normal: [(f * 0.01).sin(), (f * 0.01).cos(), 0.0],
+                face: [0.0, (f * 0.02).sin(), (f * 0.02).cos()],
+                color: i.wrapping_mul(2_654_435_761),
+                owner: i % 977,
+                plane: i / 3,
+                tex: i % 5,
+            }
+        })
+        .collect();
+    let mut one = Words::new();
+    for Vertex { position, normal, face, color, owner, plane, tex } in &vertices {
+        put(&mut one, position);
+        put_unit(&mut one, normal);
+        put_unit(&mut one, face);
+        put_words(&mut one, &[*color, *owner, *plane, *tex]);
+    }
+    assert!(pack_vertices(&vertices, &|| false) == Some(one));
+    assert!(pack_vertices(&vertices, &|| true).is_none());
 }
 
 fn put(into: &mut Words, floats: &[f32]) {
@@ -1834,7 +1883,7 @@ impl Gpu {
         vertex_bytes: u64,
         room: Room,
         mesh: &Arc<Mesh>,
-        cancelled: &dyn Fn() -> bool,
+        cancelled: &(dyn Fn() -> bool + Sync),
     ) -> Result<Uploaded, String> {
         let binding = device.limits().max_storage_buffer_binding_size;
         if mesh.texels.len() as u64 * 4 > binding
@@ -1899,16 +1948,11 @@ impl Gpu {
             buffer
         };
         // The shapes, each vertex in its family's axes.
-        let shape_vertices = (!mesh.shape_vertices.is_empty()).then(|| {
-            bytes.clear();
-            for Vertex { position, normal, face, color, owner, plane, tex } in &mesh.shape_vertices {
-                put(&mut bytes, position);
-                put_unit(&mut bytes, normal);
-                put_unit(&mut bytes, face);
-                put_words(&mut bytes, &[*color, *owner, *plane, *tex]);
-            }
-            vertex_buffer("bimcraft-3d-shapes", &bytes)
-        });
+        let shape_vertices = match (!mesh.shape_vertices.is_empty()).then(|| pack_vertices(&mesh.shape_vertices, cancelled)) {
+            Some(Some(bytes)) => Some(vertex_buffer("bimcraft-3d-shapes", &bytes)),
+            Some(None) => return Err("3D upload was cancelled".into()),
+            None => None,
+        };
         // The copies, each knowing where its shape's vertices start, so that a vertex's index finds its triangle's plane.
         let instances_per = (vertex_bytes.min(device.limits().max_buffer_size) / INSTANCE).max(3);
         let mut instances = Vec::new();
