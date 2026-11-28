@@ -253,12 +253,13 @@ fn click_at(h: &mut Harness<BimApp>, pos: Pos2) {
 }
 
 /// Two primary clicks at a point on screen in one frame: a double click. Callers age earlier clicks first, or
-/// they make this pair the third and fourth of a run and egui sees neither as a double click.
+/// they make this pair the third and fourth of a run and egui sees neither as a double click. The events go into
+/// one frame directly: `event` queues each one for a frame of its own, and at a 0.25 s step the two clicks would
+/// be 0.5 s apart, past egui's double-click delay.
 fn double_click_at(h: &mut Harness<BimApp>, pos: Pos2) {
-    h.hover_at(pos);
-    h.run();
+    h.input_mut().events.push(Event::PointerMoved(pos));
     for pressed in [true, false, true, false] {
-        h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+        h.input_mut().events.push(Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
     }
     h.run();
 }
