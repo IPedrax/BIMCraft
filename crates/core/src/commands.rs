@@ -2969,9 +2969,10 @@ other_files(
         "purge",
         ui_msg!("Purge Unused"),
         &["PU"],
-        "{kinds?: [type|family|material|picture|filter|template|titleblock, …], dry_run?} takes out what nothing uses, again for what that \
-         leaves unused: types and families unless `kinds` says; a category keeps a type and a family a type; with `dry_run` it \
-         lists what would go and changes nothing",
+        "{kinds?: [type|family|material|picture|filter|template|titleblock, …], keep?: [{kind, name}, …], dry_run?} takes out what \
+         nothing uses, again for what that leaves unused: types and families unless `kinds` says; a category keeps a type and a \
+         family a type; `keep` names entries to leave, as `removed` lists them (`{\"kind\": \"wall type\", \"name\": …}`), and \
+         what they use stays with them (a family kept keeps its types); with `dry_run` it lists what would go and changes nothing",
         purge,
     )
     .menu("Manage > Purge Unused"),
@@ -23146,12 +23147,20 @@ fn purge(s: &mut Session, p: &Value) -> R {
         None => vec!["type".into(), "family".into()],
     };
     let dry_run = flag(c, p, "dry_run")?;
+    let keep = purge_keep(c, p)?;
+    let kept = |kind: &LibKind, name: &str| {
+        let label = kind.label();
+        keep.iter().any(|(k, n)| {
+            (*k == label && n == name)
+                || (*kind == LibKind::FamilyType && k == "family" && name.strip_prefix(n.as_str()).is_some_and(|t| t.starts_with(": ")))
+        })
+    };
     let kinds: Vec<&str> = kinds.iter().map(String::as_str).collect();
     // On a copy, pass by pass: the list of a dry run is what the run would take out.
     let mut model = (*s.model).clone();
     let mut removed: Vec<(LibKind, String)> = Vec::new();
     for _ in 0..PURGE_PASSES {
-        let pass = model.unused_entries(&kinds);
+        let pass: Vec<(LibKind, String)> = model.unused_entries(&kinds).into_iter().filter(|(k, n)| !kept(k, n)).collect();
         if pass.is_empty() {
             break;
         }
@@ -23166,6 +23175,23 @@ fn purge(s: &mut Session, p: &Value) -> R {
     }
     let listed: Vec<Value> = removed.iter().map(|(k, n)| json!({"kind": k.label(), "name": n})).collect();
     Ok(json!({"removed": listed, "count": listed.len(), "dry_run": dry_run}))
+}
+
+/// `purge`'s `keep`: the entries to leave, each a kind and a name as `removed` lists them.
+fn purge_keep(c: &str, p: &Value) -> Result<Vec<(String, String)>, String> {
+    let wrong = |v: &Value| bad(c, format!("`keep` is a list of {{kind, name}}, as `removed` lists them, not {v}"));
+    match p.get("keep") {
+        v if absent(v) => Ok(Vec::new()),
+        Some(Value::Array(a)) if a.len() <= MAX_POINTS => a
+            .iter()
+            .map(|e| match (e.get("kind").and_then(Value::as_str), e.get("name").and_then(Value::as_str)) {
+                (Some(k), Some(n)) => Ok((k.to_string(), n.to_string())),
+                _ => Err(wrong(e)),
+            })
+            .collect(),
+        Some(v) => Err(wrong(v)),
+        None => Ok(Vec::new()),
+    }
 }
 
 fn delete(s: &mut Session, p: &Value) -> R {
