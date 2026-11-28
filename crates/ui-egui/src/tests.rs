@@ -209,7 +209,10 @@ fn browser_row_node<'a>(h: &'a Harness<BimApp>, label: &'a str) -> egui_kittest:
     h.get_all_by_label(label)
         .filter(|n| {
             let at = n.rect().center();
-            rect.contains(at) && at.y > find.bottom() && !tabs.iter().any(|tab| tab.contains(at))
+            rect.contains(at)
+                && at.y > find.bottom()
+                && n.accesskit_node().role() == Role::Button
+                && !tabs.iter().any(|tab| tab.contains(at))
         })
         .min_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
         .unwrap_or_else(|| h.get_all_by_label(label).min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap())
