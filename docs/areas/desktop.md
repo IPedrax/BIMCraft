@@ -915,6 +915,8 @@ pan 300 150 30               a middle-button drag, 300 px right and 150 down, ov
 view 3d                      the default 3D view (`view plan`, the first plan)
 orbit 60                     Shift and the middle button, 6 px a frame for 60 frames
 screenshot /tmp/shot.png     the window as it shows now
+command move {"ids": [100123], "by": [0, 10]}   a command run as the window runs one (an edit); `wait` then waits
+                             for what it changed to be drawn again, the 3D view's picture of the new model included
 quit
 ```
 
