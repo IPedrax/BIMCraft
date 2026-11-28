@@ -528,8 +528,33 @@ Now (`orbit.rs`, `Heavy`): before a whole scene is made afresh, the worker estim
 - **more than the machine has beside the open project** (its memory less what the app holds): not made, since running out of
   memory is a crash nothing catches, and the view says why instead of drawing part of it.
 
-With no meter (the tests, the CLI) nothing is estimated. The real fix is the next step: the copies of components and round runs
-held once on the processor's side too, as the card already holds them, so a tower's scene takes a fraction of the memory it does.
+With no meter (the tests, the CLI) nothing is estimated.
+
+**Each copy held once (2026-11-28).** Most of a big model's triangles are copies: on the annotated 10-storey tower 7.4 of its
+9.9 million are copies of 21 shapes (components, round runs, curtain wall parts). The card drew them from their shapes already;
+the scene now holds them so too (`view3d/tris.rs`, `Tris`): a copy is its shape's points, a table of what each of its triangles
+is (colour, skin, surface, face, part) shared by every copy alike, and where it stands. A triangle of a copy is worked out
+when asked for, by the very `ComponentInstance::place` that found it a copy, so it is to the bit the one made; a copy that
+differs in anything is held as its triangles. Every triangle keeps its place, so planes, smooth normals, faces and the card's
+picking are numbered as before, and an edit carries the copies it keeps over as they are. The scene is made an element at a
+time (`Making`), each element's triangles numbered, painted and its copies found before the next, so a whole scene's
+triangles are never all made at once. A slot a triangle (4 bytes) finds any at once; passes over every triangle run on the
+render threads, a run each (`Tris::par_map`), and those that never ask where a triangle is (who owns it, whether it is seen
+through) don't place copies' points at all.
+
+| Annotated 10-storey tower, M4 Pro | Before | After |
+|---|---:|---:|
+| Triangles the scene keeps | 1.27 GB | 0.33 GB (plus 40 MB of slots) |
+| Peak memory, the scene made | 3.74 GB | 2.97 GB |
+| Peak memory, the scene, card mesh and picture made three times | 10.0 GB | 7.7 GB |
+| Making the scene | 3.15 s | 2.85 s |
+| Card mesh and pick hierarchy | 0.26 s | 0.31 s |
+| Software picture (camera already fitted) | 0.70 s | 0.81 s |
+
+Still held a triangle each: its plane's number, its face's name, and a curved one's corner normals (0.31 GB on the tower);
+and every solid of the model is made before its triangles. Those are next. The card mesh and the software picture are a
+sixth and a seventh slower, the price of placing a copy's points when they are asked for; the card draws every frame from its
+mesh, so turning the view is as fast as before.
 
 ## What isn't decided yet
 

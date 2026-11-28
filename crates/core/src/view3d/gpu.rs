@@ -448,7 +448,7 @@ impl Mesh {
         let mut alphas = vec![0u8; scene.tris.len()];
         let found;
         let spans = if scene.spans.is_empty() {
-            found = super::spans_of(&scene.tris);
+            found = super::spans_of(scene.tris.iter());
             &found
         } else {
             &scene.spans
@@ -471,12 +471,11 @@ impl Mesh {
                 if plain || look.shows(span.id) {
                     // A part the view hides (a stair's headroom unless it shows it, a curtain wall's panels or mullions) is left
                     // out of its element's run.
-                    let part_shown =
-                        |i: &usize| scene.tris.get(*i).is_some_and(|t| if plain { look.forms_show(t.vis, false) } else { t.seen_in(look) });
-                    out.0.extend(span.at.clone().filter(part_shown));
+                    let tris = scene.tris.get(span.at.clone()).unwrap_or_default();
+                    let part_shown = |t: &super::Tri| if plain { look.forms_show(t.vis, false) } else { t.seen_in(look) };
+                    out.0.extend(span.at.clone().zip(tris.iter()).filter(|(_, t)| part_shown(t)).map(|(i, _)| i));
                     let at = span.at.start.saturating_sub(from)..span.at.end.saturating_sub(from);
-                    for (a, t) in out.1.get_mut(at).unwrap_or_default().iter_mut().zip(scene.tris.get(span.at.clone()).unwrap_or_default())
-                    {
+                    for (a, t) in out.1.get_mut(at).unwrap_or_default().iter_mut().zip(tris.iter()) {
                         *a = if lines {
                             0
                         } else if plain {
@@ -546,12 +545,14 @@ impl Mesh {
         // Whether a copy may be drawn from its shape at all: shown, and see-through one way.
         let may = |&(first, place): &(usize, ComponentInstance)| {
             let Some(local) = scene.shapes.get(place.shape) else { return false };
-            let Some(tris) = scene.tris.get(first..first + local.len()) else { return false };
-            if !(plain || (look.shows(place.owner) && tris.first().is_none_or(|t| t.seen_in(look)))) {
+            if first + local.len() > scene.tris.len() {
+                return false;
+            }
+            if !(plain || (look.shows(place.owner) && scene.tris.get(first).is_none_or(|t| t.seen_in(look)))) {
                 return false;
             }
             // One owner for what is seen through of a copy, so one way see-through.
-            let mut clear_alphas = (first..first + tris.len()).map(alpha_at).filter(|a| *a > 0);
+            let mut clear_alphas = (first..first + local.len()).map(alpha_at).filter(|a| *a > 0);
             !clear_alphas.next().is_some_and(|a| clear_alphas.any(|b| b != a))
         };
         let placements: &[(usize, ComponentInstance)] = if instancing { &scene.placements } else { &[] };
@@ -570,9 +571,9 @@ impl Mesh {
                 continue;
             }
             let Some(local) = scene.shapes.get(place.shape) else { continue };
-            let Some(tris) = scene.tris.get(first..first + local.len()) else { continue };
             let leads = match templates.get_mut(place.shape) {
                 Some(slot @ None) => {
+                    let Some(tris) = scene.tris.get(first..first + local.len()) else { continue };
                     *slot = Some(Template {
                         alpha: (first..first + tris.len()).map(alpha_at).collect(),
                         color: tris.iter().map(packed).collect(),
@@ -592,21 +593,23 @@ impl Mesh {
             leads
                 || templates.get(place.shape).and_then(Option::as_ref).is_some_and(|template| {
                     let len = template.alpha.len();
-                    scene.tris.get(first..first + len).is_some_and(|tris| {
-                        tris.iter().enumerate().all(|(k, t)| {
-                            let near = |a: P3, b: P3| (0..3).all(|i| (a[i] - b[i]).abs() <= 1e-6);
-                            let curved = match (template.smooth.get(k).copied().flatten(), smooth_at(first + k)) {
-                                (None, None) => true,
-                                (Some(own), Some(seen)) => (0..3).all(|c| near(place.normal(own[c]), seen[c])),
-                                _ => false,
-                            };
-                            template.alpha.get(k) == Some(&alpha_at(first + k))
-                                && template.color.get(k) == Some(&packed(t))
-                                && template.tex.get(k) == Some(&tex_of(t))
-                                && template.face.get(k) == Some(&face_at(first + k))
-                                && curved
-                        })
-                    })
+                    let rest = |k: usize| {
+                        let near = |a: P3, b: P3| (0..3).all(|i| (a[i] - b[i]).abs() <= 1e-6);
+                        let curved = match (template.smooth.get(k).copied().flatten(), smooth_at(first + k)) {
+                            (None, None) => true,
+                            (Some(own), Some(seen)) => (0..3).all(|c| near(place.normal(own[c]), seen[c])),
+                            _ => false,
+                        };
+                        template.alpha.get(k) == Some(&alpha_at(first + k)) && template.face.get(k) == Some(&face_at(first + k)) && curved
+                    };
+                    let same = |k: usize, t: &super::Tri| {
+                        template.color.get(k) == Some(&packed(t)) && template.tex.get(k) == Some(&tex_of(t)) && rest(k)
+                    };
+                    // A copy held once is told by what its triangles are, never placing their points, which aren't asked.
+                    if let Some(mut tris) = scene.tris.unplaced(first, len) {
+                        return tris.by_ref().enumerate().all(|(k, t)| same(k, &t));
+                    }
+                    scene.tris.get(first..first + len).is_some_and(|tris| tris.iter().enumerate().all(|(k, t)| same(k, t)))
                 })
         };
         let fitting: Vec<bool> = match (candidates.len() >= 1000).then(super::render_pool).flatten() {
@@ -721,7 +724,7 @@ impl Mesh {
             }
         }
         let vertices_of = |&(i, owner): &(usize, u32)| {
-            let t = &scene.tris[i];
+            let t = &scene.tris.get(i).unwrap_or_default();
             let color = packed(t);
             let face = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
             let smooth = scene.smooth.get(i).and_then(Option::as_deref);
@@ -734,7 +737,7 @@ impl Mesh {
             })
         };
         let pick_of = |&(i, _): &(usize, u32)| {
-            let t = &scene.tris[i];
+            let t = &scene.tris.get(i).unwrap_or_default();
             let face = scene.faces.get(i).copied().filter(|f| !f.is_empty()).unwrap_or("");
             Tri { p: t.p, hit: Hit { id: t.owner, face }, clear: clear(i), key: i }
         };

@@ -12,6 +12,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
+use super::tris::Tris;
 use super::{
     P3, Scene, ShapeKey, Span, Tri, bounds, corner_normals, layered, local_surfaces, painted, pattern_frames, rules_of, skins_for,
     solids_in, whole_model,
@@ -138,7 +139,7 @@ impl Scene {
         let mut table = self.table.clone();
         let n = self.tris.len() + made.values().map(Vec::len).sum::<usize>();
         let mut out = Parts {
-            tris: Vec::with_capacity(n),
+            tris: Tris::default(),
             planes: Vec::with_capacity(n),
             smooth: Vec::with_capacity(n),
             faces: Vec::with_capacity(n),
@@ -157,19 +158,14 @@ impl Scene {
                 out.smooth.extend(corner_normals(&own));
                 out.planes.extend(own.iter().map(|t| table.assign(t)));
                 out.faces.extend(faces);
-                out.tris.extend(own);
-                let own = out.tris.get(start..).unwrap_or_default();
-                for (first, copy) in copies_of(after, *id, e, &mut keys, &mut shapes) {
-                    let len = shapes.get(copy.shape).map_or(0, Vec::len);
-                    if let (Some(local), Some(own)) = (shapes.get(copy.shape), own.get(first..first + len))
-                        && placed(local, &copy, own)
-                    {
-                        out.placements.push((start + first, copy));
-                    }
-                }
+                let copies = copies_in(after, *id, e, &own, &mut keys, &mut shapes);
+                // Its copies held once, as a whole scene holds them.
+                let len = own.len();
+                out.tris.extend_from(&Tris::compact(own, &copies, &shapes), 0..len);
+                out.placements.extend(copies.into_iter().map(|(first, copy)| (start + first, copy)));
             } else if let Some(span) = self.span(*id) {
                 let at = span.at.clone();
-                out.tris.extend_from_slice(self.tris.get(at.clone())?);
+                out.tris.extend_from(&self.tris, at.clone());
                 out.planes.extend_from_slice(self.planes.get(at.clone())?);
                 out.smooth.extend_from_slice(self.smooth.get(at.clone())?);
                 out.faces.extend_from_slice(self.faces.get(at.clone())?);
@@ -183,7 +179,7 @@ impl Scene {
             }
             let end = out.tris.len();
             if end > start {
-                let bounds = bounds(out.tris[start..end].iter().flat_map(|t| t.p)).unwrap_or_default();
+                let bounds = bounds(out.tris.get(start..end).unwrap_or_default().iter().flat_map(|t| t.p)).unwrap_or_default();
                 out.spans.push(Span { id: *id, at: start..end, bounds });
             }
         }
@@ -284,7 +280,7 @@ enum Made {
 /// A scene's lists, gathered element by element.
 #[derive(Default)]
 struct Parts {
-    tris: Vec<Tri>,
+    tris: Tris,
     planes: Vec<usize>,
     smooth: Vec<Option<Arc<[P3; 3]>>>,
     faces: Vec<&'static str>,
@@ -413,6 +409,28 @@ fn copy_of(
     }
 }
 
+/// The copies of shapes element `id`'s triangles `own` are, to the last bit ([`copies_of`]), each with where it starts among
+/// them.
+pub(super) fn copies_in(
+    m: &Model,
+    id: Id,
+    e: &Element,
+    own: &[Tri],
+    keys: &mut HashMap<ShapeKey, usize>,
+    shapes: &mut Vec<Vec<[P3; 3]>>,
+) -> Vec<(usize, ComponentInstance)> {
+    let mut out = Vec::new();
+    for (first, copy) in copies_of(m, id, e, keys, shapes) {
+        let len = shapes.get(copy.shape).map_or(0, Vec::len);
+        if let (Some(local), Some(made)) = (shapes.get(copy.shape), own.get(first..first + len))
+            && placed(local, &copy, made)
+        {
+            out.push((first, copy));
+        }
+    }
+    out
+}
+
 /// Whether `own` is `local` placed by `copy`, to the last bit.
 pub(super) fn placed(local: &[[P3; 3]], copy: &ComponentInstance, own: &[Tri]) -> bool {
     !local.is_empty() && local.len() == own.len() && local.iter().zip(own).all(|(l, t)| l.map(|q| copy.place(q)) == t.p)
@@ -434,8 +452,8 @@ mod tests {
     fn same(a: &Scene, b: &Scene, what: &str) {
         let differ: Vec<(Id, usize, usize)> = {
             let ids: BTreeSet<Id> = a.spans.iter().chain(&b.spans).map(|s| s.id).collect();
-            fn own(x: &Scene, id: Id) -> &[Tri] {
-                x.span(id).and_then(|s| x.tris.get(s.at.clone())).unwrap_or_default()
+            fn own(x: &Scene, id: Id) -> Vec<Tri> {
+                x.span(id).and_then(|s| x.tris.get(s.at.clone())).unwrap_or_default().into_owned()
             }
             ids.into_iter().filter(|id| own(a, *id) != own(b, *id)).map(|id| (id, own(a, id).len(), own(b, id).len())).collect()
         };
@@ -444,7 +462,9 @@ mod tests {
                 let (x, y) = (a.span(*id), b.span(*id));
                 eprintln!("{id}: {x:?} {y:?}");
                 if let (Some(x), Some(y)) = (x, y) {
-                    for (p, q) in a.tris[x.at.clone()].iter().zip(&b.tris[y.at.clone()]) {
+                    for (p, q) in
+                        a.tris.get(x.at.clone()).unwrap_or_default().iter().zip(b.tris.get(y.at.clone()).unwrap_or_default().iter())
+                    {
                         if p != q {
                             eprintln!("  {p:?}\n  {q:?}");
                             break;
@@ -454,7 +474,8 @@ mod tests {
             }
         }
         assert!(differ.is_empty(), "{what}: the triangles of (element, brought up to date, made whole) {differ:?}");
-        assert!(a.tris == b.tris, "{what}: triangles");
+        assert!(a.tris.iter().eq(b.tris.iter()), "{what}: triangles");
+        assert_eq!(a.tris.copied(), b.tris.copied(), "{what}: the triangles held once, as copies");
         assert!(a.faces == b.faces, "{what}: faces");
         assert!(a.smooth == b.smooth, "{what}: smooth normals");
         assert_eq!(a.spans, b.spans, "{what}: spans");
@@ -469,7 +490,7 @@ mod tests {
             assert_eq!((i, c.owner, c.at, c.axes), (j, d.owner, d.at, d.axes), "{what}: a copy");
             assert_eq!(a.shapes.get(c.shape), b.shapes.get(d.shape), "{what}: a copy's shape");
         }
-        for t in &b.tris {
+        for t in b.tris.iter() {
             let k = t.texture() as usize;
             assert_eq!(a.skins.get(k).is_some_and(Option::is_some), b.skins.get(k).is_some_and(Option::is_some), "{what}: texture {k}");
         }

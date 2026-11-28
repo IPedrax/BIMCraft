@@ -355,7 +355,7 @@ msgid "Gate Valve"
 msgstr "Saracinesca"
 
 #: crates/core/src/family.rs:3515
-#: crates/core/src/view3d.rs:2031
+#: crates/core/src/view3d.rs:2038
 msgid "Glass"
 msgstr "Vetro"
 
