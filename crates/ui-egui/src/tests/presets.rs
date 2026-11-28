@@ -437,3 +437,17 @@ fn edit_tools_done_keeps_the_palette_layout_and_panels_in_the_selected_preset() 
     assert!(kept.panels_hidden.contains("tab:Architecture/Build"), "the panel taken out is kept too");
     assert_eq!(h.state().active_preset.as_deref(), Some("Design"));
 }
+
+/// #479: Find opens with Ctrl+F as well as Ctrl+K, the chord the hand reaches without stretching; Manage > Shortcuts lists both.
+#[test]
+fn find_opens_with_ctrl_f_as_with_ctrl_k() {
+    for chord in [Key::K, Key::F] {
+        let mut h = app(BOX);
+        h.key_press_modifiers(Modifiers::COMMAND, chord);
+        h.run();
+        h.event(egui::Event::Text("wall".to_string()));
+        h.run();
+        key(&mut h, Key::Enter);
+        assert!(matches!(h.state().tool, Tool::Wall(_)), "{chord:?}");
+    }
+}
