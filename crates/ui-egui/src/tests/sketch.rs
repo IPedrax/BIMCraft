@@ -590,3 +590,23 @@ fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_
         assert!(f.query_by_role_and_label(Role::TextInput, "Slope").is_none(), "rev {rev}");
     }
 }
+
+#[test]
+fn bimcrafts_tools_palette_lists_every_draw_and_modify_tool_of_a_sketch_one_under_another() {
+    // Issue #552: Rev's ribbon showed every shape, BIMCraft's palette only the first of each row (the rest were laid out to its
+    // right, out of the column).
+    use egui_kittest::kittest::NodeT;
+    let mut h = bimcraft(BOX);
+    h.state_mut().start_sketch(crate::sketch::Of::Floor(100000), Vec::new());
+    h.run();
+    let row = |h: &Harness<BimApp>, label: &str| {
+        let nodes: Vec<_> = h.get_all_by_label(label).filter(|n| n.accesskit_node().role() == Role::Button).collect();
+        assert!(!nodes.is_empty(), "{label} is in the palette");
+        nodes.iter().map(|n| n.rect()).min_by(|a, b| a.left().total_cmp(&b.left())).unwrap()
+    };
+    let line = row(&h, "Line");
+    for label in ["Rectangle", "Circle", "Fillet Arc", "Spline", "Pick Lines", "Pick Walls", "Align", "Offset", "Split Element"] {
+        let r = row(&h, label);
+        assert!((r.left() - line.left()).abs() < 1.0, "{label} is a row of the column, at {r:?}; Line is at {line:?}");
+    }
+}

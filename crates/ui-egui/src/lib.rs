@@ -5538,7 +5538,7 @@ impl BimApp {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for row in small.chunks(4) {
-                    ui.horizontal(|ui| {
+                    clipboard::row(ui, |ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
                         for (icon, label, tip, tool) in row {
                             if small_button(ui, *icon, label, structure::same_tool(&self.tool, tool), tip).clicked() {

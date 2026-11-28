@@ -338,7 +338,8 @@ impl BimApp {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 let half = shapes.len().div_ceil(2).max(1);
                 for (k, row) in shapes.chunks(half).enumerate() {
-                    ui.horizontal(|ui| {
+                    // In BIMCraft's Tools palette each button is a row of the column, so a row side by side is one under another.
+                    crate::clipboard::row(ui, |ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
                         for &s in row {
                             let on = s == now && !picking_walls && drawing;
