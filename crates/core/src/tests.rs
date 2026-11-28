@@ -7964,3 +7964,16 @@ fn a_wall_of_an_unknown_type_says_its_area_is_unknown() {
     assert!(warnings.iter().any(|w| w.contains(&format!("wall {id}")) && w.contains("No Such Type")), "{warnings:?}");
     assert!(m.quantities(id).is_none(), "no area is known");
 }
+
+/// #609: a family renders in a project of another language. The preview stands in a scratch project of its own, whose starter
+/// families name the English materials (`Base Cabinet` is of `Timber`); a Portuguese project's library has `Madeira` instead,
+/// and copied over the scratch's whole, it left those starters naming a material that wasn't there.
+#[test]
+fn a_family_renders_in_a_project_of_another_language() {
+    let mut s = Session::new();
+    run(&mut s, "new", json!({"language": "pt"}));
+    assert!(!s.model.materials.contains_key("Timber"), "the project's library is Portuguese");
+    let family = s.model.families.keys().next().cloned().unwrap();
+    let r = run(&mut s, "render", json!({"family": family, "width": 200, "height": 200}));
+    assert!(r["pngBase64"].as_str().is_some_and(|b| !b.is_empty()), "{r}");
+}

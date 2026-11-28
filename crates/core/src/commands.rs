@@ -6176,9 +6176,9 @@ fn family_preview(s: &mut Session, p: &Value) -> R {
     let mut scratch = Session::new();
     {
         let m = scratch.model_mut();
-        m.materials = s.model.materials.clone();
-        m.images = s.model.images.clone();
+        m.preview_library(&s.model);
         m.families.insert(name.clone(), family.clone());
+        m.adopt_materials();
     }
     let made = |r: R, what: &str| r.map_err(|e| bad(c, format!("{what}: {e}")));
     if family.category.hosted() {
