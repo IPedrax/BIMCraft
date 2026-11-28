@@ -933,12 +933,13 @@ impl FamilyEditor {
         let mut s = Session::new();
         {
             let m = s.model_mut();
-            m.materials = base.materials.clone();
-            m.images = base.images.clone();
+            m.preview_library(base);
             // What a ghosted form is made of.
             m.materials
                 .insert(GHOST.into(), bimcraft_core::model::Material { color: [150, 150, 150], transparency: 65, ..Default::default() });
             m.families.insert(name.to_string(), family.clone());
+            // A material the project hasn't, a plain stand-in, so the family is still drawn and can be mended (#608).
+            m.adopt_materials();
         }
         let place = |s: &mut Session, id: &str, p: Value| s.execute(id, &p);
         // Its forms stand where its planes are drawn: its insertion point at its origin (O1).
@@ -960,6 +961,20 @@ impl FamilyEditor {
         }
         Ok(Arc::unwrap_or_clone(s.model))
     }
+}
+
+/// What the editor says of family `f`'s materials that project `base` hasn't: they are drawn in a plain stand-in, and loading
+/// the family into the project will ask for them (#608). None when it has them all.
+pub(super) fn missing_materials(base: &Model, f: &Family) -> Option<String> {
+    let mut missing: Vec<&str> = f.materials().into_iter().filter(|m| !m.is_empty() && !base.materials.contains_key(*m)).collect();
+    missing.sort_unstable();
+    missing.dedup();
+    (!missing.is_empty()).then(|| {
+        tf(
+            "Material(s) not in the project's library, drawn in a plain stand-in: {}. Add them in Manage > Materials.",
+            &[&missing.join(", ")],
+        )
+    })
 }
 
 /// `place`, the `component` command's parameters putting family `f`'s axes' zero at its `at` and `offset` (none: its Default
@@ -1818,6 +1833,26 @@ mod tests {
         let window = scratch.elements.values().find(|e| matches!(e, bimcraft_core::model::Element::Window(_))).unwrap();
         let low = scratch.opening_pieces(window).iter().flat_map(|p| p.tris.iter()).flatten().map(|p| p[2]).fold(f64::INFINITY, f64::min);
         assert!(low.abs() < 1e-9, "the frame from the sill, on Ref. Level: {low}");
+    }
+
+    /// #608: a family whose form names a material the project hasn't (a `.bimf` carries no materials, so one opened outside
+    /// the project it was made in) still stands in its scratch model, the material a plain stand-in, and the editor says which
+    /// is missing; a project of another language keeps its own names (#609).
+    #[test]
+    fn a_family_whose_material_the_project_hasnt_still_stands_and_says_so() {
+        let mut s = Session::new();
+        s.execute("new", &json!({"language": "pt"})).unwrap();
+        let m = Arc::unwrap_or_clone(s.model);
+        let mut ed = FamilyEditor::blank(Category::Furniture);
+        let mut family = ed.family().unwrap();
+        family.forms[0].material = "IssueMaterial".into();
+        ed = FamilyEditor::of("MaterialTest", &family);
+        let scratch = ed.scratch(&m, &family).unwrap();
+        assert!(scratch.elements.values().any(|e| matches!(e, bimcraft_core::model::Element::Component(_))));
+        let said = missing_materials(&m, &family).unwrap();
+        assert!(said.contains("IssueMaterial"), "{said}");
+        family.forms[0].material = String::new();
+        assert_eq!(missing_materials(&m, &family), None, "nothing missing, nothing said");
     }
 
     #[test]

@@ -562,7 +562,7 @@ msgstr "Hydroizolační fólie"
 #: crates/core/src/commands.rs:20210
 #: crates/core/src/curtain.rs:133
 #: crates/core/src/family.rs:3515
-#: crates/core/src/model.rs:6893
+#: crates/core/src/model.rs:6901
 #: crates/core/src/quantities.rs:112
 msgid "Metal"
 msgstr "Kov"

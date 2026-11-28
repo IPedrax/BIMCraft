@@ -566,7 +566,7 @@ impl FamilyEditor {
                     #[cfg(test)]
                     picture: shown.picture,
                 });
-                self.problem = None;
+                self.problem = self.family().ok().and_then(|f| super::missing_materials(base, &f));
             }
             Err(e) => {
                 self.views.cache = None;

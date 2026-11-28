@@ -5102,6 +5102,14 @@ impl Model {
             .chain(ramp.values_mut().flat_map(|t| t.layers.iter_mut()))
     }
 
+    /// `base`'s materials and images put in this model's library, over its own of the same name: what a scratch project a
+    /// family is previewed in holds, so the family looks as it would in `base`. Its own stay, since its starter families name
+    /// them: a project in another language has other names for them (#609).
+    pub fn preview_library(&mut self, base: &Model) {
+        self.materials.extend(base.materials.iter().map(|(k, v)| (k.clone(), v.clone())));
+        self.images.extend(base.images.iter().map(|(k, v)| (k.clone(), v.clone())));
+    }
+
     /// Every material the types' layers name that the library hasn't, put in it: what a project
     /// from before the library, or a file from elsewhere, comes in with.
     pub fn adopt_materials(&mut self) {
