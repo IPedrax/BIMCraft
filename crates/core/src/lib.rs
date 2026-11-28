@@ -281,6 +281,8 @@ pub mod sample;
 pub mod scale;
 #[cfg(test)]
 mod scale_tests;
+#[cfg(test)]
+mod scene_memory_tests;
 pub mod schedule;
 #[cfg(test)]
 mod section_box_tests;
@@ -303,8 +305,6 @@ pub mod stairs;
 pub mod standards;
 pub mod step;
 pub mod storm;
-#[cfg(test)]
-mod stream_tests;
 pub mod styles;
 pub mod symbol_set;
 pub mod text;

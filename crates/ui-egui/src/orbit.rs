@@ -64,16 +64,53 @@ type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, Color32, bool, Option<(P3, P3)>
 /// A model's mesh for the card, or why the card can't draw it.
 pub(crate) type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
 
-/// Whether a scene job may hold only part of a big model ([`view3d::stream`]): the part the scene shown holds, kept as it is,
-/// or what fits `budget` bytes looking at height `focus`.
-#[derive(Clone)]
-enum Stream {
-    Kept(Option<view3d::Streamed>),
-    Ask { budget: u64, focus: f64 },
+/// What the machine's memory is, where it can be read (none in the tests): bytes free, and bytes in all less what the app
+/// already holds (the model, the plans, the window).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Memory {
+    free: u64,
+    room: u64,
+}
+
+/// What a model's 3D view needs of the machine's memory, said to the user: it holds every element of the model, however
+/// big, so a model past what is free is shown whole and slowly, and only one past all the machine has isn't made.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Heavy {
+    /// About what the 3D view takes, bytes ([`view3d::estimate`]); what the machine had free; and what it has in all less
+    /// what the app already held.
+    pub(crate) needs: u64,
+    pub(crate) free: u64,
+    pub(crate) room: u64,
+}
+
+impl Heavy {
+    /// Whether the machine has too little memory in all to hold the view beside what the app holds: making it would run the
+    /// machine out of memory, which the system answers by killing the app, so it isn't made and the user is told why.
+    fn too_big(&self) -> bool {
+        self.needs > self.room
+    }
+
+    /// What the user is told.
+    fn words(&self) -> String {
+        let (needs, free, room) =
+            (bimcraft_core::memory::bytes(self.needs), bimcraft_core::memory::bytes(self.free), bimcraft_core::memory::bytes(self.room));
+        if self.too_big() {
+            crate::lang::tf(
+                "This model's 3D view needs about {}, more than the {} of memory this machine has beside the open project, so it isn't drawn. Nothing is left out of a 3D view to make it fit.",
+                &[&needs, &room],
+            )
+        } else {
+            crate::lang::tf(
+                "This model's 3D view needs about {}, more than the {} free: every element is shown, and the machine may be slow while it makes room.",
+                &[&needs, &free],
+            )
+        }
+    }
 }
 
 struct SceneJob {
-    stream: Stream,
+    /// The machine's memory, asked when the whole scene is made afresh.
+    memory: Option<Memory>,
     model: Arc<Model>,
     /// The 3D view it is drawn as (none: the default `{3D}`), whose look the mesh is made in and the camera fitted by.
     view: Option<Id>,
@@ -90,27 +127,32 @@ struct SceneJob {
 }
 
 struct SceneDone {
-    /// What part of the model its scene holds: none, all of it.
-    streamed: Option<view3d::Streamed>,
+    /// When its scene was made afresh: what the view needs of a machine with less memory free than that (none: it has room).
+    heavy: Option<Option<Heavy>>,
     model: Arc<Model>,
     view: Option<Id>,
-    scene: Arc<Scene>,
+    /// The scene of every element, or why it wasn't made: too big for all the memory the machine has.
+    scene: Result<Arc<Scene>, String>,
     /// The camera fitted to the scene, when the job asked for one.
     fitted: Option<Camera>,
     mesh: Option<Result<Arc<Mesh>, String>>,
 }
 
 fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<SceneDone> {
-    let streamed = match job.stream {
-        Stream::Kept(kept) => kept,
-        Stream::Ask { budget, focus } => view3d::stream(&job.model, budget, focus),
-    };
-    let scene = match (job.scene, job.from, &streamed) {
-        (Some(scene), _, _) => scene,
-        // Part of a model too big to hold whole: made afresh, of the part that fits, each element as the whole scene has it.
-        (None, _, Some(part)) => Arc::new(Scene::new_among_cancellable(&job.model, Some(&part.among), &|| cancel.cancelled())?),
-        (None, Some((model, scene)), None) => Arc::new(scene.update_cancellable(&model, &job.model, &|| cancel.cancelled())?),
-        (None, None, None) => Arc::new(Scene::new_cancellable(&job.model, &|| cancel.cancelled())?),
+    // A scene made afresh is of every element: what it needs is said where it is more than the machine has free, and one
+    // past all the memory the machine has isn't made, with why.
+    let fresh = job.scene.is_none() && job.from.is_none();
+    let heavy = job
+        .memory
+        .filter(|_| fresh)
+        .map(|m| Some(Heavy { needs: view3d::estimate(&job.model), free: m.free, room: m.room }).filter(|h| h.needs > h.free));
+    if let Some(h) = heavy.flatten().filter(Heavy::too_big) {
+        return Some(SceneDone { heavy, model: job.model, view: job.view, scene: Err(h.words()), fitted: None, mesh: None });
+    }
+    let scene = match (job.scene, job.from) {
+        (Some(scene), _) => scene,
+        (None, Some((model, scene))) => Arc::new(scene.update_cancellable(&model, &job.model, &|| cancel.cancelled())?),
+        (None, None) => Arc::new(Scene::new_cancellable(&job.model, &|| cancel.cancelled())?),
     };
     if cancel.cancelled() {
         return None;
@@ -138,7 +180,7 @@ fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<Sce
     if cancel.cancelled() {
         return None;
     }
-    Some(SceneDone { streamed, model: job.model, view: job.view, scene, fitted, mesh })
+    Some(SceneDone { heavy, model: job.model, view: job.view, scene: Ok(scene), fitted, mesh })
 }
 
 /// Caps made: of which model, for which box.
@@ -357,10 +399,8 @@ pub struct Orbit {
     pub(crate) ppp: f32,
     /// The scene of the model shown last, in the 3D view or a section's.
     pub(crate) scene: Option<(Arc<Model>, Arc<Scene>)>,
-    /// What part of its model the scene shown holds, where the model is too big to hold whole (`view3d::stream`); and the height
-    /// a job was last asked to stream round.
-    pub(crate) streamed: Option<view3d::Streamed>,
-    restream: Option<f64>,
+    /// What the model shown needs of a machine with less memory free than that: said over the view, which shows it whole.
+    pub(crate) heavy: Option<Heavy>,
     /// The box round the scene shown, found once as it is put in place: what the work plane is drawn over.
     extent: Option<(P3, P3)>,
     /// The scene of a model before, kept while the scene of the model now is made from it.
@@ -472,8 +512,7 @@ impl Default for Orbit {
             rect: Rect::ZERO,
             ppp: 1.0,
             scene: None,
-            streamed: None,
-            restream: None,
+            heavy: None,
             extent: None,
             last: None,
             picker: None,
@@ -953,7 +992,7 @@ impl Orbit {
         }
     }
 
-    /// The box round the scene shown, of every solid in it (its fabric at least, of a streamed one): none before there is one.
+    /// The box round the scene shown, of every solid in it: none before there is one.
     pub(crate) fn extent(&self) -> Option<(P3, P3)> {
         self.extent.filter(|_| self.scene.is_some())
     }
@@ -1095,42 +1134,28 @@ impl Orbit {
             self.install(done);
         }
         let current = self.scene.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model));
-        // A streamed scene the camera has left the storeys of is made again round where it looks now, the old one shown meanwhile.
-        let target = self.camera.map(|c| c.target[2]);
-        let away = current
-            && self.streamed.as_ref().zip(target).is_some_and(|(part, z)| !part.covers(z))
-            && self.restream.zip(target).is_none_or(|(asked, z)| (asked - z).abs() > 1.0);
         let needs_mesh = card && !self.mesh.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model));
-        if !current || needs_mesh || self.camera.is_none() || away {
+        if !current || needs_mesh || self.camera.is_none() {
             if !self.requested.as_ref().is_some_and(|m| Arc::ptr_eq(m, model))
                 || (needs_mesh && !self.requested_card)
-                || (self.camera.is_none() && !self.fitting)
-                || away
+                // A view refused for the machine's memory says why, and isn't asked again until the model changes.
+                || (self.camera.is_none() && !self.fitting && self.loading_error.is_none())
             {
-                // What the machine has free says how much of a big model the view may hold: a quarter, at most 8 GB, the rest
-                // for the model itself, the window and everything else. Where nothing measures it (the tests), the whole model.
-                let ask = |focus: f64| match bimcraft_core::memory::free() {
-                    Some(free) => Stream::Ask { budget: (free / 4).min(8 << 30), focus },
-                    None => Stream::Kept(None),
-                };
-                let stream = if current && !away {
-                    Stream::Kept(self.streamed.clone())
-                } else {
-                    let lowest = model.levels().first().map_or(0.0, |(_, l)| l.elevation + 1.0);
-                    let focus = target.unwrap_or(lowest);
-                    self.restream = Some(focus);
-                    ask(focus)
-                };
+                // What the machine has free and in all, where it can be read (not in the tests): what a model's whole scene
+                // needs is said against it.
+                let memory = bimcraft_core::memory::free()
+                    .zip(bimcraft_core::memory::pressure())
+                    .map(|(free, p)| Memory { free, room: p.total.saturating_sub(bimcraft_core::memory::used().unwrap_or(0) as u64) });
                 let job = SceneJob {
-                    stream,
+                    memory,
                     model: Arc::clone(model),
                     view: self.view,
-                    scene: self.scene.as_ref().filter(|(m, _)| Arc::ptr_eq(m, model) && !away).map(|(_, s)| Arc::clone(s)),
-                    from: if current || away { None } else { self.scene.clone().or_else(|| self.last.clone()) },
+                    scene: self.scene.as_ref().filter(|(m, _)| Arc::ptr_eq(m, model)).map(|(_, s)| Arc::clone(s)),
+                    from: if current { None } else { self.scene.clone().or_else(|| self.last.clone()) },
                     width,
                     height,
                     lens,
-                    card: needs_mesh || (away && card),
+                    card: needs_mesh,
                     fit: self.camera.is_none(),
                 };
                 if !current {
@@ -1182,19 +1207,24 @@ impl Orbit {
             self.camera = Some(fitted);
             self.fitted = Some((fitted.width, fitted.height));
         }
+        // What a scene made afresh needs is said again; an edit's keeps what was said.
+        if let Some(heavy) = done.heavy {
+            self.heavy = heavy;
+        }
+        self.fitting = false;
+        let scene = match done.scene {
+            Ok(scene) => scene,
+            Err(why) => {
+                self.loading_error = Some(why);
+                return;
+            }
+        };
         if let Some(mesh) = done.mesh {
             self.mesh = Some((Arc::clone(&done.model), mesh));
         }
-        // A part of the model streamed round another height replaces the scene of the same model: the picture follows it.
-        if self.streamed != done.streamed {
-            self.shown = None;
-            self.picker = None;
-        }
-        self.streamed = done.streamed;
-        self.extent = done.scene.bounds();
-        self.scene = Some((done.model, done.scene));
+        self.extent = scene.bounds();
+        self.scene = Some((done.model, scene));
         self.last = None;
-        self.fitting = false;
     }
 
     pub(crate) fn prepare_fit(&mut self, ctx: &egui::Context, model: &Arc<Model>) -> Option<String> {
@@ -1790,19 +1820,26 @@ impl BimApp {
         if let Some(error) = o.prepare_fit(ui.ctx(), &model) {
             self.status = Status { text: crate::lang::tf("Could not fit the 3D view: {}", &[&error]), error: true };
         }
-        // A big model's view holds the detail of the storeys round where it looks (`view3d::stream`): it says so, in its corner.
-        if let Some(part) = &o.streamed {
-            let words = crate::lang::tf(
-                "Detail shown from {} to {}; {} elements farther away are left out to fit the memory there is.",
-                &[&part.levels.0, &part.levels.1, &part.left_out.to_string()],
-            );
-            // Over the picture, which is painted after this.
-            let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("streamed-3d-note"));
-            let p = ui.ctx().layer_painter(layer).with_clip_rect(rect);
-            let galley = p.layout(words.to_string(), egui::FontId::proportional(12.0), crate::style::pal().muted, rect.width() * 0.6);
-            let at = rect.left_top() + vec2(12.0, 44.0);
-            p.rect_filled(Rect::from_min_size(at, galley.size()).expand2(vec2(8.0, 4.0)), 6.0, crate::style::pal().surface);
-            p.galley(at, galley, crate::style::pal().muted);
+        // A model needing more memory than the machine has free is shown whole all the same: the view says so, plainly.
+        if let Some(heavy) = o.heavy {
+            let pal = crate::style::pal();
+            // Over the picture, below the view's tabs, as wide as reads easily.
+            egui::Area::new(egui::Id::new("heavy-3d-note"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(rect.left_top() + vec2(12.0, 44.0))
+                .constrain_to(rect)
+                .interactable(false)
+                .show(ui.ctx(), |ui| {
+                    egui::Frame::new()
+                        .fill(pal.surface)
+                        .stroke(egui::Stroke::new(1.5, pal.error))
+                        .corner_radius(6.0)
+                        .inner_margin(egui::Margin::symmetric(10, 6))
+                        .show(ui, |ui| {
+                            ui.set_max_width(rect.width() * 0.6);
+                            ui.label(egui::RichText::new(heavy.words()).size(13.0).color(pal.text));
+                        });
+                });
         }
         if let Some(fly) = o.fly.filter(|_| flying) {
             crate::fly::banner(ui.ctx(), rect, &crate::fly::speed_text(model.units, fly.speed));
@@ -2884,7 +2921,7 @@ mod edits {
             let _ = send.send(());
         });
         worker.request(SceneJob {
-            stream: Stream::Kept(None),
+            memory: None,
             model: Arc::clone(&after),
             view: None,
             scene: None,
@@ -2907,7 +2944,65 @@ mod edits {
         assert!(Arc::ptr_eq(&done.model, &after));
         assert!(done.fitted.is_none(), "a view with a camera keeps it, so the worker fits none");
         let cam = whole.fit(AZIMUTH, ELEVATION, 320, 240);
-        assert_eq!(done.scene.render(&cam, &[]).png().unwrap(), whole.render(&cam, &[]).png().unwrap());
+        assert_eq!(done.scene.unwrap().render(&cam, &[]).png().unwrap(), whole.render(&cam, &[]).png().unwrap());
+    }
+
+    /// What the worker makes of `model` afresh on a machine with `memory`.
+    fn made_with(model: &Arc<Model>, memory: Memory) -> SceneDone {
+        let (send, receive) = mpsc::channel();
+        let worker = crate::view_worker::Latest::new(build_scene, move || {
+            let _ = send.send(());
+        });
+        worker.request(SceneJob {
+            memory: Some(memory),
+            model: Arc::clone(model),
+            view: None,
+            scene: None,
+            from: None,
+            width: 320,
+            height: 240,
+            lens: None,
+            card: false,
+            fit: true,
+        });
+        worker.start().unwrap();
+        loop {
+            receive.recv_timeout(Duration::from_secs(60)).unwrap();
+            assert!(worker.take_error().is_none());
+            if let Some(done) = worker.take() {
+                break done;
+            }
+        }
+    }
+
+    #[test]
+    fn a_model_bigger_than_the_memory_free_is_shown_whole_and_said_to_be_and_one_past_all_of_it_is_refused_with_why() {
+        let mut s = bimcraft_core::engine::Session::new();
+        s.execute("tower", &json!({"storeys": 2, "plate": "small"})).unwrap();
+        let model = Arc::clone(&s.model);
+        let needs = view3d::estimate(&model);
+        let whole = Scene::new(&model);
+        let cam = whole.fit(AZIMUTH, ELEVATION, 320, 240);
+        let picture = whole.render(&cam, &[]).png().unwrap();
+
+        // Room to spare: the whole scene, nothing said.
+        let roomy = made_with(&model, Memory { free: needs * 10, room: needs * 20 });
+        assert_eq!(roomy.heavy, Some(None));
+        assert_eq!(roomy.scene.unwrap().render(&cam, &[]).png().unwrap(), picture);
+
+        // Less free than it needs, though the machine has it: every element all the same, and the view says so.
+        let tight = made_with(&model, Memory { free: needs / 4, room: needs * 2 });
+        let heavy = tight.heavy.flatten().unwrap();
+        assert!(!heavy.too_big());
+        assert!(heavy.words().contains("every element is shown"), "{}", heavy.words());
+        assert_eq!(tight.scene.unwrap().render(&cam, &[]).png().unwrap(), picture, "nothing is left out");
+
+        // More than the machine has beside the project: not made, and the user is told why; never a part of it.
+        let over = made_with(&model, Memory { free: needs / 8, room: needs / 2 });
+        assert!(over.heavy.flatten().unwrap().too_big());
+        let why = over.scene.err().unwrap();
+        assert!(why.contains("isn't drawn") && why.contains("Nothing is left out"), "{why}");
+        assert!(over.fitted.is_none() && over.mesh.is_none());
     }
 
     #[test]
@@ -2932,7 +3027,7 @@ mod edits {
                 let _ = send.send(());
             });
             let job = SceneJob {
-                stream: Stream::Kept(None),
+                memory: None,
                 model: Arc::clone(&model),
                 view,
                 scene: None,
@@ -3239,7 +3334,7 @@ mod worker_measurements {
         });
         let started = Instant::now();
         worker.request(SceneJob {
-            stream: Stream::Kept(None),
+            memory: None,
             model,
             view: None,
             scene: None,
