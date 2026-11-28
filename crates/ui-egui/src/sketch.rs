@@ -34,6 +34,8 @@ pub enum Of {
     Roof(Id),
     /// A new shaft opening from the level.
     Shaft(Id),
+    /// A new property line on the level: the site's boundary, one ring.
+    PropertyLine(Id),
     /// A new filled region in the view (a plan's key), or a masking region: any number of outlines.
     Region { view: Id, masking: bool },
     /// The element's outline and holes, redrawn.
@@ -168,6 +170,7 @@ impl Sketch {
             Of::Ceiling(_) => msg!("Create Ceiling Boundary"),
             Of::Roof(_) => "Create Roof Footprint",
             Of::Shaft(_) => msg!("Create Shaft Opening Sketch"),
+            Of::PropertyLine(_) => msg!("Create Property Line Sketch"),
             Of::Ramp(_) => msg!("Create Ramp Sketch"),
             Of::RampEdit(_) => msg!("Edit Ramp Sketch"),
             Of::Region { masking: false, .. } => msg!("Create Filled Region Boundary"),
@@ -863,6 +866,7 @@ impl BimApp {
                 ("roof", self.typed("roof", json!({"level": on, "slope": slope, "sketch": lines})))
             }
             Of::Shaft(level) => ("shaft", json!({"level": level, "sketch": lines})),
+            Of::PropertyLine(level) => ("property_line", json!({"level": level, "sketch": lines})),
             Of::Region { view, .. } => {
                 ("filled_region", json!({"view": view, "sketch": lines, "type": sk.region.0, "line_style": sk.region.1}))
             }

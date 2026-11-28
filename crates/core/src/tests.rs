@@ -7964,3 +7964,28 @@ fn a_wall_of_an_unknown_type_says_its_area_is_unknown() {
     assert!(warnings.iter().any(|w| w.contains(&format!("wall {id}")) && w.contains("No Such Type")), "{warnings:?}");
     assert!(m.quantities(id).is_none(), "no area is known");
 }
+
+#[test]
+fn a_property_line_is_made_from_a_sketch_as_the_desktops_tool_draws_it() {
+    let mut s = Session::new();
+    // Sketched, the boundary is its lines solved into one ring, as a toposolid's is.
+    let lot = json!([{"points": [[0, 0], [20000, 0], [20000, 30000], [0, 30000]], "closed": true}]);
+    let r = run(&mut s, "property_line", json!({"sketch": lot, "name": "Lot 7"}));
+    assert_eq!((r["name"].clone(), r["area_m2"].clone()), (json!("Lot 7"), json!(600.0)));
+    let pl = s
+        .model
+        .elements
+        .values()
+        .find_map(|e| if let crate::model::Element::PropertyLine(pl) = e { Some(pl.clone()) } else { None })
+        .unwrap();
+    assert_eq!(pl.points.len(), 4);
+    // A property is one ring: a loop inside it is refused, and so are points and a sketch at once.
+    let mut holed = lot.clone();
+    if let Some(a) = holed.as_array_mut() {
+        a.push(json!({"points": [[1000, 1000], [2000, 1000], [2000, 2000]], "closed": true}));
+    }
+    let e = s.execute("property_line", &json!({"sketch": holed})).unwrap_err();
+    assert!(e.contains("one ring"), "{e}");
+    let e = s.execute("property_line", &json!({"sketch": lot, "points": [[0, 0], [1000, 0], [0, 1000]]})).unwrap_err();
+    assert!(e.contains("not both"), "{e}");
+}
