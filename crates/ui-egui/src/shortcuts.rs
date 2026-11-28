@@ -573,7 +573,7 @@ const DEFAULT_CHORDS: &[(&str, &[&str])] = &[
     ("ui.file.save_as", &["Ctrl+Shift+S"]),
     ("cmd.open", &["Ctrl+O"]),
     ("cmd.new", &["Ctrl+N"]),
-    ("ui.find", &["Ctrl+K"]),
+    ("ui.find", &["Ctrl+K", "Ctrl+F"]),
     ("ui.settings", &["Ctrl+,"]),
     ("ui.settings.shortcuts", &["Ctrl+Shift+K"]),
     ("ui.palette.properties", &["Ctrl+1"]),

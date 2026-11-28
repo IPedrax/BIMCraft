@@ -934,11 +934,11 @@ fn a_ctrl_chord_runs_at_once_and_ctrl_is_never_part_of_a_sequence() {
     chord(&mut h, Key::Z, Modifiers::COMMAND);
     h.step();
     assert_eq!(walls(&h), 2, "undone at once");
-    // Ctrl held and F is Ctrl+F, which no action has: nothing happens, and no sequence is typed either.
-    chord(&mut h, Key::F, Modifiers::COMMAND);
+    // Ctrl held and J is Ctrl+J, which no action has: nothing happens, and no sequence is typed either.
+    chord(&mut h, Key::J, Modifiers::COMMAND);
     h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
-    assert_eq!(walls(&h), 2, "Ctrl+F does nothing");
+    assert_eq!(walls(&h), 2, "Ctrl+J does nothing");
     // A sequence is typed plainly: W and A are Wall, with no Ctrl.
     shortcut(&mut h, "WA");
     assert!(matches!(h.state().tool, Tool::Wall(_)));
