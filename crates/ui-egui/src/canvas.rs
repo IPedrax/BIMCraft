@@ -28,7 +28,7 @@ use crate::draw;
 use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::properties::number;
-use crate::style::{GuideInk, GuideStyle, canvas_pal, guide_ink, pal};
+use crate::style::{GuideInk, GuideStyle, canvas_pal, guide_ink, lit_pal, pal};
 use crate::{BimApp, Sheet, Status, Tool, icon_button, top_params};
 
 /// How near the cursor an element is picked, in px.
@@ -832,8 +832,8 @@ pub(crate) fn paint_prim(
     let accent = match owner {
         // A picture keeps its colours, a tint over it lighting it (`image_frames`): lit line by line, a page would read as ink.
         _ if part == render::Part::Picture => None,
-        Some(id) if selected.contains(&id) => Some((canvas_pal().accent, canvas_pal().select_fill)),
-        Some(id) if Some(id) == hovered => Some((canvas_pal().hover, canvas_pal().hover_fill)),
+        Some(id) if selected.contains(&id) => Some((lit_pal(at.paper).accent, lit_pal(at.paper).select_fill)),
+        Some(id) if Some(id) == hovered => Some((lit_pal(at.paper).hover, lit_pal(at.paper).hover_fill)),
         _ => None,
     };
     match prim {

@@ -402,6 +402,12 @@ pub fn canvas_pal() -> &'static Palette {
     if canvas_dark() { &DARK } else { &CANVAS_LIGHT }
 }
 
+/// The colours what is selected or hovered is lit in where it is drawn: on a sheet the paper's, which is white whatever the
+/// canvas is (#568), so [`CANVAS_LIGHT`]; elsewhere [`canvas_pal`].
+pub fn lit_pal(paper: bool) -> &'static Palette {
+    if paper { &CANVAS_LIGHT } else { canvas_pal() }
+}
+
 /// The guide and live-drawing ink, which follows the drawing's ground rather than the interface's: plum on a light paper,
 /// lavender on a dark one, so a hairline reads without shouting over the walls.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -726,6 +732,17 @@ fn visuals(ctx: &Context, look: Look) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #568: on a sheet what is hovered or selected is lit as on a light canvas, the paper being white whatever the canvas
+    /// is: the dark palette's fills, multiplied over a viewport's picture, turned it dark.
+    #[test]
+    fn a_sheet_lights_what_is_hovered_as_its_white_paper_asks() {
+        set_canvas(true, None);
+        assert_eq!(lit_pal(true).hover_fill, CANVAS_LIGHT.hover_fill);
+        assert_eq!(lit_pal(true).select_fill, CANVAS_LIGHT.select_fill);
+        assert_eq!(lit_pal(false).hover_fill, DARK.hover_fill, "a plan on a dark canvas keeps the dark palette");
+        set_canvas(false, None);
+    }
 
     #[test]
     fn contrast_is_wcags_ratio() {
