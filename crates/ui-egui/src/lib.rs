@@ -4236,7 +4236,12 @@ impl BimApp {
 
     /// Whether nothing is being made for what the window shows: no plan or 3D scene on a worker, nothing waited for.
     pub(crate) fn settled(&self) -> bool {
-        !self.canvas.drawing.busy() && self.orbit.waiting.is_none() && !self.orbit.busy() && !self.opening_busy()
+        !self.canvas.drawing.busy()
+            && self.orbit.waiting.is_none()
+            && !self.orbit.busy()
+            && !self.opening_busy()
+            // The 3D view's picture is of the model as it is now: its scene made, on the card and drawn.
+            && (self.sheet != Sheet::View3D || self.orbit.shows(&self.session.model))
     }
 
     /// The first plan in a tab, as the Project Browser opens it.

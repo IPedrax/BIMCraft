@@ -84,6 +84,9 @@ struct SceneJob {
     height: u32,
     lens: Option<f64>,
     card: bool,
+    /// Whether the view has no camera yet, so the worker fits one: a view with one keeps it, and fitting a big scene is
+    /// two passes over every triangle thrown away.
+    fit: bool,
 }
 
 struct SceneDone {
@@ -92,7 +95,8 @@ struct SceneDone {
     model: Arc<Model>,
     view: Option<Id>,
     scene: Arc<Scene>,
-    fitted: Camera,
+    /// The camera fitted to the scene, when the job asked for one.
+    fitted: Option<Camera>,
     mesh: Option<Result<Arc<Mesh>, String>>,
 }
 
@@ -112,7 +116,8 @@ fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<Sce
         return None;
     }
     let look = Look::of_3d_view(&job.model, job.view);
-    let fitted = scene.fit_from(Camera { lens: job.lens, ..scene.fit_in(AZIMUTH, ELEVATION, job.width, job.height, &look) }, &look);
+    let fitted =
+        job.fit.then(|| scene.fit_from(Camera { lens: job.lens, ..scene.fit_in(AZIMUTH, ELEVATION, job.width, job.height, &look) }, &look));
     if cancel.cancelled() {
         return None;
     }
@@ -1126,6 +1131,7 @@ impl Orbit {
                     height,
                     lens,
                     card: needs_mesh || (away && card),
+                    fit: self.camera.is_none(),
                 };
                 if !current {
                     self.last = self.scene.take().or_else(|| self.last.take());
@@ -1170,9 +1176,11 @@ impl Orbit {
 
     /// What the worker made for a model, in place: its scene, its mesh if it made one, and its fitted camera if the view has none.
     fn install(&mut self, done: SceneDone) {
-        if self.camera.is_none() {
-            self.camera = Some(done.fitted);
-            self.fitted = Some((done.fitted.width, done.fitted.height));
+        if self.camera.is_none()
+            && let Some(fitted) = done.fitted
+        {
+            self.camera = Some(fitted);
+            self.fitted = Some((fitted.width, fitted.height));
         }
         if let Some(mesh) = done.mesh {
             self.mesh = Some((Arc::clone(&done.model), mesh));
@@ -2885,6 +2893,7 @@ mod edits {
             height: 240,
             lens: None,
             card: false,
+            fit: false,
         });
         worker.start().unwrap();
         let done = loop {
@@ -2896,6 +2905,7 @@ mod edits {
         };
         let whole = Scene::new(&after);
         assert!(Arc::ptr_eq(&done.model, &after));
+        assert!(done.fitted.is_none(), "a view with a camera keeps it, so the worker fits none");
         let cam = whole.fit(AZIMUTH, ELEVATION, 320, 240);
         assert_eq!(done.scene.render(&cam, &[]).png().unwrap(), whole.render(&cam, &[]).png().unwrap());
     }
@@ -2931,6 +2941,7 @@ mod edits {
                 height: 240,
                 lens: None,
                 card: true,
+                fit: true,
             };
             worker.request(job);
             worker.start().unwrap();
@@ -3237,6 +3248,7 @@ mod worker_measurements {
             height: 1080,
             lens: None,
             card: true,
+            fit: true,
         });
         worker.start().unwrap();
         eprintln!("scene request and start: {:.2} ms", started.elapsed().as_secs_f64() * 1000.0);
@@ -3275,7 +3287,7 @@ mod worker_measurements {
         eprintln!("{} groups of their own triangles, and {} copies each on its own", mesh.groups.len(), mesh.instances.len());
         // Frames as an orbit draws them, timed back to back once the card is awake: the whole tower, then nearer, then from inside.
         let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
-        let fitted = done.fitted;
+        let fitted = done.fitted.expect("the job asked for a camera");
         let corner = [fitted.target[0] - 15000.0, fitted.target[1] - 10000.0, fitted.target[2]];
         let inside = bimcraft_core::view3d::inside(&model_for_inside, Camera { lens: Some(bimcraft_core::view3d::LENS), ..fitted });
         for (name, base, cull) in [
@@ -3348,7 +3360,7 @@ mod worker_measurements {
         }
         let t = Instant::now();
         for i in 0..100 {
-            std::hint::black_box(mesh.pick(&done.fitted, &[], 400.0 + f64::from(i) * 10.0, 540.0));
+            std::hint::black_box(mesh.pick(&fitted, &[], 400.0 + f64::from(i) * 10.0, 540.0));
         }
         eprintln!("pick: {:.3} ms each", ms(t) / 100.0);
         if let Ok(status) = std::fs::read_to_string("/proc/self/status") {

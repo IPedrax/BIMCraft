@@ -38,13 +38,22 @@ const SETTLED_FRAMES: u32 = 5;
 pub enum Step {
     Open(PathBuf),
     Wait(Duration),
-    Zoom { notches: u32, inward: bool },
-    Pan { dx: f32, dy: f32, frames: u32 },
+    Zoom {
+        notches: u32,
+        inward: bool,
+    },
+    Pan {
+        dx: f32,
+        dy: f32,
+        frames: u32,
+    },
     View3d,
     ViewPlan,
     Orbit(u32),
     Idle(Duration),
     Screenshot(PathBuf),
+    /// A command run as the window runs one, by its id and its parameters: an edit, whose views the next `wait` waits for.
+    Command(String, Value),
     Quit,
 }
 
@@ -93,8 +102,13 @@ pub fn parse(text: &str) -> Result<Vec<Step>, String> {
             "orbit" => Step::Orbit(count(numbers(1)?[0])?),
             "view" if rest == "3d" => Step::View3d,
             "view" if rest == "plan" => Step::ViewPlan,
+            "command" if !rest.is_empty() => {
+                let (id, params) = rest.split_once(char::is_whitespace).map_or((rest, "{}"), |(id, p)| (id, p.trim()));
+                let params: Value = serde_json::from_str(params).map_err(|e| bad(&format!("its parameters aren't JSON: {e}")))?;
+                Step::Command(id.to_string(), params)
+            }
             "quit" if rest.is_empty() => Step::Quit,
-            _ => return Err(bad("not a step: open, wait, zoom, pan, view, orbit, idle, screenshot or quit")),
+            _ => return Err(bad("not a step: open, wait, zoom, pan, view, orbit, idle, screenshot, command or quit")),
         });
     }
     Ok(out)
@@ -270,6 +284,13 @@ impl Bench {
                     self.finish(Some("the window gave no screenshot".into()));
                 }
             }
+            Step::Command(id, params) => {
+                let note = match app.exec(&id, &params) {
+                    Ok(_) => format!("{id} done"),
+                    Err(e) => format!("{id} failed: {e}"),
+                };
+                self.finish(Some(note));
+            }
             Step::Quit => {
                 self.steps.truncate(self.at);
             }
@@ -405,7 +426,22 @@ mod tests {
                 Step::Quit,
             ]
         );
-        for bad in ["jump 3", "zoom sideways 2", "orbit 0", "orbit -1", "wait forever", "pan 1 2", "idle 1e9", "view 4d"] {
+        assert_eq!(
+            parse("command move {\"ids\": [100001], \"by\": [0, 10]}\ncommand undo").unwrap(),
+            vec![Step::Command("move".into(), json!({"ids": [100001], "by": [0, 10]})), Step::Command("undo".into(), json!({}))]
+        );
+        for bad in [
+            "jump 3",
+            "zoom sideways 2",
+            "orbit 0",
+            "orbit -1",
+            "wait forever",
+            "pan 1 2",
+            "idle 1e9",
+            "view 4d",
+            "command",
+            "command move {",
+        ] {
             let e = parse(&format!("wait\n{bad}")).unwrap_err();
             assert!(e.starts_with("line 2:"), "{bad}: {e}");
         }
